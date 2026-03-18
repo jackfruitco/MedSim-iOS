@@ -1,0 +1,630 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		77E5AA832F60000100D02877 /* AppShell in Frameworks */ = {isa = PBXBuildFile; productRef = 77E5AA822F60000100D02877 /* AppShell */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		77CAB72A2F38C27E00D02877 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 77CAB70F2F38C27900D02877 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 77CAB7162F38C27900D02877;
+			remoteInfo = MedSim;
+		};
+		77CAB7342F38C27E00D02877 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 77CAB70F2F38C27900D02877 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 77CAB7162F38C27900D02877;
+			remoteInfo = MedSim;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		77CAB7172F38C27900D02877 /* MedSim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedSim.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		77CAB7292F38C27E00D02877 /* MedSimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		77494C4D2F47D3E400A965FA /* Exceptions for "MedSim" folder in "MedSim" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 77CAB7162F38C27900D02877 /* MedSim */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		77CAB7192F38C27900D02877 /* MedSim */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				77494C4D2F47D3E400A965FA /* Exceptions for "MedSim" folder in "MedSim" target */,
+			);
+			path = MedSim;
+			sourceTree = "<group>";
+		};
+		77CAB72C2F38C27E00D02877 /* MedSimTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MedSimTests;
+			sourceTree = "<group>";
+		};
+		77CAB7362F38C27E00D02877 /* MedSimUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MedSimUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		77CAB7142F38C27900D02877 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77E5AA832F60000100D02877 /* AppShell in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB7262F38C27E00D02877 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB7302F38C27E00D02877 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		77CAB70E2F38C27900D02877 = {
+			isa = PBXGroup;
+			children = (
+				77CAB7192F38C27900D02877 /* MedSim */,
+				77CAB72C2F38C27E00D02877 /* MedSimTests */,
+				77CAB7362F38C27E00D02877 /* MedSimUITests */,
+				77CAB7182F38C27900D02877 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		77CAB7182F38C27900D02877 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				77CAB7172F38C27900D02877 /* MedSim.app */,
+				77CAB7292F38C27E00D02877 /* MedSimTests.xctest */,
+				77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		77CAB7162F38C27900D02877 /* MedSim */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77CAB73D2F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSim" */;
+			buildPhases = (
+				77CAB7132F38C27900D02877 /* Sources */,
+				77CAB7142F38C27900D02877 /* Frameworks */,
+				77CAB7152F38C27900D02877 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				77CAB7192F38C27900D02877 /* MedSim */,
+			);
+			name = MedSim;
+			packageProductDependencies = (
+				77E5AA822F60000100D02877 /* AppShell */,
+			);
+			productName = MedSim;
+			productReference = 77CAB7172F38C27900D02877 /* MedSim.app */;
+			productType = "com.apple.product-type.application";
+		};
+		77CAB7282F38C27E00D02877 /* MedSimTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77CAB7402F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSimTests" */;
+			buildPhases = (
+				77CAB7252F38C27E00D02877 /* Sources */,
+				77CAB7262F38C27E00D02877 /* Frameworks */,
+				77CAB7272F38C27E00D02877 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				77CAB72B2F38C27E00D02877 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				77CAB72C2F38C27E00D02877 /* MedSimTests */,
+			);
+			name = MedSimTests;
+			packageProductDependencies = (
+			);
+			productName = MedSimTests;
+			productReference = 77CAB7292F38C27E00D02877 /* MedSimTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		77CAB7322F38C27E00D02877 /* MedSimUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77CAB7432F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSimUITests" */;
+			buildPhases = (
+				77CAB72F2F38C27E00D02877 /* Sources */,
+				77CAB7302F38C27E00D02877 /* Frameworks */,
+				77CAB7312F38C27E00D02877 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				77CAB7352F38C27E00D02877 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				77CAB7362F38C27E00D02877 /* MedSimUITests */,
+			);
+			name = MedSimUITests;
+			packageProductDependencies = (
+			);
+			productName = MedSimUITests;
+			productReference = 77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		77CAB70F2F38C27900D02877 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					77CAB7162F38C27900D02877 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					77CAB7282F38C27E00D02877 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 77CAB7162F38C27900D02877;
+					};
+					77CAB7322F38C27E00D02877 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 77CAB7162F38C27900D02877;
+					};
+				};
+			};
+			buildConfigurationList = 77CAB7122F38C27900D02877 /* Build configuration list for PBXProject "MedSim" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 77CAB70E2F38C27900D02877;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				77E5AA812F60000100D02877 /* XCLocalSwiftPackageReference "apps/medsim-shell-ios" */,
+				77A2E6932F672506005DA2EB /* XCLocalSwiftPackageReference "apps/trainerlab-ios" */,
+				77A2E6942F672512005DA2EB /* XCLocalSwiftPackageReference "apps/chatlab-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 77CAB7182F38C27900D02877 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				77CAB7162F38C27900D02877 /* MedSim */,
+				77CAB7282F38C27E00D02877 /* MedSimTests */,
+				77CAB7322F38C27E00D02877 /* MedSimUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		77CAB7152F38C27900D02877 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB7272F38C27E00D02877 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB7312F38C27E00D02877 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		77CAB7132F38C27900D02877 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB7252F38C27E00D02877 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		77CAB72F2F38C27E00D02877 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		77CAB72B2F38C27E00D02877 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 77CAB7162F38C27900D02877 /* MedSim */;
+			targetProxy = 77CAB72A2F38C27E00D02877 /* PBXContainerItemProxy */;
+		};
+		77CAB7352F38C27E00D02877 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 77CAB7162F38C27900D02877 /* MedSim */;
+			targetProxy = 77CAB7342F38C27E00D02877 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		77CAB73B2F38C27E00D02877 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		77CAB73C2F38C27E00D02877 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		77CAB73E2F38C27E00D02877 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9VR28K5V9Y;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MedSim/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MedSim;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSim;
+				PRODUCT_NAME = MedSim;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		77CAB73F2F38C27E00D02877 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 9VR28K5V9Y;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MedSim/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = MedSim;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSim;
+				PRODUCT_NAME = MedSim;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		77CAB7412F38C27E00D02877 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSimTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MedSim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MedSim";
+			};
+			name = Debug;
+		};
+		77CAB7422F38C27E00D02877 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSimTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MedSim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MedSim";
+			};
+			name = Release;
+		};
+		77CAB7442F38C27E00D02877 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSimUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MedSim;
+			};
+			name = Debug;
+		};
+		77CAB7452F38C27E00D02877 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSimUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = MedSim;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		77CAB7122F38C27900D02877 /* Build configuration list for PBXProject "MedSim" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77CAB73B2F38C27E00D02877 /* Debug */,
+				77CAB73C2F38C27E00D02877 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		77CAB73D2F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSim" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77CAB73E2F38C27E00D02877 /* Debug */,
+				77CAB73F2F38C27E00D02877 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		77CAB7402F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSimTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77CAB7412F38C27E00D02877 /* Debug */,
+				77CAB7422F38C27E00D02877 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		77CAB7432F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSimUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				77CAB7442F38C27E00D02877 /* Debug */,
+				77CAB7452F38C27E00D02877 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		77A2E6932F672506005DA2EB /* XCLocalSwiftPackageReference "apps/trainerlab-ios" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "apps/trainerlab-ios";
+		};
+		77A2E6942F672512005DA2EB /* XCLocalSwiftPackageReference "apps/chatlab-ios" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "apps/chatlab-ios";
+		};
+		77E5AA812F60000100D02877 /* XCLocalSwiftPackageReference "apps/medsim-shell-ios" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "apps/medsim-shell-ios";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		77E5AA822F60000100D02877 /* AppShell */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 77E5AA812F60000100D02877 /* XCLocalSwiftPackageReference "apps/medsim-shell-ios" */;
+			productName = AppShell;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 77CAB70F2F38C27900D02877 /* Project object */;
+}

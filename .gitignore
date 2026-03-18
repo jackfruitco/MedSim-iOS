@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+
+# Xcode / SwiftPM local files
+.build/
+.swiftpm/
+
+# Build output
+DerivedData/
+build/
