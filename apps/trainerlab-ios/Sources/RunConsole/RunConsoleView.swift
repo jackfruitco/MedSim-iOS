@@ -579,7 +579,7 @@ public struct RunConsoleView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isActive ? TrainerLabTheme.accentBlue : .secondary)
+        .foregroundStyle(isActive ? TrainerLabTheme.accentBlue : Color.white.opacity(0.78))
         .animation(.spring(duration: 0.25), value: activeInfoPanel)
     }
 
