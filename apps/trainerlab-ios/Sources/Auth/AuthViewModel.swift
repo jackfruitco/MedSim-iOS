@@ -15,7 +15,7 @@ public final class AuthViewModel: ObservableObject {
     public init(authService: AuthServiceProtocol, trainerService: TrainerLabServiceProtocol) {
         self.authService = authService
         self.trainerService = trainerService
-        self.isAuthenticated = authService.hasActiveTokens()
+        isAuthenticated = authService.hasActiveTokens()
     }
 
     public func signIn() async {

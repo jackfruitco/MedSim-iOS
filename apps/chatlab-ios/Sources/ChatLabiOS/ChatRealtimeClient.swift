@@ -10,7 +10,7 @@ public protocol ChatRealtimeClientProtocol: Sendable {
     func send(eventType: String, payload: [String: JSONValue]) async
 }
 
-private enum ChatSSEStreamItem: Sendable {
+private enum ChatSSEStreamItem {
     case event(ChatEventEnvelope)
     case keepAlive
 }
@@ -67,7 +67,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
 
     private var seenEventIDs = Set<String>()
     private var seenOrder: [String] = []
-    private let seenCapacity = 2_000
+    private let seenCapacity = 2000
 
     public init(
         baseURLProvider: @escaping () -> URL,
@@ -97,17 +97,17 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         self.decoder = decoder
 
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
-        self.events = AsyncStream<ChatEventEnvelope> { continuation in
+        events = AsyncStream<ChatEventEnvelope> { continuation in
             eventCont = continuation
         }
-        self.eventContinuation = eventCont
+        eventContinuation = eventCont
 
         var stateCont: AsyncStream<ChatRealtimeConnectionState>.Continuation!
-        self.connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
+        connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
             stateCont = continuation
             continuation.yield(.disconnected)
         }
-        self.stateContinuation = stateCont
+        stateContinuation = stateCont
     }
 
     public func connect(simulationID: Int, cursor: String?) async {
@@ -129,7 +129,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         stateContinuation.yield(.disconnected)
     }
 
-    public func send(eventType: String, payload: [String: JSONValue]) async {
+    public func send(eventType _: String, payload _: [String: JSONValue]) async {
         // Generic simulation realtime is SSE-only in the backend contract.
         // Typing remains a local UI affordance until a supported upstream channel exists.
     }
@@ -188,7 +188,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                     }
 
                     var dataLines: [String] = []
-                    var currentEventType: String? = nil
+                    var currentEventType: String?
 
                     for try await line in bytes.lines {
                         if Task.isCancelled {

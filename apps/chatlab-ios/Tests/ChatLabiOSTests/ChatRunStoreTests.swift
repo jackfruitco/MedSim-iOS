@@ -13,16 +13,16 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var markReadCalls: [(simulationID: Int, messageID: Int)] = []
 
     func listSimulations(
-        limit: Int,
-        cursor: String?,
-        status: String?,
-        query: String?,
-        searchMessages: Bool
+        limit _: Int,
+        cursor _: String?,
+        status _: String?,
+        query _: String?,
+        searchMessages _: Bool
     ) async throws -> PaginatedResponse<ChatSimulation> {
         PaginatedResponse(items: Array(simulations.values), nextCursor: nil, hasMore: false)
     }
 
-    func quickCreateSimulation(request: ChatQuickCreateRequest) async throws -> ChatSimulation {
+    func quickCreateSimulation(request _: ChatQuickCreateRequest) async throws -> ChatSimulation {
         throw NSError(domain: "unused", code: 1)
     }
 
@@ -55,24 +55,24 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         return simulation
     }
 
-    func listConversations(simulationID: Int) async throws -> ChatConversationListResponse {
+    func listConversations(simulationID _: Int) async throws -> ChatConversationListResponse {
         conversations
     }
 
-    func createConversation(simulationID: Int, request: ChatCreateConversationRequest) async throws -> ChatConversation {
+    func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
         throw NSError(domain: "unused", code: 1)
     }
 
-    func getConversation(simulationID: Int, conversationUUID: String) async throws -> ChatConversation {
+    func getConversation(simulationID _: Int, conversationUUID _: String) async throws -> ChatConversation {
         throw NSError(domain: "unused", code: 1)
     }
 
     func listMessages(
-        simulationID: Int,
+        simulationID _: Int,
         conversationID: Int?,
-        cursor: String?,
-        order: String,
-        limit: Int
+        cursor _: String?,
+        order _: String,
+        limit _: Int
     ) async throws -> PaginatedResponse<ChatMessage> {
         let conversationKey = conversationID ?? -1
         return PaginatedResponse(
@@ -82,21 +82,21 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         )
     }
 
-    func createMessage(simulationID: Int, request: ChatCreateMessageRequest) async throws -> ChatMessage {
+    func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
         guard let createdMessage else {
             throw NSError(domain: "missing-created-message", code: 404)
         }
         return createdMessage
     }
 
-    func retryMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+    func retryMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
         guard let retriedMessage else {
             throw NSError(domain: "missing-retried-message", code: 404)
         }
         return retriedMessage
     }
 
-    func getMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+    func getMessage(simulationID _: Int, messageID: Int) async throws -> ChatMessage {
         for messages in messagesByConversation.values {
             if let message = messages.first(where: { $0.id == messageID }) {
                 return message
@@ -137,27 +137,27 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         throw NSError(domain: "missing-message", code: 404)
     }
 
-    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
+    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
         PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
     }
 
-    func listTools(simulationID: Int, names: [String]?) async throws -> ChatToolListResponse {
+    func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
         ChatToolListResponse(items: [])
     }
 
-    func getTool(simulationID: Int, toolName: String) async throws -> ChatToolState {
+    func getTool(simulationID _: Int, toolName: String) async throws -> ChatToolState {
         ChatToolState(name: toolName, displayName: toolName, data: [], isGeneric: false, checksum: "")
     }
 
-    func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
+    func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         ChatSignOrdersResponse(status: "ok", orders: [])
     }
 
-    func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
+    func submitLabOrders(simulationID _: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
         ChatLabOrdersResponse(status: "accepted", callID: "call-1", orders: request.orders)
     }
 
-    func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup] {
+    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
         []
     }
 }
@@ -184,7 +184,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation = stateCont
     }
 
-    func connect(simulationID: Int, cursor: String?) async {
+    func connect(simulationID _: Int, cursor _: String?) async {
         stateContinuation.yield(.connected)
     }
 
@@ -192,7 +192,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation.yield(.disconnected)
     }
 
-    func send(eventType: String, payload: [String: JSONValue]) async {}
+    func send(eventType _: String, payload _: [String: JSONValue]) async {}
 
     func pushEvent(_ event: ChatEventEnvelope) {
         eventContinuation.yield(event)
@@ -226,7 +226,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "is_from_ai": .bool(true),
                     "display_name": .string(patientConversation.displayName),
                     "timestamp": .string(isoTimestamp()),
-                    "delivery_status": .string("sent"),
+                    "delivery_status": .string("sent")
                 ]
             )
         )
@@ -276,7 +276,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "id": .number(10),
                     "status": .string("failed"),
                     "retryable": .bool(true),
-                    "error_text": .string("Message failed to deliver to the AI service. Try again."),
+                    "error_text": .string("Message failed to deliver to the AI service. Try again.")
                 ]
             )
         )
@@ -317,7 +317,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "status": .string("failed"),
                     "terminal_reason_code": .string("provider_timeout"),
                     "terminal_reason_text": .string("Simulation failed."),
-                    "retryable": .bool(true),
+                    "retryable": .bool(true)
                 ]
             )
         )

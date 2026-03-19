@@ -417,7 +417,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "limit", value: String(limit))
         ]
         if let cursor {
             queryItems.append(URLQueryItem(name: "cursor", value: cursor))

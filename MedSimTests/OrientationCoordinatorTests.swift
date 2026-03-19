@@ -1,7 +1,7 @@
 import AppShell
+@testable import MedSim
 import UIKit
 import XCTest
-@testable import MedSim
 
 final class OrientationCoordinatorTests: XCTestCase {
     func testSystemLockAllowsPortraitAndLandscape() {

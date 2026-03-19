@@ -11,46 +11,163 @@ private enum MockServiceError: Error {
 }
 
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
-    func accessMe() async throws -> LabAccess { throw MockServiceError.unused }
-    func listSessions(limit: Int, cursor: String?, status: String?, query: String?) async throws -> PaginatedResponse<TrainerSessionDTO> { throw MockServiceError.unused }
-    func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
-    func getSession(simulationID: Int) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
-    func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut { throw MockServiceError.unused }
-    func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut { throw MockServiceError.unused }
-    func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
-    func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope> { throw MockServiceError.unused }
-    func getRunSummary(simulationID: Int) async throws -> RunSummary { throw MockServiceError.unused }
-    func adjustSimulation(simulationID: Int, request: SimulationAdjustRequest, idempotencyKey: String) async throws -> SimulationAdjustAck { throw MockServiceError.unused }
-    func steerPrompt(simulationID: Int, request: SteerPromptRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func injectInjuryEvent(simulationID: Int, request: InjuryEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func injectIllnessEvent(simulationID: Int, request: IllnessEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createProblem(simulationID: Int, request: ProblemCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createAssessmentFinding(simulationID: Int, request: AssessmentFindingCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createDiagnosticResult(simulationID: Int, request: DiagnosticResultCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createResourceState(simulationID: Int, request: ResourceStateCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createDispositionState(simulationID: Int, request: DispositionStateCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func injectVitalEvent(simulationID: Int, request: VitalEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func injectInterventionEvent(simulationID: Int, request: InterventionEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func listPresets(limit: Int, cursor: String?) async throws -> PaginatedResponse<ScenarioInstruction> { throw MockServiceError.unused }
-    func createPreset(request: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction { throw MockServiceError.unused }
-    func getPreset(presetID: Int) async throws -> ScenarioInstruction { throw MockServiceError.unused }
-    func updatePreset(presetID: Int, request: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction { throw MockServiceError.unused }
-    func deletePreset(presetID: Int) async throws { throw MockServiceError.unused }
-    func duplicatePreset(presetID: Int) async throws -> ScenarioInstruction { throw MockServiceError.unused }
-    func sharePreset(presetID: Int, request: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission { throw MockServiceError.unused }
-    func unsharePreset(presetID: Int, request: ScenarioInstructionUnshareRequest) async throws { throw MockServiceError.unused }
-    func applyPreset(presetID: Int, request: ScenarioInstructionApplyRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func injuryDictionary() async throws -> InjuryDictionary { throw MockServiceError.unused }
-    func interventionDictionary() async throws -> [InterventionGroup] { throw MockServiceError.unused }
-    func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> { throw MockServiceError.unused }
-    func updateProblemStatus(simulationID: Int, problemID: Int, request: ProblemStatusUpdateRequest, idempotencyKey: String) async throws -> ProblemStatusOut { throw MockServiceError.unused }
-    func createNoteEvent(simulationID: Int, request: SimulationNoteCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
-    func createAnnotation(simulationID: Int, request: AnnotationCreateRequest, idempotencyKey: String) async throws -> AnnotationOut { throw MockServiceError.unused }
-    func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] { throw MockServiceError.unused }
-    func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut { throw MockServiceError.unused }
-    func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws {}
+    func accessMe() async throws -> LabAccess {
+        throw MockServiceError.unused
+    }
+
+    func listSessions(limit _: Int, cursor _: String?, status _: String?, query _: String?) async throws -> PaginatedResponse<TrainerSessionDTO> {
+        throw MockServiceError.unused
+    }
+
+    func createSession(request _: TrainerSessionCreateRequest, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockServiceError.unused
+    }
+
+    func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
+        throw MockServiceError.unused
+    }
+
+    func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
+        throw MockServiceError.unused
+    }
+
+    func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut {
+        throw MockServiceError.unused
+    }
+
+    func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockServiceError.unused
+    }
+
+    func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func triggerVitalsTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<EventEnvelope> {
+        throw MockServiceError.unused
+    }
+
+    func getRunSummary(simulationID _: Int) async throws -> RunSummary {
+        throw MockServiceError.unused
+    }
+
+    func adjustSimulation(simulationID _: Int, request _: SimulationAdjustRequest, idempotencyKey _: String) async throws -> SimulationAdjustAck {
+        throw MockServiceError.unused
+    }
+
+    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func injectInjuryEvent(simulationID _: Int, request _: InjuryEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func injectIllnessEvent(simulationID _: Int, request _: IllnessEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createProblem(simulationID _: Int, request _: ProblemCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createAssessmentFinding(simulationID _: Int, request _: AssessmentFindingCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createDiagnosticResult(simulationID _: Int, request _: DiagnosticResultCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createResourceState(simulationID _: Int, request _: ResourceStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createDispositionState(simulationID _: Int, request _: DispositionStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func injectVitalEvent(simulationID _: Int, request _: VitalEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func injectInterventionEvent(simulationID _: Int, request _: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func listPresets(limit _: Int, cursor _: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
+        throw MockServiceError.unused
+    }
+
+    func createPreset(request _: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction {
+        throw MockServiceError.unused
+    }
+
+    func getPreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw MockServiceError.unused
+    }
+
+    func updatePreset(presetID _: Int, request _: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction {
+        throw MockServiceError.unused
+    }
+
+    func deletePreset(presetID _: Int) async throws {
+        throw MockServiceError.unused
+    }
+
+    func duplicatePreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw MockServiceError.unused
+    }
+
+    func sharePreset(presetID _: Int, request _: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission {
+        throw MockServiceError.unused
+    }
+
+    func unsharePreset(presetID _: Int, request _: ScenarioInstructionUnshareRequest) async throws {
+        throw MockServiceError.unused
+    }
+
+    func applyPreset(presetID _: Int, request _: ScenarioInstructionApplyRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func injuryDictionary() async throws -> InjuryDictionary {
+        throw MockServiceError.unused
+    }
+
+    func interventionDictionary() async throws -> [InterventionGroup] {
+        throw MockServiceError.unused
+    }
+
+    func listAccounts(query _: String, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<AccountListUser> {
+        throw MockServiceError.unused
+    }
+
+    func updateProblemStatus(simulationID _: Int, problemID _: Int, request _: ProblemStatusUpdateRequest, idempotencyKey _: String) async throws -> ProblemStatusOut {
+        throw MockServiceError.unused
+    }
+
+    func createNoteEvent(simulationID _: Int, request _: SimulationNoteCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut {
+        throw MockServiceError.unused
+    }
+
+    func listAnnotations(simulationID _: Int) async throws -> [AnnotationOut] {
+        throw MockServiceError.unused
+    }
+
+    func updateScenarioBrief(simulationID _: Int, request _: ScenarioBriefUpdateRequest, idempotencyKey _: String) async throws -> ScenarioBriefOut {
+        throw MockServiceError.unused
+    }
+
+    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {}
 }
 
 private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
@@ -62,20 +179,20 @@ private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Senda
 
     init() {
         var eventCont: AsyncStream<EventEnvelope>.Continuation!
-        self.events = AsyncStream { continuation in
+        events = AsyncStream { continuation in
             eventCont = continuation
         }
-        self.eventContinuation = eventCont
+        eventContinuation = eventCont
 
         var stateCont: AsyncStream<RealtimeTransportState>.Continuation!
-        self.transportStates = AsyncStream { continuation in
+        transportStates = AsyncStream { continuation in
             stateCont = continuation
             continuation.yield(.disconnected)
         }
-        self.stateContinuation = stateCont
+        stateContinuation = stateCont
     }
 
-    func connect(simulationID: Int, cursor: String?) async {
+    func connect(simulationID _: Int, cursor _: String?) async {
         stateContinuation.yield(.connecting)
         stateContinuation.yield(.connectedSSE)
     }
@@ -97,7 +214,7 @@ private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Senda
 
 @MainActor
 final class RunSessionStoreTests: XCTestCase {
-    func testUnifiedTimelineDedupesDuplicateRuntimeEvents() async throws {
+    func testUnifiedTimelineDedupesDuplicateRuntimeEvents() async {
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: MockTrainerLabService(),
@@ -128,7 +245,7 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .loc)
     }
 
-    func testVitalEventsDoNotCreateClinicalTimelineEntries() async throws {
+    func testVitalEventsDoNotCreateClinicalTimelineEntries() async {
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: MockTrainerLabService(),
@@ -147,7 +264,7 @@ final class RunSessionStoreTests: XCTestCase {
             payload: [
                 "vital_type": .string("heart_rate"),
                 "min_value": .number(80),
-                "max_value": .number(140),
+                "max_value": .number(140)
             ]
         ))
 

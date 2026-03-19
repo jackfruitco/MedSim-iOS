@@ -2,12 +2,12 @@ import Foundation
 import Networking
 import SharedModels
 
-private enum AwaitingReplyReason: Sendable, Equatable {
+private enum AwaitingReplyReason: Equatable {
     case initialGeneration
     case conversationReply(messageID: Int)
 }
 
-private struct AwaitingReplyState: Sendable, Equatable {
+private struct AwaitingReplyState: Equatable {
     let participantName: String
     let reason: AwaitingReplyReason
     var isStale: Bool
@@ -117,7 +117,8 @@ public final class ChatRunStore: ObservableObject {
     public var activeAwaitingReplyWarningText: String? {
         guard let activeConversationID,
               let awaiting = awaitingReplyByConversation[activeConversationID],
-              awaiting.isStale else {
+              awaiting.isStale
+        else {
             return nil
         }
         return "Still waiting for \(awaiting.participantName). Refresh status or reconnect if nothing changes."
@@ -177,14 +178,14 @@ public final class ChatRunStore: ObservableObject {
         do {
             let list = try await service.listConversations(simulationID: simulation.id)
             conversations = list.items
-        if activeConversationID == nil {
-            activeConversationID = conversations.first?.id
-        }
+            if activeConversationID == nil {
+                activeConversationID = conversations.first?.id
+            }
 
-        if let activeConversationID {
-            await loadInitialMessages(conversationID: activeConversationID)
-            markConversationRead(conversationID: activeConversationID)
-        }
+            if let activeConversationID {
+                await loadInitialMessages(conversationID: activeConversationID)
+                markConversationRead(conversationID: activeConversationID)
+            }
 
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
@@ -801,7 +802,8 @@ public final class ChatRunStore: ObservableObject {
               let patientConversation,
               isConversationLocked(patientConversation) == false,
               (messagesByConversation[patientConversation.id] ?? []).isEmpty,
-              conversationHasAIMessage(conversationID: patientConversation.id) == false else {
+              conversationHasAIMessage(conversationID: patientConversation.id) == false
+        else {
             return
         }
         if forceRestart == false,
@@ -882,7 +884,8 @@ public final class ChatRunStore: ObservableObject {
             let raw = value.rawValue
             guard JSONSerialization.isValidJSONObject(raw),
                   let data = try? JSONSerialization.data(withJSONObject: raw),
-                  let media = try? JSONDecoder().decode([ChatMessageMedia].self, from: data) else {
+                  let media = try? JSONDecoder().decode([ChatMessageMedia].self, from: data)
+            else {
                 continue
             }
             return media

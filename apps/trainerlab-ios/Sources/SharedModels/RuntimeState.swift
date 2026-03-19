@@ -111,7 +111,9 @@ public struct InjuryAnnotation: Identifiable, Equatable, Sendable {
         return summary
     }
 
-    public var isTreated: Bool { status == .inactive }
+    public var isTreated: Bool {
+        status == .inactive
+    }
 }
 
 // MARK: - Intervention Annotation
@@ -247,7 +249,7 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
         return title
     }
 
-    // Compatibility shim while the UI migrates away from legacy condition-control language.
+    /// Compatibility shim while the UI migrates away from legacy condition-control language.
     public var controlState: String {
         switch status {
         case .active:
@@ -261,8 +263,13 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
         }
     }
 
-    public var isUncontrolled: Bool { status == .active }
-    public var isHistorical: Bool { status == .resolved }
+    public var isUncontrolled: Bool {
+        status == .active
+    }
+
+    public var isHistorical: Bool {
+        status == .resolved
+    }
 }
 
 public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
@@ -284,7 +291,9 @@ public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
     public let warnings: [String]
     public let contraindications: [String]
 
-    public var id: Int { recommendationID }
+    public var id: Int {
+        recommendationID
+    }
 
     public init(
         recommendationID: Int,
@@ -450,7 +459,9 @@ public struct VitalStatusSnapshot: Identifiable, Equatable, Sendable {
     public var changeToken: Int
     public var lastUpdatedAt: Date
 
-    public var id: String { key }
+    public var id: String {
+        key
+    }
 
     public init(
         key: String,

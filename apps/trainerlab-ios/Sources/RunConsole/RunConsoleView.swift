@@ -16,10 +16,10 @@ public struct RunConsoleView: View {
     @State private var showNoteSheet = false
     @State private var showAnnotationSheet = false
 
-    // Injury detail
+    /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
 
-    // Timeline filter
+    /// Timeline filter
     @State private var selectedTimelineFilter: TimelineFilter = .all
 
     // Collapsible panels
@@ -30,14 +30,14 @@ public struct RunConsoleView: View {
     @Namespace private var segmentNS
 
     // Intervention sheet state
-    @State private var selectedInterventionType: String? = nil
-    @State private var selectedLocationLabel: String? = nil
-    @State private var selectedLaterality: String? = nil
+    @State private var selectedInterventionType: String?
+    @State private var selectedLocationLabel: String?
+    @State private var selectedLaterality: String?
     @State private var selectedInterventionStatus: InterventionStatus = .applied
     @State private var interventionNotes = ""
-    @State private var interventionTargetProblemID: Int? = nil
+    @State private var interventionTargetProblemID: Int?
 
-    // Steer sheet state
+    /// Steer sheet state
     @State private var steerDraft = ""
 
     // Event sheet state
@@ -55,13 +55,13 @@ public struct RunConsoleView: View {
     @State private var vitalMax = "100"
     @State private var eventMode = "injury"
 
-    // Note composer
+    /// Note composer
     @State private var trainerNoteDraft = ""
 
-    // AVPU
+    /// AVPU
     @State private var selectedAVPU: AVPUState = .alert
 
-    // Terminal card dismissed
+    /// Terminal card dismissed
     @State private var terminalCardDismissed = false
 
     public init(
@@ -821,7 +821,7 @@ public struct RunConsoleView: View {
         }
     }
 
-    @ViewBuilder private var annotationsContent: some View {
+    private var annotationsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Debrief annotations stay separate from live simulation notes.")
@@ -947,7 +947,6 @@ public struct RunConsoleView: View {
         .trainerCardStyle()
     }
 
-    @ViewBuilder
     private var timelineEntries: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(filteredTimelineEntries.prefix(160)) { item in
@@ -1038,7 +1037,7 @@ public struct RunConsoleView: View {
 
     // MARK: - Operational log
 
-    private func bottomLogPane(layoutMode: RunConsoleLayoutMode) -> some View {
+    private func bottomLogPane(layoutMode _: RunConsoleLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button {
@@ -1082,7 +1081,6 @@ public struct RunConsoleView: View {
         .trainerCardStyle(background: TrainerLabTheme.tacticalSurfaceElevated)
     }
 
-    @ViewBuilder
     private var operationalLogEntries: some View {
         LazyVStack(alignment: .leading, spacing: 6) {
             if operationalItems.isEmpty {
@@ -1235,7 +1233,7 @@ public struct RunConsoleView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 TextField("e.g. Patient is deteriorating rapidly...", text: $steerDraft, axis: .vertical)
-                    .lineLimit(3...6)
+                    .lineLimit(3 ... 6)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.send)
 
@@ -1427,11 +1425,10 @@ public struct RunConsoleView: View {
             }
 
             TextField("Description (optional)", text: $injuryDescription, axis: .vertical)
-                .lineLimit(1...3)
+                .lineLimit(1 ... 3)
         }
     }
 
-    @ViewBuilder
     private var eventIllnessSection: some View {
         Section("Illness Details") {
             VStack(alignment: .leading, spacing: 6) {
@@ -1458,7 +1455,7 @@ public struct RunConsoleView: View {
             .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
 
             TextField("Description (optional)", text: $illnessDescription, axis: .vertical)
-                .lineLimit(1...3)
+                .lineLimit(1 ... 3)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("MARCH Category")
@@ -1493,7 +1490,6 @@ public struct RunConsoleView: View {
         }
     }
 
-    @ViewBuilder
     private var eventVitalsSection: some View {
         Section("Vital Override") {
             VStack(alignment: .leading, spacing: 4) {
@@ -1571,7 +1567,7 @@ public struct RunConsoleView: View {
             DictionaryItem(code: "C", label: "Circulation"),
             DictionaryItem(code: "H1", label: "Hypothermia"),
             DictionaryItem(code: "H2", label: "Head / Brain"),
-            DictionaryItem(code: "PC", label: "Penetrating / Chest"),
+            DictionaryItem(code: "PC", label: "Penetrating / Chest")
         ]
     }
 
@@ -1584,7 +1580,7 @@ public struct RunConsoleView: View {
             DictionaryItem(code: "hypothermia", label: "Hypothermia"),
             DictionaryItem(code: "anaphylaxis", label: "Anaphylaxis"),
             DictionaryItem(code: "airway_obstruction", label: "Airway Obstruction"),
-            DictionaryItem(code: "other", label: "Other…"),
+            DictionaryItem(code: "other", label: "Other…")
         ]
     }
 
@@ -1689,9 +1685,13 @@ public struct RunConsoleView: View {
         }
     }
 
-    private var canMutate: Bool { store.state.commandChannelAvailable }
+    private var canMutate: Bool {
+        store.state.commandChannelAvailable
+    }
 
-    private var sessionStatus: TrainerSessionStatus? { store.state.session?.status }
+    private var sessionStatus: TrainerSessionStatus? {
+        store.state.session?.status
+    }
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
         RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
@@ -1896,10 +1896,10 @@ private struct InterventionPickerSheet: View {
     let canMutate: Bool
     let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String) -> Void
 
-    @State private var selectedType: String? = nil
-    @State private var selectedTargetProblemID: Int? = nil
-    @State private var selectedLocationLabel: String? = nil
-    @State private var selectedLaterality: String? = nil
+    @State private var selectedType: String?
+    @State private var selectedTargetProblemID: Int?
+    @State private var selectedLocationLabel: String?
+    @State private var selectedLaterality: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
     @State private var notes = ""
@@ -2063,7 +2063,7 @@ private struct InterventionPickerSheet: View {
 
                     Section("Notes (optional)") {
                         TextField("Additional notes...", text: $notes, axis: .vertical)
-                            .lineLimit(1...3)
+                            .lineLimit(1 ... 3)
                     }
                 }
             }
@@ -2169,8 +2169,8 @@ private struct InjuryQuickActionSheet: View {
     let canMutate: Bool
     let onApply: (String, String, InterventionStatus, InterventionEffectiveness) -> Void
 
-    @State private var selectedSuggestionType: String? = nil
-    @State private var selectedSiteCode: String? = nil
+    @State private var selectedSuggestionType: String?
+    @State private var selectedSiteCode: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
     @Environment(\.dismiss) private var dismiss
@@ -2214,7 +2214,7 @@ private struct InjuryQuickActionSheet: View {
         }
     }
 
-    @ViewBuilder private var injurySummarySection: some View {
+    private var injurySummarySection: some View {
         Section("Cause") {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(injury.kind.uppercased())\(injury.category.map { " (\($0.uppercased()))" } ?? "")")
@@ -2488,19 +2488,19 @@ private struct VitalValueCell: View {
 
 private extension View {
     @ViewBuilder func inlineNavBarTitle() -> some View {
-#if os(iOS)
-        self.navigationBarTitleDisplayMode(.inline)
-#else
-        self
-#endif
+        #if os(iOS)
+            navigationBarTitleDisplayMode(.inline)
+        #else
+            self
+        #endif
     }
 
     @ViewBuilder func numericKeyboard() -> some View {
-#if os(iOS)
-        self.keyboardType(.numberPad)
-#else
-        self
-#endif
+        #if os(iOS)
+            keyboardType(.numberPad)
+        #else
+            self
+        #endif
     }
 }
 
@@ -2521,7 +2521,7 @@ private struct NoteComposerSheet: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Add a simulation note event for the live run…", text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
+                    .lineLimit(1 ... 4)
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white)
                     .tint(.white)
@@ -2580,7 +2580,7 @@ private struct DebriefAnnotationSheet: View {
             Form {
                 Section("Observation") {
                     TextField("What should be captured for debrief?", text: $observationText, axis: .vertical)
-                        .lineLimit(3...6)
+                        .lineLimit(3 ... 6)
                 }
 
                 Section("Learning Objective") {
@@ -2655,7 +2655,7 @@ private struct ScenarioBriefEditSheet: View {
             Form {
                 Section("Read-Aloud Brief") {
                     TextField("Brief", text: $readAloudBrief, axis: .vertical)
-                        .lineLimit(3...6)
+                        .lineLimit(3 ... 6)
                 }
                 Section("Environment") {
                     TextField("Environment", text: $environment)
@@ -2668,12 +2668,12 @@ private struct ScenarioBriefEditSheet: View {
                 }
                 Section("Evacuation") {
                     TextField("Options (comma or newline separated)", text: $evacuationOptions, axis: .vertical)
-                        .lineLimit(2...4)
+                        .lineLimit(2 ... 4)
                     TextField("ETA", text: $evacuationTime)
                 }
                 Section("Special Considerations") {
                     TextField("Special considerations (comma or newline separated)", text: $specialConsiderations, axis: .vertical)
-                        .lineLimit(2...4)
+                        .lineLimit(2 ... 4)
                 }
             }
             .navigationTitle("Edit Scenario Brief")

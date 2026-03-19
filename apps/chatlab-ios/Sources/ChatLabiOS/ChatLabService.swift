@@ -144,7 +144,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     ) async throws -> PaginatedResponse<ChatMessage> {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "order", value: order),
-            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "limit", value: String(limit))
         ]
         if let conversationID {
             queryItems.append(URLQueryItem(name: "conversation_id", value: String(conversationID)))

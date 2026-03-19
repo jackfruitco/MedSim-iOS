@@ -27,7 +27,7 @@ private final class MockTokenProvider: AuthTokenProvider, @unchecked Sendable {
 private final class URLProtocolMock: URLProtocol {
     nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
-    override class func canInit(with request: URLRequest) -> Bool {
+    override class func canInit(with _: URLRequest) -> Bool {
         true
     }
 

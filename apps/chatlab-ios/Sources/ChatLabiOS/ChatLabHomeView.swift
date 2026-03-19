@@ -1,9 +1,9 @@
 import SharedModels
 import SwiftUI
 #if canImport(UIKit)
-import UIKit
+    import UIKit
 #elseif canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 
 public struct ChatLabHomeView: View {
@@ -339,11 +339,11 @@ private struct ChatSimulationCard: View {
 
 private func chatHomeSystemBackgroundColor() -> Color {
     #if canImport(UIKit)
-    Color(uiColor: .systemBackground)
+        Color(uiColor: .systemBackground)
     #elseif canImport(AppKit)
-    Color(nsColor: .windowBackgroundColor)
+        Color(nsColor: .windowBackgroundColor)
     #else
-    Color.white
+        Color.white
     #endif
 }
 

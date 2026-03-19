@@ -398,7 +398,7 @@ public struct PresetsLibraryView: View {
         .trainerCardStyle(background: TrainerLabTheme.setupSurface)
     }
 
-    private func shareManager(preset: ScenarioInstruction, layoutMode: PresetsLayoutMode) -> some View {
+    private func shareManager(preset: ScenarioInstruction, layoutMode _: PresetsLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Share Preset")
                 .font(.headline)
@@ -476,8 +476,8 @@ public struct PresetsLibraryView: View {
         guard !query.isEmpty else { return viewModel.presets }
         return viewModel.presets.filter { preset in
             preset.title.lowercased().contains(query) ||
-            preset.instructionText.lowercased().contains(query) ||
-            preset.severity.lowercased().contains(query)
+                preset.instructionText.lowercased().contains(query) ||
+                preset.severity.lowercased().contains(query)
         }
     }
 

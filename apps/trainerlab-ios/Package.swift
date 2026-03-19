@@ -6,7 +6,7 @@ let package = Package(
     defaultLocalization: "en",
     platforms: [
         .iOS(.v26),
-        .macOS(.v14),
+        .macOS(.v14)
     ],
     products: [
         .library(name: "Auth", targets: ["Auth"]),
@@ -18,10 +18,10 @@ let package = Package(
         .library(name: "Realtime", targets: ["Realtime"]),
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "DesignSystem", targets: ["DesignSystem"]),
-        .library(name: "SharedModels", targets: ["SharedModels"]),
+        .library(name: "SharedModels", targets: ["SharedModels"])
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
     ],
     targets: [
         .target(
@@ -35,14 +35,14 @@ let package = Package(
             name: "Persistence",
             dependencies: [
                 "SharedModels",
-                .product(name: "GRDB", package: "grdb.swift"),
+                .product(name: "GRDB", package: "grdb.swift")
             ]
         ),
         .target(
             name: "Networking",
             dependencies: [
                 "SharedModels",
-                "Persistence",
+                "Persistence"
             ]
         ),
         .target(
@@ -50,7 +50,7 @@ let package = Package(
             dependencies: [
                 "SharedModels",
                 "Networking",
-                "Persistence",
+                "Persistence"
             ]
         ),
         .target(
@@ -58,7 +58,7 @@ let package = Package(
             dependencies: [
                 "Networking",
                 "Persistence",
-                "DesignSystem",
+                "DesignSystem"
             ]
         ),
         .target(
@@ -68,7 +68,7 @@ let package = Package(
                 "Networking",
                 "Realtime",
                 "Persistence",
-                "DesignSystem",
+                "DesignSystem"
             ]
         ),
         .target(
@@ -76,7 +76,7 @@ let package = Package(
             dependencies: [
                 "SharedModels",
                 "Networking",
-                "DesignSystem",
+                "DesignSystem"
             ]
         ),
         .target(
@@ -84,7 +84,7 @@ let package = Package(
             dependencies: [
                 "SharedModels",
                 "Sessions",
-                "DesignSystem",
+                "DesignSystem"
             ]
         ),
         .target(
@@ -92,7 +92,7 @@ let package = Package(
             dependencies: [
                 "SharedModels",
                 "Networking",
-                "DesignSystem",
+                "DesignSystem"
             ]
         ),
         .testTarget(
@@ -122,6 +122,6 @@ let package = Package(
         .testTarget(
             name: "AuthTests",
             dependencies: ["Auth", "Networking", "SharedModels", "Persistence"]
-        ),
+        )
     ]
 )

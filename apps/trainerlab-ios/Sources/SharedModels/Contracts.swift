@@ -108,7 +108,9 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
     /// Non-nil when the terminal state can be retried.
     public let retryable: Bool?
 
-    public var id: Int { simulationID }
+    public var id: Int {
+        simulationID
+    }
 
     public init(
         simulationID: Int,
@@ -170,7 +172,9 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let correlationID: String?
     public let payload: [String: JSONValue]
 
-    public var id: String { eventID }
+    public var id: String {
+        eventID
+    }
 
     public init(
         eventID: String,
@@ -552,7 +556,9 @@ public struct DictionaryItem: Codable, Identifiable, Sendable {
     public let code: String
     public let label: String
 
-    public var id: String { code }
+    public var id: String {
+        code
+    }
 
     public init(code: String, label: String) {
         self.code = code
@@ -570,7 +576,9 @@ public struct InterventionSite: Codable, Identifiable, Sendable {
     public let code: String
     public let label: String
 
-    public var id: String { code }
+    public var id: String {
+        code
+    }
 
     public init(code: String, label: String) {
         self.code = code
@@ -583,7 +591,9 @@ public struct InterventionGroup: Codable, Identifiable, Sendable {
     public let label: String
     public let sites: [InterventionSite]
 
-    public var id: String { interventionType }
+    public var id: String {
+        interventionType
+    }
 
     public init(interventionType: String, label: String, sites: [InterventionSite]) {
         self.interventionType = interventionType
@@ -1404,7 +1414,7 @@ public struct InterventionEventRequest: Codable, Sendable {
         self.notes = notes
         self.details = details ?? [
             "kind": .string(interventionType),
-            "version": .number(1),
+            "version": .number(1)
         ]
         self.initiatedByType = initiatedByType
         self.initiatedByID = initiatedByID

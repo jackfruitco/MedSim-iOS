@@ -1,5 +1,5 @@
-import Foundation
 @testable import ChatLabiOS
+import Foundation
 import Networking
 import SharedModels
 import XCTest
@@ -11,7 +11,7 @@ private enum ChatRecordingError: Error {
 private final class ChatRecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
 
-    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type) async throws -> T {
+    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
         throw ChatRecordingError.intercepted
     }

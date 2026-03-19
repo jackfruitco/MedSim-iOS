@@ -4,7 +4,7 @@ import SharedModels
 import XCTest
 
 private final class FailingSSETransport: SSETransportProtocol {
-    func stream(simulationID: Int, cursor: String?) -> AsyncThrowingStream<SSEStreamItem, Error> {
+    func stream(simulationID _: Int, cursor _: String?) -> AsyncThrowingStream<SSEStreamItem, Error> {
         AsyncThrowingStream { continuation in
             continuation.finish(throwing: URLError(.networkConnectionLost))
         }
@@ -12,7 +12,7 @@ private final class FailingSSETransport: SSETransportProtocol {
 }
 
 private final class PollingWithEventTransport: PollingTransportProtocol {
-    func fetch(simulationID: Int, cursor: String?) async throws -> PaginatedResponse<EventEnvelope> {
+    func fetch(simulationID _: Int, cursor _: String?) async throws -> PaginatedResponse<EventEnvelope> {
         let event = EventEnvelope(
             eventID: "event-1",
             eventType: "trainerlab.adjustment.accepted",
@@ -25,7 +25,7 @@ private final class PollingWithEventTransport: PollingTransportProtocol {
 }
 
 final class RealtimeClientTests: XCTestCase {
-    func testFallsBackToPollingAfterSSEFailure() async throws {
+    func testFallsBackToPollingAfterSSEFailure() async {
         let realtime = RealtimeClient(
             sseTransport: FailingSSETransport(),
             pollingTransport: PollingWithEventTransport()

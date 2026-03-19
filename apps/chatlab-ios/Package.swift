@@ -6,13 +6,13 @@ let package = Package(
     defaultLocalization: "en",
     platforms: [
         .iOS(.v26),
-        .macOS(.v14),
+        .macOS(.v14)
     ],
     products: [
-        .library(name: "ChatLabiOS", targets: ["ChatLabiOS"]),
+        .library(name: "ChatLabiOS", targets: ["ChatLabiOS"])
     ],
     dependencies: [
-        .package(path: "../trainerlab-ios"),
+        .package(path: "../trainerlab-ios")
     ],
     targets: [
         .target(
@@ -21,7 +21,7 @@ let package = Package(
                 .product(name: "Networking", package: "trainerlab-ios"),
                 .product(name: "Persistence", package: "trainerlab-ios"),
                 .product(name: "DesignSystem", package: "trainerlab-ios"),
-                .product(name: "SharedModels", package: "trainerlab-ios"),
+                .product(name: "SharedModels", package: "trainerlab-ios")
             ]
         ),
         .testTarget(
@@ -30,8 +30,8 @@ let package = Package(
                 "ChatLabiOS",
                 .product(name: "Networking", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
-                .product(name: "Persistence", package: "trainerlab-ios"),
+                .product(name: "Persistence", package: "trainerlab-ios")
             ]
-        ),
+        )
     ]
 )

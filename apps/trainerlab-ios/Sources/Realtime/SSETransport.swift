@@ -72,12 +72,12 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
                 do {
                     let request = try await makeRequest(simulationID: simulationID, cursor: cursor)
                     let (bytes, response) = try await session.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                         throw URLError(.badServerResponse)
                     }
 
                     var dataLines: [String] = []
-                    var currentEventType: String? = nil
+                    var currentEventType: String?
 
                     for try await line in bytes.lines {
                         if Task.isCancelled {
@@ -185,7 +185,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
         return try decoder.decode(EventEnvelope.self, from: data)
     }
 
-    nonisolated private static func parseISO8601(_ value: String) -> Date? {
+    private nonisolated static func parseISO8601(_ value: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = fractional.date(from: value) {

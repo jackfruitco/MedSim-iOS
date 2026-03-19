@@ -25,24 +25,24 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
 
     private var seenEventIDs = Set<String>()
     private var seenEventOrder: [String] = []
-    private let seenCapacity = 2_000
+    private let seenCapacity = 2000
 
     public init(sseTransport: SSETransportProtocol, pollingTransport: PollingTransportProtocol) {
         self.sseTransport = sseTransport
         self.pollingTransport = pollingTransport
 
         var eventCont: AsyncStream<EventEnvelope>.Continuation!
-        self.events = AsyncStream<EventEnvelope> { continuation in
+        events = AsyncStream<EventEnvelope> { continuation in
             eventCont = continuation
         }
-        self.eventContinuation = eventCont
+        eventContinuation = eventCont
 
         var stateCont: AsyncStream<RealtimeTransportState>.Continuation!
-        self.transportStates = AsyncStream<RealtimeTransportState> { continuation in
+        transportStates = AsyncStream<RealtimeTransportState> { continuation in
             stateCont = continuation
             continuation.yield(.disconnected)
         }
-        self.stateContinuation = stateCont
+        stateContinuation = stateCont
     }
 
     public func connect(simulationID: Int, cursor: String?) async {
@@ -174,6 +174,6 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     }
 
     private func jitterSeconds() -> TimeInterval {
-        Double.random(in: 0.0...0.25)
+        Double.random(in: 0.0 ... 0.25)
     }
 }

@@ -298,7 +298,7 @@ public final class RunSessionStore: ObservableObject {
                     "intervention_type": interventionType,
                     "site_code": siteCode,
                     "effectiveness": effectiveness.rawValue,
-                    "intervention_status": status.rawValue,
+                    "intervention_status": status.rawValue
                 ]
             )
 
@@ -337,7 +337,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func addIllnessEvent(name: String, description: String, marchCategory: String, severity: String) {
+    public func addIllnessEvent(name: String, description: String, marchCategory _: String, severity _: String) {
         guard canMutateCommands else { return }
 
         Task {
@@ -747,7 +747,7 @@ public final class RunSessionStore: ObservableObject {
                 "intervention_type": interventionType,
                 "site_code": siteCode,
                 "effectiveness": effectiveness,
-                "status": status,
+                "status": status
             ]
             if let supersedesID { meta["superseded_by"] = supersedesID }
 
@@ -768,8 +768,7 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."),
-            jsonString(event.payload["target"]) == "avpu"
-        {
+           jsonString(event.payload["target"]) == "avpu" {
             let stateText = jsonString(event.payload["avpu_state"]) ?? "unknown"
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
@@ -977,12 +976,12 @@ public final class RunSessionStore: ObservableObject {
     private func constrainedRandom(low: Int, high: Int, current: Int?) -> Int {
         guard low < high else { return low }
         guard let current else {
-            return Int.random(in: low...high)
+            return Int.random(in: low ... high)
         }
         let maxStep = max(2, Int(Double(high - low) * 0.08))
         let stepLow = max(low, current - maxStep)
         let stepHigh = min(high, current + maxStep)
-        return Int.random(in: stepLow...stepHigh)
+        return Int.random(in: stepLow ... stepHigh)
     }
 
     private func trendDirection(
@@ -1026,8 +1025,7 @@ public final class RunSessionStore: ObservableObject {
                 state.stopwatchIsRunning = true
                 state.stopwatchRunningSince = Date()
                 if state.stopwatchElapsedSeconds == 0,
-                    let startedAt = state.session?.runStartedAt
-                {
+                   let startedAt = state.session?.runStartedAt {
                     state.stopwatchElapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
                 }
             }
@@ -1045,9 +1043,8 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if status == .completed,
-            let startedAt = state.session?.runStartedAt,
-            let endedAt = state.session?.runCompletedAt
-        {
+           let startedAt = state.session?.runStartedAt,
+           let endedAt = state.session?.runCompletedAt {
             state.stopwatchElapsedSeconds = max(0, Int(endedAt.timeIntervalSince(startedAt)))
         }
     }
@@ -1561,7 +1558,7 @@ public final class RunSessionStore: ObservableObject {
             .flatMap { problemsByID[$0]?.primaryLabel }
 
         return RecommendedInterventionItem(
-            recommendationID: recommendation.recommendationID ?? Int.random(in: 1_000_000...9_999_999),
+            recommendationID: recommendation.recommendationID ?? Int.random(in: 1_000_000 ... 9_999_999),
             title: fallbackTitle,
             code: recommendation.code,
             kind: recommendation.kind,
@@ -1644,8 +1641,8 @@ public final class RunSessionStore: ObservableObject {
         let eventKind = jsonString(event.payload["event_kind"])?.lowercased()
         guard
             eventType.hasPrefix("pulse.")
-                || domainEventType == "pulseassessment"
-                || eventKind == "pulse_assessment"
+            || domainEventType == "pulseassessment"
+            || eventKind == "pulse_assessment"
         else {
             return nil
         }
@@ -1770,7 +1767,7 @@ public final class RunSessionStore: ObservableObject {
             payload["title"],
             payload["label"],
             payload["name"],
-            payload["code"],
+            payload["code"]
         ]
         for candidate in candidates {
             if let value = jsonString(candidate), !value.isEmpty {
@@ -1924,7 +1921,7 @@ private enum InjuryZoneMap {
         "JLI": (.front, 0.44, 0.51),
         "JRI": (.front, 0.56, 0.51),
         "JLN": (.front, 0.40, 0.18),
-        "JRN": (.front, 0.60, 0.18),
+        "JRN": (.front, 0.60, 0.18)
     ]
 }
 
@@ -1964,7 +1961,7 @@ private enum InterventionSiteMap {
         "LEFT_INGUINAL": (.front, 0.44, 0.51),
         "RIGHT_INGUINAL": (.front, 0.56, 0.51),
         "LEFT_NECK": (.front, 0.43, 0.16),
-        "RIGHT_NECK": (.front, 0.57, 0.16),
+        "RIGHT_NECK": (.front, 0.57, 0.16)
     ]
 }
 
@@ -1977,6 +1974,6 @@ private enum PulseZoneMap {
         "femoral_left": (.front, 0.44, 0.50),
         "femoral_right": (.front, 0.56, 0.50),
         "pedal_left": (.front, 0.40, 0.94),
-        "pedal_right": (.front, 0.60, 0.94),
+        "pedal_right": (.front, 0.60, 0.94)
     ]
 }

@@ -141,4 +141,3 @@ public final class ChatLabHomeStore: ObservableObject {
         autoRefreshTask = nil
     }
 }
-

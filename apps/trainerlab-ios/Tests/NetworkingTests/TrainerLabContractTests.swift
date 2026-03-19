@@ -1,8 +1,8 @@
 import Foundation
 import Networking
 import Persistence
-import SQLite3
 import SharedModels
+import SQLite3
 import XCTest
 
 private enum RecordingError: Error {
@@ -12,7 +12,7 @@ private enum RecordingError: Error {
 private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
 
-    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type) async throws -> T {
+    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
         throw RecordingError.intercepted
     }
@@ -31,8 +31,14 @@ private final class RecordingTokenProvider: AuthTokenProvider, @unchecked Sendab
     var tokens: AuthTokens?
     var cleared = false
 
-    func loadTokens() -> AuthTokens? { tokens }
-    func saveTokens(_ tokens: AuthTokens) { self.tokens = tokens }
+    func loadTokens() -> AuthTokens? {
+        tokens
+    }
+
+    func saveTokens(_ tokens: AuthTokens) {
+        self.tokens = tokens
+    }
+
     func clearTokens() {
         cleared = true
         tokens = nil
@@ -394,7 +400,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "communication",
                 "triage",
                 "intervention",
-                "other",
+                "other"
             ]
         )
         XCTAssertEqual(
@@ -404,7 +410,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "incorrect",
                 "missed",
                 "improvised",
-                "pending",
+                "pending"
             ]
         )
     }

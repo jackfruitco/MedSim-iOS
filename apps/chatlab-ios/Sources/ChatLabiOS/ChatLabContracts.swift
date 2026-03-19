@@ -426,7 +426,9 @@ public struct ChatEventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let correlationID: String?
     public let payload: [String: JSONValue]
 
-    public var id: String { eventID }
+    public var id: String {
+        eventID
+    }
 
     public init(
         eventID: String,

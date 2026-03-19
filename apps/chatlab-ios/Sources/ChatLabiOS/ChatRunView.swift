@@ -1,9 +1,9 @@
 import SharedModels
 import SwiftUI
 #if os(iOS)
-import UIKit
+    import UIKit
 #elseif canImport(AppKit)
-import AppKit
+    import AppKit
 #endif
 
 public struct ChatRunView: View {
@@ -422,7 +422,7 @@ public struct ChatRunView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     store.activeConversationLocked ||
-                    store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
                 .accessibilityLabel("Send message")
             }
@@ -747,15 +747,15 @@ private struct ChatKeyboardStateModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        content
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                isKeyboardPresented = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                isKeyboardPresented = false
-            }
+            content
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                    isKeyboardPresented = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    isKeyboardPresented = false
+                }
         #else
-        content
+            content
         #endif
     }
 }
@@ -763,9 +763,9 @@ private struct ChatKeyboardStateModifier: ViewModifier {
 private struct ChatInlineNavigationTitleModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
-        content.navigationBarTitleDisplayMode(.inline)
+            content.navigationBarTitleDisplayMode(.inline)
         #else
-        content
+            content
         #endif
     }
 }
@@ -775,9 +775,9 @@ private struct ChatKeyboardNavigationBarModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        content.toolbar(isKeyboardPresented ? .hidden : .visible, for: .navigationBar)
+            content.toolbar(isKeyboardPresented ? .hidden : .visible, for: .navigationBar)
         #else
-        content
+            content
         #endif
     }
 }
@@ -854,7 +854,6 @@ private struct ChatBubble: View {
         }
     }
 
-    @ViewBuilder
     private var mediaStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(item.mediaList.prefix(3)) { media in
@@ -898,11 +897,11 @@ private struct ChatBubble: View {
 
 private func chatSystemBackgroundColor() -> Color {
     #if canImport(UIKit)
-    Color(uiColor: .systemBackground)
+        Color(uiColor: .systemBackground)
     #elseif canImport(AppKit)
-    Color(nsColor: .windowBackgroundColor)
+        Color(nsColor: .windowBackgroundColor)
     #else
-    Color.white
+        Color.white
     #endif
 }
 

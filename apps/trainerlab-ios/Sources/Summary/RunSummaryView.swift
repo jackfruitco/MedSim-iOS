@@ -83,7 +83,7 @@ public struct RunSummaryView: View {
             SummaryMetric(title: "Status", value: summary.status.capitalized, tint: statusColor(summary.status)),
             SummaryMetric(title: "Started", value: formatRunTime(summary.runStartedAt, start: summary.runStartedAt, end: summary.runCompletedAt), tint: .secondary),
             SummaryMetric(title: "Completed", value: formatRunTime(summary.runCompletedAt, start: summary.runStartedAt, end: summary.runCompletedAt), tint: .secondary),
-            SummaryMetric(title: "Events", value: "\(summary.eventTypeCounts.values.reduce(0, +))", tint: TrainerLabTheme.warning),
+            SummaryMetric(title: "Events", value: "\(summary.eventTypeCounts.values.reduce(0, +))", tint: TrainerLabTheme.warning)
         ]
 
         return LazyVGrid(
@@ -110,7 +110,7 @@ public struct RunSummaryView: View {
     private func collapsibleSection<Content: View>(
         _ section: RunSummarySection,
         title: String,
-        layoutMode: RunSummaryLayoutMode,
+        layoutMode _: RunSummaryLayoutMode,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -370,7 +370,7 @@ private extension RunSummaryView {
         return df.string(from: date)
     }
 
-    func humanizeEventType(_ eventType: String, payload: [String: JSONValue]) -> String {
+    func humanizeEventType(_ eventType: String, payload _: [String: JSONValue]) -> String {
         let canonical = eventType.hasPrefix("trainerlab.")
             ? String(eventType.dropFirst("trainerlab.".count))
             : eventType

@@ -3,8 +3,8 @@ import UIKit
 
 final class OrientationAppDelegate: NSObject, UIApplicationDelegate {
     func application(
-        _ application: UIApplication,
-        supportedInterfaceOrientationsFor window: UIWindow?
+        _: UIApplication,
+        supportedInterfaceOrientationsFor _: UIWindow?
     ) -> UIInterfaceOrientationMask {
         OrientationCoordinator.shared.supportedOrientations
     }
@@ -44,7 +44,8 @@ final class OrientationCoordinator {
     private func updateSystemOrientation() {
         guard let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) else {
+            .first(where: { $0.activationState == .foregroundActive })
+        else {
             return
         }
 

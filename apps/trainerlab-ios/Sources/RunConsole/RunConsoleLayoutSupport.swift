@@ -132,9 +132,9 @@ struct RunConsoleCompactMetrics {
 
 enum InterventionMARCHGroup: String, CaseIterable {
     case massiveHemorrhage = "M – Massive Hemorrhage"
-    case airway            = "A – Airway"
-    case respiration       = "R – Respiration"
-    case access            = "C – Circulation / Access"
+    case airway = "A – Airway"
+    case respiration = "R – Respiration"
+    case access = "C – Circulation / Access"
 
     var interventionTypes: [String] {
         switch self {
@@ -419,7 +419,6 @@ struct PatientDiagramPanel: View {
             .onTapGesture { selected = .pulse(pulse) }
     }
 
-    @ViewBuilder
     private func problemBadge(_ problem: ProblemAnnotation) -> some View {
         ZStack {
             Circle()
@@ -730,7 +729,6 @@ struct PatientDiagramPanel: View {
 
     // MARK: - Selected Detail Card
 
-    @ViewBuilder
     private func selectedDetailCard(_ sel: PatientDiagramSelection) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -746,7 +744,7 @@ struct PatientDiagramPanel: View {
             }
             Divider()
             switch sel {
-            case .injury(let injury):
+            case let .injury(injury):
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(injury.kind.uppercased())\(injury.category.map { " (\($0.uppercased()))" } ?? "")")
                         .font(.caption.bold())
@@ -759,7 +757,7 @@ struct PatientDiagramPanel: View {
                     Text("Cause Type: \(injury.kind.replacingOccurrences(of: "_", with: " ").capitalized)")
                         .font(.caption2)
                 }
-            case .intervention(let intervention):
+            case let .intervention(intervention):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(intervention.title)
                         .font(.caption.bold())
@@ -779,7 +777,7 @@ struct PatientDiagramPanel: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            case .problem(let problem):
+            case let .problem(problem):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(problem.label)
                         .font(.caption.bold())
@@ -820,7 +818,7 @@ struct PatientDiagramPanel: View {
                         }
                     }
                 }
-            case .pulse(let pulse):
+            case let .pulse(pulse):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(pulse.locationLabel)
                         .font(.caption.bold())
