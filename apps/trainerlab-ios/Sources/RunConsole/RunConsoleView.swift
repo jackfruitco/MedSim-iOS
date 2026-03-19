@@ -67,7 +67,7 @@ public struct RunConsoleView: View {
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void,
+        onOpenSummary: @escaping () -> Void
     ) {
         self.store = store
         self.onBack = onBack
@@ -78,11 +78,11 @@ public struct RunConsoleView: View {
         GeometryReader { proxy in
             let layoutMode = RunConsoleLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass,
+                horizontalSizeClass: horizontalSizeClass
             )
             let compactMetrics = RunConsoleCompactMetrics.resolve(
                 width: proxy.size.width,
-                layoutMode: layoutMode,
+                layoutMode: layoutMode
             )
 
             ZStack {
@@ -125,7 +125,7 @@ public struct RunConsoleView: View {
                 onSubmit: {
                     addTrainerNote()
                     showNoteSheet = false
-                },
+                }
             )
             .presentationDetents([.height(180)])
             .presentationDragIndicator(.visible)
@@ -135,7 +135,7 @@ public struct RunConsoleView: View {
                 store.createDebriefAnnotation(
                     observationText: observationText,
                     learningObjective: learningObjective,
-                    outcome: outcome,
+                    outcome: outcome
                 )
                 showAnnotationSheet = false
             }
@@ -212,7 +212,7 @@ public struct RunConsoleView: View {
 
     private func topVitalsTable(
         layoutMode: RunConsoleLayoutMode,
-        compactMetrics: RunConsoleCompactMetrics,
+        compactMetrics: RunConsoleCompactMetrics
     ) -> some View {
         VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
             Text("Patient Vitals")
@@ -238,7 +238,7 @@ public struct RunConsoleView: View {
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing,
+                    spacing: compactMetrics.gridSpacing
                 ) {
                     ForEach(orderedVitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
@@ -249,8 +249,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
-            ),
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8
+            )
         )
     }
 
@@ -307,7 +307,7 @@ public struct RunConsoleView: View {
     private func compactCommandPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
         let controlPresentation = RunConsoleCompactControlPresentation.resolve(
             layoutMode: .compact,
-            horizontalSizeClass: horizontalSizeClass,
+            horizontalSizeClass: horizontalSizeClass
         )
 
         return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
@@ -319,7 +319,7 @@ public struct RunConsoleView: View {
 
                     LazyVGrid(
                         columns: compactControlColumns(for: compactMetrics),
-                        spacing: compactMetrics.gridSpacing,
+                        spacing: compactMetrics.gridSpacing
                     ) {
                         compactBackAction(compactMetrics: compactMetrics, controlPresentation: controlPresentation)
                             .frame(maxWidth: .infinity)
@@ -328,7 +328,7 @@ public struct RunConsoleView: View {
                                 action,
                                 compact: true,
                                 compactMetrics: compactMetrics,
-                                controlPresentation: controlPresentation,
+                                controlPresentation: controlPresentation
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -343,7 +343,7 @@ public struct RunConsoleView: View {
 
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing,
+                    spacing: compactMetrics.gridSpacing
                 ) {
                     compactScenarioAction(
                         "Add Intervention", systemImage: "cross.vial.fill",
@@ -352,43 +352,43 @@ public struct RunConsoleView: View {
                             interventionTargetProblemID = nil
                             showInterventionSheet = true
                         },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Add Event", systemImage: "bolt.heart.fill",
                         compactMetrics: compactMetrics,
                         action: { showEventSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Steer AI", systemImage: "wand.and.sparkles",
                         compactMetrics: compactMetrics,
                         action: { showSteerSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Add Note", systemImage: "note.text.badge.plus",
                         compactMetrics: compactMetrics,
                         action: { showNoteSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Add Annotation", systemImage: "text.badge.plus",
                         compactMetrics: compactMetrics,
                         action: { showAnnotationSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Tick AI", systemImage: "timer",
                         compactMetrics: compactMetrics,
                         action: { store.triggerRunTick() },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Tick Vitals", systemImage: "heart.text.square",
                         compactMetrics: compactMetrics,
                         action: { store.triggerVitalsTick() },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                 }
             }
@@ -421,8 +421,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: compactMetrics.cardPadding,
-            ),
+                padding: compactMetrics.cardPadding
+            )
         )
     }
 
@@ -460,7 +460,7 @@ public struct RunConsoleView: View {
                     if let problemID = problem.problemID {
                         store.updateProblemStatus(problemID: problemID, status: status)
                     }
-                },
+                }
             )
             .frame(minHeight: 380, maxHeight: .infinity)
 
@@ -999,7 +999,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
+                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1)
                 )
                 .opacity(isSuperseded ? 0.65 : 1.0)
             }
@@ -1143,7 +1143,7 @@ public struct RunConsoleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
+                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1)
             )
             .padding(16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1181,7 +1181,7 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canMutate,
+            canMutate: canMutate
         ) { type, siteCode, targetProblemID, status, effectiveness, notes in
             store.addIntervention(
                 interventionType: type,
@@ -1189,7 +1189,7 @@ public struct RunConsoleView: View {
                 targetProblemID: targetProblemID,
                 status: status,
                 effectiveness: effectiveness,
-                notes: notes,
+                notes: notes
             )
             showInterventionSheet = false
         }
@@ -1199,14 +1199,14 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canMutate,
+            canMutate: canMutate
         ) { type, siteCode, status, effectiveness in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
-                effectiveness: effectiveness,
+                effectiveness: effectiveness
             )
         }
     }
@@ -1666,7 +1666,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2),
+                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2)
                 )
         }
         .buttonStyle(.plain)
@@ -1807,7 +1807,7 @@ public struct RunConsoleView: View {
         _ action: RunConsoleLifecycleAction,
         compact: Bool,
         compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled,
+        controlPresentation: RunConsoleCompactControlPresentation = .labeled
     ) -> some View {
         quickAction(action.title, systemImage: action.systemImage, enabled: canMutate, compact: compact, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
             switch action {
@@ -1829,7 +1829,7 @@ public struct RunConsoleView: View {
         _ title: String, systemImage: String,
         compactMetrics: RunConsoleCompactMetrics,
         action: @escaping () -> Void,
-        controlPresentation: RunConsoleCompactControlPresentation,
+        controlPresentation: RunConsoleCompactControlPresentation
     ) -> some View {
         quickAction(title, systemImage: systemImage, enabled: canMutate, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation, action: action)
             .frame(maxWidth: .infinity)
@@ -1840,7 +1840,7 @@ public struct RunConsoleView: View {
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
         controlPresentation: RunConsoleCompactControlPresentation = .labeled,
-        action: @escaping () -> Void,
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             if compact, controlPresentation == .iconOnly {
@@ -1984,7 +1984,7 @@ private struct InterventionPickerSheet: View {
                                         .foregroundStyle(.secondary)
                                     LazyVGrid(
                                         columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8,
+                                        spacing: 8
                                     ) {
                                         ForEach(types) { group in
                                             typeChip(group)
@@ -2023,7 +2023,7 @@ private struct InterventionPickerSheet: View {
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8,
+                                spacing: 8
                             ) {
                                 ForEach(locationGroups, id: \.location) { entry in
                                     locationChip(entry.location)
@@ -2362,7 +2362,7 @@ private struct RunConsoleCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
             )
     }
 }
@@ -2387,7 +2387,7 @@ private struct VitalValueCell: View {
         vital: VitalStatusSnapshot,
         valueText: String,
         font: Font = .subheadline.monospacedDigit(),
-        verticalPadding: CGFloat = 6,
+        verticalPadding: CGFloat = 6
     ) {
         self.vital = vital
         self.valueText = valueText
@@ -2423,8 +2423,8 @@ private struct VitalValueCell: View {
                             LinearGradient(
                                 colors: [.clear, Color.white.opacity(0.12), Color.white.opacity(0.35), Color.white.opacity(0.12), .clear],
                                 startPoint: .leading,
-                                endPoint: .trailing,
-                            ),
+                                endPoint: .trailing
+                            )
                         )
                         .frame(width: width)
                         .offset(x: shimmerOffset * proxy.size.width)
@@ -2609,7 +2609,7 @@ private struct DebriefAnnotationSheet: View {
                         onSubmit(
                             observationText.trimmingCharacters(in: .whitespacesAndNewlines),
                             learningObjective,
-                            outcome,
+                            outcome
                         )
                         dismiss()
                     }
@@ -2689,7 +2689,7 @@ private struct ScenarioBriefEditSheet: View {
                             threatContext: threatContext.isEmpty ? nil : threatContext,
                             evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: parseList(from: specialConsiderations),
+                            specialConsiderations: parseList(from: specialConsiderations)
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

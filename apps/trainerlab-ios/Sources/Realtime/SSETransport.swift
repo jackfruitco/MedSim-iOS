@@ -46,7 +46,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
         session: URLSession = .shared,
-        staleThresholdSeconds: TimeInterval = 45,
+        staleThresholdSeconds: TimeInterval = 45
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider

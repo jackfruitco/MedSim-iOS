@@ -52,7 +52,7 @@ public extension View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
             )
     }
 }

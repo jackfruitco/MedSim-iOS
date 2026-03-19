@@ -15,7 +15,7 @@ public struct ChatLabHomeView: View {
 
     public init(
         store: ChatLabHomeStore,
-        onOpenSimulation: @escaping (ChatSimulation) -> Void,
+        onOpenSimulation: @escaping (ChatSimulation) -> Void
     ) {
         self.store = store
         self.onOpenSimulation = onOpenSimulation
@@ -25,7 +25,7 @@ public struct ChatLabHomeView: View {
         GeometryReader { proxy in
             let layoutMode = ChatLabSurfaceMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass,
+                horizontalSizeClass: horizontalSizeClass
             )
 
             ScrollView {
@@ -56,7 +56,7 @@ public struct ChatLabHomeView: View {
                     onCreated: { simulation in
                         showCreateSheet = false
                         onOpenSimulation(simulation)
-                    },
+                    }
                 )
                 .presentationDetents(layoutMode == .pad ? [.large] : [.medium, .large])
             }
@@ -165,7 +165,7 @@ public struct ChatLabHomeView: View {
             ContentUnavailableView(
                 "No Simulations",
                 systemImage: "bubble.left.and.bubble.right",
-                description: Text("Create a simulation to start ChatLab."),
+                description: Text("Create a simulation to start ChatLab.")
             )
             .frame(maxWidth: .infinity, minHeight: 260)
         } else {
@@ -245,7 +245,7 @@ private struct ChatSimulationCard: View {
                 .frame(width: layoutMode == .pad ? 42 : 36, height: layoutMode == .pad ? 42 : 36)
                 .overlay(
                     Text(simulation.patientInitials)
-                        .font(.caption.bold()),
+                        .font(.caption.bold())
                 )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -372,8 +372,8 @@ private struct ChatCreateSimulationSheet: View {
                                 modifier.description,
                                 isOn: Binding(
                                     get: { store.selectedModifiers.contains(modifier.key) },
-                                    set: { _ in store.toggleModifier(modifier.key) },
-                                ),
+                                    set: { _ in store.toggleModifier(modifier.key) }
+                                )
                             )
                         }
                     }

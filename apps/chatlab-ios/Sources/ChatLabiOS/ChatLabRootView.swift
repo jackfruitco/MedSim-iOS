@@ -13,7 +13,7 @@ public struct ChatLabRootView: View {
         homeStore: ChatLabHomeStore,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
-        onExit: @escaping () -> Void,
+        onExit: @escaping () -> Void
     ) {
         _homeStore = StateObject(wrappedValue: homeStore)
         self.makeRunStore = makeRunStore
@@ -29,14 +29,14 @@ public struct ChatLabRootView: View {
                         simulation: simulation,
                         makeRunStore: makeRunStore,
                         makeToolsStore: makeToolsStore,
-                        onBack: { selectedSimulation = nil },
+                        onBack: { selectedSimulation = nil }
                     )
                 } else {
                     ChatLabHomeView(
                         store: homeStore,
                         onOpenSimulation: { simulation in
                             selectedSimulation = simulation
-                        },
+                        }
                     )
                 }
             }
@@ -64,7 +64,7 @@ private struct ChatRunScreen: View {
         simulation: ChatSimulation,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
-        onBack: @escaping () -> Void,
+        onBack: @escaping () -> Void
     ) {
         self.simulation = simulation
         self.makeRunStore = makeRunStore
@@ -78,7 +78,7 @@ private struct ChatRunScreen: View {
         ChatRunView(
             store: runStore,
             toolsStore: toolsStore,
-            onBack: onBack,
+            onBack: onBack
         )
     }
 }

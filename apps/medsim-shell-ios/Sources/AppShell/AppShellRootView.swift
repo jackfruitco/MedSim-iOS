@@ -36,14 +36,14 @@ public struct AppShellRootView: View {
                             },
                             onExit: {
                                 self.selectedApp = nil
-                            },
+                            }
                         )
                     case .trainerLab:
                         TrainerLabWorkspace(
                             model: model,
                             onExit: {
                                 self.selectedApp = nil
-                            },
+                            }
                         )
                     }
                 } else {
@@ -57,7 +57,7 @@ public struct AppShellRootView: View {
                         onSignOut: {
                             selectedApp = nil
                             Task { await model.authViewModel.signOut() }
-                        },
+                        }
                     )
                 }
             } else {
@@ -68,7 +68,7 @@ public struct AppShellRootView: View {
                     environmentLabel: "Env: \(model.environmentStore.selection.rawValue) | \(model.environmentStore.baseURL.host() ?? "unknown")",
                     onOpenEnvironmentSwitcher: {
                         showEnvironment = true
-                    },
+                    }
                 )
             }
         }
@@ -99,7 +99,7 @@ private struct TrainerLabWorkspace: View {
                         model: model,
                         session: session,
                         onBack: { selectedSession = nil },
-                        onOpenSummary: { showSummary = true },
+                        onOpenSummary: { showSummary = true }
                     )
                 } else {
                     SessionHubView(
@@ -109,7 +109,7 @@ private struct TrainerLabWorkspace: View {
                         },
                         onOpenPresets: {
                             showPresets = true
-                        },
+                        }
                     )
                     .toolbar {
                         ToolbarItem(placement: .automatic) {
@@ -144,7 +144,7 @@ private struct RunConsoleScreen: View {
         model: AppShellModel,
         session: TrainerSessionDTO,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void,
+        onOpenSummary: @escaping () -> Void
     ) {
         self.model = model
         self.session = session
@@ -184,14 +184,14 @@ private struct MainMenuView: View {
                         title: "TrainerLab",
                         subtitle: "Run and manage live trainer sessions",
                         systemImage: "waveform.path.ecg",
-                        action: onOpenTrainerLab,
+                        action: onOpenTrainerLab
                     )
 
                     menuButton(
                         title: "ChatLab",
                         subtitle: "Work simulations through the messaging runtime",
                         systemImage: "message.badge",
-                        action: onOpenChatLab,
+                        action: onOpenChatLab
                     )
                 }
                 .padding(.top, 8)

@@ -16,7 +16,7 @@ final class RunSessionReducerTests: XCTestCase {
             runCompletedAt: nil,
             lastAITickAt: nil,
             createdAt: Date(),
-            modifiedAt: Date(),
+            modifiedAt: Date()
         )
 
         var state = RunSessionReducer.reduce(state: RunSessionState(), action: .sessionLoaded(session))
@@ -24,19 +24,19 @@ final class RunSessionReducerTests: XCTestCase {
 
         state = RunSessionReducer.reduce(
             state: state,
-            action: .eventReceived(EventEnvelope(eventID: "1", eventType: "run.started", createdAt: Date(), correlationID: nil, payload: [:])),
+            action: .eventReceived(EventEnvelope(eventID: "1", eventType: "run.started", createdAt: Date(), correlationID: nil, payload: [:]))
         )
         XCTAssertEqual(state.session?.status, .running)
 
         state = RunSessionReducer.reduce(
             state: state,
-            action: .eventReceived(EventEnvelope(eventID: "2", eventType: "run.paused", createdAt: Date(), correlationID: nil, payload: [:])),
+            action: .eventReceived(EventEnvelope(eventID: "2", eventType: "run.paused", createdAt: Date(), correlationID: nil, payload: [:]))
         )
         XCTAssertEqual(state.session?.status, .paused)
 
         state = RunSessionReducer.reduce(
             state: state,
-            action: .eventReceived(EventEnvelope(eventID: "3", eventType: "run.completed", createdAt: Date(), correlationID: nil, payload: [:])),
+            action: .eventReceived(EventEnvelope(eventID: "3", eventType: "run.completed", createdAt: Date(), correlationID: nil, payload: [:]))
         )
         XCTAssertEqual(state.session?.status, .completed)
     }
