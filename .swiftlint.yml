@@ -1,0 +1,27 @@
+included:
+  - MedSim
+  - MedSimTests
+  - MedSimUITests
+  - apps
+
+excluded:
+  - .build
+  - MedSim.xcodeproj
+
+only_rules:
+  - closing_brace
+  - colon
+  - comma
+  - control_statement
+  - opening_brace
+  - operator_usage_whitespace
+  - return_arrow_whitespace
+  - statement_position
+  - trailing_newline
+  - trailing_semicolon
+  - trailing_whitespace
+  - vertical_whitespace
+
+reporter: github-actions-logging
+
+strict: true
