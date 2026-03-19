@@ -129,10 +129,10 @@ jobs:
     name: iOS Build
     runs-on: macos-15
     env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-build
-      RESULT_BUNDLE_PATH: ${{ runner.temp }}/results/ios-build.xcresult
-      LOG_PATH: ${{ runner.temp }}/logs/ios-build.log
+      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
+      DERIVED_DATA_PATH: /tmp/derived-data-build
+      RESULT_BUNDLE_PATH: /tmp/results/ios-build.xcresult
+      LOG_PATH: /tmp/logs/ios-build.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -195,10 +195,10 @@ jobs:
     name: iOS Unit Tests
     runs-on: macos-15
     env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-unit-tests
-      RESULT_BUNDLE_PATH: ${{ runner.temp }}/results/ios-unit-tests.xcresult
-      LOG_PATH: ${{ runner.temp }}/logs/ios-unit-tests.log
+      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
+      DERIVED_DATA_PATH: /tmp/derived-data-unit-tests
+      RESULT_BUNDLE_PATH: /tmp/results/ios-unit-tests.xcresult
+      LOG_PATH: /tmp/logs/ios-unit-tests.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -263,10 +263,10 @@ jobs:
     name: iOS UI Smoke Tests
     runs-on: macos-15
     env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-ui-tests
-      RESULT_BUNDLE_PATH: ${{ runner.temp }}/results/ios-ui-smoke-tests.xcresult
-      LOG_PATH: ${{ runner.temp }}/logs/ios-ui-smoke-tests.log
+      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
+      DERIVED_DATA_PATH: /tmp/derived-data-ui-tests
+      RESULT_BUNDLE_PATH: /tmp/results/ios-ui-smoke-tests.xcresult
+      LOG_PATH: /tmp/logs/ios-ui-smoke-tests.log
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -339,11 +339,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ios-unit-tests-xcresult
-          path: ${{ runner.temp }}/coverage-input
+          path: /tmp/coverage-input
 
       - name: Generate coverage report
         env:
-          XCRESULT_PATH: ${{ runner.temp }}/coverage-input/ios-unit-tests.xcresult
+          XCRESULT_PATH: /tmp/coverage-input/ios-unit-tests.xcresult
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/coverage"
@@ -405,8 +405,8 @@ jobs:
         with:
           name: coverage-report
           path: |
-            ${{ runner.temp }}/coverage/coverage-report.json
-            ${{ runner.temp }}/coverage/coverage-summary.md
-            ${{ runner.temp }}/coverage/coverage-summary.txt
+            /tmp/coverage/coverage-report.json
+            /tmp/coverage/coverage-summary.md
+            /tmp/coverage/coverage-summary.txt
           if-no-files-found: error
           retention-days: 7
