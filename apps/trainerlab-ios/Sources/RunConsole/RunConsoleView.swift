@@ -14,6 +14,7 @@ public struct RunConsoleView: View {
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showNoteSheet = false
+    @State private var showAnnotationSheet = false
 
     /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
@@ -29,12 +30,12 @@ public struct RunConsoleView: View {
     @Namespace private var segmentNS
 
     // Intervention sheet state
-    @State private var selectedInterventionType: String? = nil
-    @State private var selectedLocationLabel: String? = nil
-    @State private var selectedLaterality: String? = nil
+    @State private var selectedInterventionType: String?
+    @State private var selectedLocationLabel: String?
+    @State private var selectedLaterality: String?
     @State private var selectedInterventionStatus: InterventionStatus = .applied
     @State private var interventionNotes = ""
-    @State private var interventionTargetProblemID: Int? = nil
+    @State private var interventionTargetProblemID: Int?
 
     /// Steer sheet state
     @State private var steerDraft = ""
@@ -66,7 +67,7 @@ public struct RunConsoleView: View {
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void,
+        onOpenSummary: @escaping () -> Void
     ) {
         self.store = store
         self.onBack = onBack
@@ -77,11 +78,11 @@ public struct RunConsoleView: View {
         GeometryReader { proxy in
             let layoutMode = RunConsoleLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass,
+                horizontalSizeClass: horizontalSizeClass
             )
             let compactMetrics = RunConsoleCompactMetrics.resolve(
                 width: proxy.size.width,
-                layoutMode: layoutMode,
+                layoutMode: layoutMode
             )
 
             ZStack {
@@ -124,10 +125,21 @@ public struct RunConsoleView: View {
                 onSubmit: {
                     addTrainerNote()
                     showNoteSheet = false
-                },
+                }
             )
             .presentationDetents([.height(180)])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showAnnotationSheet) {
+            DebriefAnnotationSheet { observationText, learningObjective, outcome in
+                store.createDebriefAnnotation(
+                    observationText: observationText,
+                    learningObjective: learningObjective,
+                    outcome: outcome
+                )
+                showAnnotationSheet = false
+            }
+            .presentationDetents([.fraction(0.55)])
         }
         .sheet(isPresented: $showScenarioBriefEditSheet) {
             if let brief = store.scenarioBrief ?? store.runtimeState?.scenarioBrief {
@@ -141,6 +153,7 @@ public struct RunConsoleView: View {
         .task {
             store.startConsole()
             await store.loadRuntimeState()
+            await store.loadControlPlaneDebug()
         }
         .onDisappear {
             store.stopConsole()
@@ -199,7 +212,7 @@ public struct RunConsoleView: View {
 
     private func topVitalsTable(
         layoutMode: RunConsoleLayoutMode,
-        compactMetrics: RunConsoleCompactMetrics,
+        compactMetrics: RunConsoleCompactMetrics
     ) -> some View {
         VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
             Text("Patient Vitals")
@@ -225,7 +238,7 @@ public struct RunConsoleView: View {
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing,
+                    spacing: compactMetrics.gridSpacing
                 ) {
                     ForEach(orderedVitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
@@ -236,8 +249,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
-            ),
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8
+            )
         )
     }
 
@@ -262,8 +275,17 @@ public struct RunConsoleView: View {
             quickAction("Add Note", systemImage: "note.text.badge.plus", enabled: canMutate) {
                 showNoteSheet = true
             }
+            quickAction("Add Annotation", systemImage: "text.badge.plus", enabled: canMutate) {
+                showAnnotationSheet = true
+            }
             quickAction("Steer AI", systemImage: "wand.and.sparkles", enabled: canMutate) {
                 showSteerSheet = true
+            }
+            quickAction("Tick AI", systemImage: "timer", enabled: canMutate) {
+                store.triggerRunTick()
+            }
+            quickAction("Tick Vitals", systemImage: "heart.text.square", enabled: canMutate) {
+                store.triggerVitalsTick()
             }
 
             Spacer(minLength: 10)
@@ -285,7 +307,7 @@ public struct RunConsoleView: View {
     private func compactCommandPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
         let controlPresentation = RunConsoleCompactControlPresentation.resolve(
             layoutMode: .compact,
-            horizontalSizeClass: horizontalSizeClass,
+            horizontalSizeClass: horizontalSizeClass
         )
 
         return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
@@ -297,7 +319,7 @@ public struct RunConsoleView: View {
 
                     LazyVGrid(
                         columns: compactControlColumns(for: compactMetrics),
-                        spacing: compactMetrics.gridSpacing,
+                        spacing: compactMetrics.gridSpacing
                     ) {
                         compactBackAction(compactMetrics: compactMetrics, controlPresentation: controlPresentation)
                             .frame(maxWidth: .infinity)
@@ -306,7 +328,7 @@ public struct RunConsoleView: View {
                                 action,
                                 compact: true,
                                 compactMetrics: compactMetrics,
-                                controlPresentation: controlPresentation,
+                                controlPresentation: controlPresentation
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -321,7 +343,7 @@ public struct RunConsoleView: View {
 
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing,
+                    spacing: compactMetrics.gridSpacing
                 ) {
                     compactScenarioAction(
                         "Add Intervention", systemImage: "cross.vial.fill",
@@ -330,25 +352,43 @@ public struct RunConsoleView: View {
                             interventionTargetProblemID = nil
                             showInterventionSheet = true
                         },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Add Event", systemImage: "bolt.heart.fill",
                         compactMetrics: compactMetrics,
                         action: { showEventSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Steer AI", systemImage: "wand.and.sparkles",
                         compactMetrics: compactMetrics,
                         action: { showSteerSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
                     )
                     compactScenarioAction(
                         "Add Note", systemImage: "note.text.badge.plus",
                         compactMetrics: compactMetrics,
                         action: { showNoteSheet = true },
-                        controlPresentation: controlPresentation,
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Add Annotation", systemImage: "text.badge.plus",
+                        compactMetrics: compactMetrics,
+                        action: { showAnnotationSheet = true },
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Tick AI", systemImage: "timer",
+                        compactMetrics: compactMetrics,
+                        action: { store.triggerRunTick() },
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Tick Vitals", systemImage: "heart.text.square",
+                        compactMetrics: compactMetrics,
+                        action: { store.triggerVitalsTick() },
+                        controlPresentation: controlPresentation
                     )
                 }
             }
@@ -381,8 +421,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: compactMetrics.cardPadding,
-            ),
+                padding: compactMetrics.cardPadding
+            )
         )
     }
 
@@ -420,7 +460,7 @@ public struct RunConsoleView: View {
                     if let problemID = problem.problemID {
                         store.updateProblemStatus(problemID: problemID, status: status)
                     }
-                },
+                }
             )
             .frame(minHeight: 380, maxHeight: .infinity)
 
@@ -495,7 +535,7 @@ public struct RunConsoleView: View {
 
     // MARK: - Combined Info Panel (Scenario Brief + AI Instructor)
 
-    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor }
+    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor, annotations }
 
     private var combinedInfoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -504,6 +544,7 @@ public struct RunConsoleView: View {
                 HStack(spacing: 0) {
                     infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
                     infoPanelSegment(.aiInstructor, label: "AI Instructor")
+                    infoPanelSegment(.annotations, label: "Annotations")
                 }
                 .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -533,6 +574,8 @@ public struct RunConsoleView: View {
                     scenarioBriefContent
                 } else if activeInfoPanel == .aiInstructor {
                     aiInstructorContent
+                } else if activeInfoPanel == .annotations {
+                    annotationsContent
                 }
             }
         }
@@ -555,8 +598,8 @@ public struct RunConsoleView: View {
             withAnimation(.spring(duration: 0.25)) {
                 activeInfoPanel = isActive ? nil : panel
             }
-            if !isActive, store.runtimeState == nil {
-                Task { await fetchRuntimeState() }
+            if !isActive {
+                Task { await fetchInfoPanelData(for: panel) }
             }
         } label: {
             HStack(spacing: 5) {
@@ -631,6 +674,33 @@ public struct RunConsoleView: View {
     @ViewBuilder private var aiInstructorContent: some View {
         if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Runtime")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    debugMetaRow(label: "Status", value: rs.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                    if let tickInterval = rs.tickIntervalSeconds {
+                        debugMetaRow(label: "Tick Interval", value: "\(tickInterval)s")
+                    }
+                    if let nextTickAt = rs.nextTickAt {
+                        debugMetaRow(label: "Next Tick", value: nextTickAt.formatted(date: .omitted, time: .standard))
+                    }
+                    if let lastAITickAt = rs.lastAITickAt {
+                        debugMetaRow(label: "Last AI Tick", value: lastAITickAt.formatted(date: .omitted, time: .standard))
+                    }
+                    if !rs.pendingRuntimeReasons.isEmpty {
+                        debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.pendingRuntimeReasons.count)")
+                    }
+                    if !rs.currentlyProcessingReasons.isEmpty {
+                        debugMetaRow(label: "Processing Reasons", value: "\(rs.currentlyProcessingReasons.count)")
+                    }
+                    if !rs.lastRuntimeError.isEmpty {
+                        Text(rs.lastRuntimeError)
+                            .font(.caption)
+                            .foregroundStyle(TrainerLabTheme.danger)
+                    }
+                }
+
                 if let plan = rs.aiPlan {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Current Focus")
@@ -686,16 +756,59 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
+                if let debug = store.controlPlaneDebug {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Control Plane Debug")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        debugMetaRow(label: "Current Step", value: "\(debug.currentStepIndex)")
+                        if !debug.executionPlan.isEmpty {
+                            ForEach(Array(debug.executionPlan.prefix(4).enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text(index == debug.currentStepIndex ? "•" : "◦")
+                                        .foregroundStyle(index == debug.currentStepIndex ? TrainerLabTheme.accentBlue : .secondary)
+                                    Text(step)
+                                        .font(.caption)
+                                        .foregroundStyle(Color(white: 0.70))
+                                }
+                            }
+                        }
+                        if !debug.lastFailedStep.isEmpty {
+                            debugMetaRow(label: "Last Failed Step", value: debug.lastFailedStep)
+                        }
+                        if !debug.lastFailedError.isEmpty {
+                            Text(debug.lastFailedError)
+                                .font(.caption)
+                                .foregroundStyle(TrainerLabTheme.warning)
+                        }
+                    }
+                }
                 if rs.aiPlan == nil, rs.aiRationaleNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Button("Refresh") {
-                    Task { await fetchRuntimeState() }
+                HStack(spacing: 8) {
+                    if canMutate {
+                        Button("Tick AI") {
+                            store.triggerRunTick()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+
+                        Button("Tick Vitals") {
+                            store.triggerVitalsTick()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                    }
+
+                    Button("Refresh") {
+                        Task { await fetchRuntimeState() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
                 }
-                .font(.caption)
-                .buttonStyle(.bordered)
             }
         } else if isLoadingRuntimeState {
             ProgressView()
@@ -705,6 +818,69 @@ public struct RunConsoleView: View {
             Text("Could not load runtime state.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var annotationsContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Debrief annotations stay separate from live simulation notes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if canMutate {
+                    Button {
+                        showAnnotationSheet = true
+                    } label: {
+                        Label("Add Annotation", systemImage: "plus.circle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(TrainerLabTheme.accentBlue)
+                }
+            }
+
+            if store.debriefAnnotations.isEmpty {
+                Text("No debrief annotations yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.debriefAnnotations.prefix(8)) { annotation in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(annotation.learningObjectiveLabel)
+                                .font(.caption2.bold())
+                                .foregroundStyle(TrainerLabTheme.accentBlue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(TrainerLabTheme.accentBlue.opacity(0.14))
+                                .clipShape(Capsule())
+                            Text(annotation.outcomeLabel)
+                                .font(.caption2.bold())
+                                .foregroundStyle(annotationOutcomeColor(annotation.outcome))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(annotationOutcomeColor(annotation.outcome).opacity(0.14))
+                                .clipShape(Capsule())
+                            Spacer()
+                            Text(annotation.createdAt.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(annotation.observationText)
+                            .font(.subheadline)
+                        if let linkedEventID = annotation.linkedEventID {
+                            Text("Linked event #\(linkedEventID)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
         }
     }
 
@@ -740,7 +916,17 @@ public struct RunConsoleView: View {
     private func fetchRuntimeState() async {
         isLoadingRuntimeState = true
         await store.loadRuntimeState()
+        await store.loadControlPlaneDebug()
         isLoadingRuntimeState = false
+    }
+
+    private func fetchInfoPanelData(for panel: ActiveInfoPanel) async {
+        switch panel {
+        case .scenarioBrief, .aiInstructor:
+            await fetchRuntimeState()
+        case .annotations:
+            await store.loadAnnotations()
+        }
     }
 
     // MARK: - Timeline pane
@@ -813,7 +999,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
+                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1)
                 )
                 .opacity(isSuperseded ? 0.65 : 1.0)
             }
@@ -957,7 +1143,7 @@ public struct RunConsoleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
+                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1)
             )
             .padding(16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -995,7 +1181,7 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canMutate,
+            canMutate: canMutate
         ) { type, siteCode, targetProblemID, status, effectiveness, notes in
             store.addIntervention(
                 interventionType: type,
@@ -1003,7 +1189,7 @@ public struct RunConsoleView: View {
                 targetProblemID: targetProblemID,
                 status: status,
                 effectiveness: effectiveness,
-                notes: notes,
+                notes: notes
             )
             showInterventionSheet = false
         }
@@ -1013,14 +1199,14 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canMutate,
+            canMutate: canMutate
         ) { type, siteCode, status, effectiveness in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
-                effectiveness: effectiveness,
+                effectiveness: effectiveness
             )
         }
     }
@@ -1442,6 +1628,30 @@ public struct RunConsoleView: View {
         selectedTimelineFilter = .all
     }
 
+    private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
+        switch outcome {
+        case .correct:
+            TrainerLabTheme.success
+        case .incorrect, .missed:
+            TrainerLabTheme.danger
+        case .improvised, .pending:
+            TrainerLabTheme.warning
+        }
+    }
+
+    private func debugMetaRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label + ":")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .frame(width: 118, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(Color(white: 0.70))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func avpuButton(_ stateValue: AVPUState, label: String) -> some View {
         Button {
             selectedAVPU = stateValue
@@ -1456,7 +1666,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2),
+                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2)
                 )
         }
         .buttonStyle(.plain)
@@ -1597,7 +1807,7 @@ public struct RunConsoleView: View {
         _ action: RunConsoleLifecycleAction,
         compact: Bool,
         compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled,
+        controlPresentation: RunConsoleCompactControlPresentation = .labeled
     ) -> some View {
         quickAction(action.title, systemImage: action.systemImage, enabled: canMutate, compact: compact, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
             switch action {
@@ -1619,7 +1829,7 @@ public struct RunConsoleView: View {
         _ title: String, systemImage: String,
         compactMetrics: RunConsoleCompactMetrics,
         action: @escaping () -> Void,
-        controlPresentation: RunConsoleCompactControlPresentation,
+        controlPresentation: RunConsoleCompactControlPresentation
     ) -> some View {
         quickAction(title, systemImage: systemImage, enabled: canMutate, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation, action: action)
             .frame(maxWidth: .infinity)
@@ -1630,7 +1840,7 @@ public struct RunConsoleView: View {
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
         controlPresentation: RunConsoleCompactControlPresentation = .labeled,
-        action: @escaping () -> Void,
+        action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             if compact, controlPresentation == .iconOnly {
@@ -1682,12 +1892,12 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String) -> Void
+    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String) -> Void
 
-    @State private var selectedType: String? = nil
-    @State private var selectedTargetProblemID: Int? = nil
-    @State private var selectedLocationLabel: String? = nil
-    @State private var selectedLaterality: String? = nil
+    @State private var selectedType: String?
+    @State private var selectedTargetProblemID: Int?
+    @State private var selectedLocationLabel: String?
+    @State private var selectedLaterality: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
     @State private var notes = ""
@@ -1716,7 +1926,7 @@ private struct InterventionPickerSheet: View {
     }
 
     private var canSubmit: Bool {
-        canMutate && resolvedSiteCode != nil && (problems.isEmpty || selectedTargetProblemID != nil)
+        canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
     }
 
     var body: some View {
@@ -1745,6 +1955,12 @@ private struct InterventionPickerSheet: View {
                             }
                         }
                     }
+                } else {
+                    Section("Target Problem") {
+                        Text("A target problem is required by the backend before an intervention can be submitted.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 // Step 1: Intervention type (MARCH grouped)
@@ -1768,7 +1984,7 @@ private struct InterventionPickerSheet: View {
                                         .foregroundStyle(.secondary)
                                     LazyVGrid(
                                         columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8,
+                                        spacing: 8
                                     ) {
                                         ForEach(types) { group in
                                             typeChip(group)
@@ -1807,7 +2023,7 @@ private struct InterventionPickerSheet: View {
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8,
+                                spacing: 8
                             ) {
                                 ForEach(locationGroups, id: \.location) { entry in
                                     locationChip(entry.location)
@@ -1857,7 +2073,9 @@ private struct InterventionPickerSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
-                        guard let siteCode = resolvedSiteCode, let type = selectedType else { return }
+                        guard let siteCode = resolvedSiteCode,
+                              let type = selectedType,
+                              let selectedTargetProblemID else { return }
                         onSubmit(type, siteCode, selectedTargetProblemID, status, effectiveness, notes)
                     }
                     .disabled(!canSubmit)
@@ -1949,8 +2167,8 @@ private struct InjuryQuickActionSheet: View {
     let canMutate: Bool
     let onApply: (String, String, InterventionStatus, InterventionEffectiveness) -> Void
 
-    @State private var selectedSuggestionType: String? = nil
-    @State private var selectedSiteCode: String? = nil
+    @State private var selectedSuggestionType: String?
+    @State private var selectedSiteCode: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
     @Environment(\.dismiss) private var dismiss
@@ -2144,7 +2362,7 @@ private struct RunConsoleCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
             )
     }
 }
@@ -2169,7 +2387,7 @@ private struct VitalValueCell: View {
         vital: VitalStatusSnapshot,
         valueText: String,
         font: Font = .subheadline.monospacedDigit(),
-        verticalPadding: CGFloat = 6,
+        verticalPadding: CGFloat = 6
     ) {
         self.vital = vital
         self.valueText = valueText
@@ -2205,8 +2423,8 @@ private struct VitalValueCell: View {
                             LinearGradient(
                                 colors: [.clear, Color.white.opacity(0.12), Color.white.opacity(0.35), Color.white.opacity(0.12), .clear],
                                 startPoint: .leading,
-                                endPoint: .trailing,
-                            ),
+                                endPoint: .trailing
+                            )
                         )
                         .frame(width: width)
                         .offset(x: shimmerOffset * proxy.size.width)
@@ -2300,7 +2518,7 @@ private struct NoteComposerSheet: View {
                 .padding(.bottom, 12)
 
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Add a trainer note to the timeline…", text: $draft, axis: .vertical)
+                TextField("Add a simulation note event for the live run…", text: $draft, axis: .vertical)
                     .lineLimit(1 ... 4)
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white)
@@ -2329,6 +2547,77 @@ private struct NoteComposerSheet: View {
         }
         .background(.ultraThinMaterial)
         .onAppear { focused = true }
+    }
+}
+
+struct DebriefAnnotationOption<Value: Hashable & Sendable>: Equatable {
+    let value: Value
+    let label: String
+}
+
+enum DebriefAnnotationCatalog {
+    static let learningObjectiveOptions = AnnotationLearningObjective.allCases.map {
+        DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+    }
+
+    static let outcomeOptions = AnnotationOutcome.allCases.map {
+        DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+    }
+}
+
+private struct DebriefAnnotationSheet: View {
+    let onSubmit: (String, AnnotationLearningObjective, AnnotationOutcome) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var observationText = ""
+    @State private var learningObjective: AnnotationLearningObjective = .other
+    @State private var outcome: AnnotationOutcome = .pending
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Observation") {
+                    TextField("What should be captured for debrief?", text: $observationText, axis: .vertical)
+                        .lineLimit(3 ... 6)
+                }
+
+                Section("Learning Objective") {
+                    Picker("Learning Objective", selection: $learningObjective) {
+                        ForEach(DebriefAnnotationCatalog.learningObjectiveOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+                }
+
+                Section("Outcome") {
+                    Picker("Outcome", selection: $outcome) {
+                        ForEach(DebriefAnnotationCatalog.outcomeOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+            .navigationTitle("Add Annotation")
+            .inlineNavBarTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSubmit(
+                            observationText.trimmingCharacters(in: .whitespacesAndNewlines),
+                            learningObjective,
+                            outcome
+                        )
+                        dismiss()
+                    }
+                    .disabled(observationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .foregroundStyle(.primary)
     }
 }
 
@@ -2400,7 +2689,7 @@ private struct ScenarioBriefEditSheet: View {
                             threatContext: threatContext.isEmpty ? nil : threatContext,
                             evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: parseList(from: specialConsiderations),
+                            specialConsiderations: parseList(from: specialConsiderations)
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

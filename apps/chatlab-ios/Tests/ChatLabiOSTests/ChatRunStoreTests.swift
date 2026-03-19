@@ -10,13 +10,14 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var createdMessage: ChatMessage?
     var retriedMessage: ChatMessage?
     var retriedSimulation: ChatSimulation?
+    var markReadCalls: [(simulationID: Int, messageID: Int)] = []
 
     func listSimulations(
         limit _: Int,
         cursor _: String?,
         status _: String?,
         query _: String?,
-        searchMessages _: Bool,
+        searchMessages _: Bool
     ) async throws -> PaginatedResponse<ChatSimulation> {
         PaginatedResponse(items: Array(simulations.values), nextCursor: nil, hasMore: false)
     }
@@ -71,13 +72,13 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         conversationID: Int?,
         cursor _: String?,
         order _: String,
-        limit _: Int,
+        limit _: Int
     ) async throws -> PaginatedResponse<ChatMessage> {
         let conversationKey = conversationID ?? -1
         return PaginatedResponse(
             items: messagesByConversation[conversationKey] ?? [],
             nextCursor: nil,
-            hasMore: false,
+            hasMore: false
         )
     }
 
@@ -104,6 +105,38 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         throw NSError(domain: "missing-message", code: 404)
     }
 
+    func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+        markReadCalls.append((simulationID, messageID))
+        for (conversationID, messages) in messagesByConversation {
+            if let index = messages.firstIndex(where: { $0.id == messageID }) {
+                var updated = messages[index]
+                updated = ChatMessage(
+                    id: updated.id,
+                    simulationID: updated.simulationID,
+                    conversationID: updated.conversationID,
+                    conversationType: updated.conversationType,
+                    senderID: updated.senderID,
+                    content: updated.content,
+                    role: updated.role,
+                    messageType: updated.messageType,
+                    timestamp: updated.timestamp,
+                    isFromAI: updated.isFromAI,
+                    displayName: updated.displayName,
+                    deliveryStatus: updated.deliveryStatus,
+                    deliveryErrorCode: updated.deliveryErrorCode,
+                    deliveryErrorText: updated.deliveryErrorText,
+                    deliveryRetryable: updated.deliveryRetryable,
+                    deliveryRetryCount: updated.deliveryRetryCount,
+                    isRead: true,
+                    mediaList: updated.mediaList
+                )
+                messagesByConversation[conversationID]?[index] = updated
+                return updated
+            }
+        }
+        throw NSError(domain: "missing-message", code: 404)
+    }
+
     func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
         PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
     }
@@ -118,6 +151,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         ChatSignOrdersResponse(status: "ok", orders: [])
+    }
+
+    func submitLabOrders(simulationID _: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
+        ChatLabOrdersResponse(status: "accepted", callID: "call-1", orders: request.orders)
     }
 
     func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
@@ -190,8 +227,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "display_name": .string(patientConversation.displayName),
                     "timestamp": .string(isoTimestamp()),
                     "delivery_status": .string("sent"),
-                ],
-            ),
+                ]
+            )
         )
 
         try await waitUntil { store.activeTypingUsers.isEmpty }
@@ -205,7 +242,7 @@ final class ChatRunStoreTests: XCTestCase {
             id: 1,
             conversationID: patientConversation.id,
             isFromAI: true,
-            content: "How can I help?",
+            content: "How can I help?"
         )
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -217,7 +254,7 @@ final class ChatRunStoreTests: XCTestCase {
             isFromAI: false,
             role: "user",
             content: "Need help",
-            displayName: "Student",
+            displayName: "Student"
         )
 
         let realtime = TestRealtimeClient()
@@ -240,8 +277,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "status": .string("failed"),
                     "retryable": .bool(true),
                     "error_text": .string("Message failed to deliver to the AI service. Try again."),
-                ],
-            ),
+                ]
+            )
         )
 
         try await waitUntil {
@@ -260,7 +297,7 @@ final class ChatRunStoreTests: XCTestCase {
             id: 1,
             conversationID: patientConversation.id,
             isFromAI: true,
-            content: "Opening line",
+            content: "Opening line"
         )
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -281,8 +318,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "terminal_reason_code": .string("provider_timeout"),
                     "terminal_reason_text": .string("Simulation failed."),
                     "retryable": .bool(true),
-                ],
-            ),
+                ]
+            )
         )
 
         try await waitUntil {
@@ -296,7 +333,7 @@ final class ChatRunStoreTests: XCTestCase {
             status: .failed,
             terminalReasonCode: "initial_generation_enqueue_failed",
             terminalReasonText: "We could not start this simulation. Please try again.",
-            retryable: true,
+            retryable: true
         )
         let retriedSimulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
@@ -322,9 +359,33 @@ final class ChatRunStoreTests: XCTestCase {
         store.stop()
     }
 
+    func testOpeningConversationMarksUnreadIncomingMessagesRead() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let unreadMessage = makeMessage(
+            id: 99,
+            conversationID: patientConversation.id,
+            isFromAI: true,
+            content: "Unread reply"
+        )
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [unreadMessage]
+
+        let store = ChatRunStore(service: service, realtimeClient: TestRealtimeClient(), simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil {
+            service.markReadCalls.contains(where: { $0.messageID == 99 }) &&
+                store.activeMessages.first?.isRead == true
+        }
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
-        condition: @escaping @MainActor () -> Bool,
+        condition: @escaping @MainActor () -> Bool
     ) async throws {
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
         while DispatchTime.now().uptimeNanoseconds < deadline {
@@ -341,7 +402,7 @@ final class ChatRunStoreTests: XCTestCase {
         status: SimulationTerminalState,
         terminalReasonCode: String = "",
         terminalReasonText: String = "",
-        retryable: Bool?,
+        retryable: Bool?
     ) -> ChatSimulation {
         ChatSimulation(
             id: id,
@@ -357,14 +418,14 @@ final class ChatRunStoreTests: XCTestCase {
             terminalReasonCode: terminalReasonCode,
             terminalReasonText: terminalReasonText,
             terminalAt: status == .inProgress ? nil : Date(),
-            retryable: retryable,
+            retryable: retryable
         )
     }
 
     private func makeConversation(
         id: Int = 1,
         type: String = "simulated_patient",
-        name: String = "Jordan Lee",
+        name: String = "Jordan Lee"
     ) -> ChatConversation {
         ChatConversation(
             id: id,
@@ -376,7 +437,7 @@ final class ChatRunStoreTests: XCTestCase {
             displayName: name,
             displayInitials: "JL",
             isLocked: false,
-            createdAt: Date(),
+            createdAt: Date()
         )
     }
 
@@ -387,7 +448,7 @@ final class ChatRunStoreTests: XCTestCase {
         role: String = "assistant",
         content: String,
         displayName: String = "Jordan Lee",
-        deliveryStatus: DeliveryStatus = .sent,
+        deliveryStatus: DeliveryStatus = .sent
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -406,6 +467,8 @@ final class ChatRunStoreTests: XCTestCase {
             deliveryErrorText: "",
             deliveryRetryable: true,
             deliveryRetryCount: 0,
+            isRead: false,
+            mediaList: []
         )
     }
 
@@ -415,7 +478,7 @@ final class ChatRunStoreTests: XCTestCase {
             eventType: type,
             createdAt: Date(),
             correlationID: nil,
-            payload: payload,
+            payload: payload
         )
     }
 

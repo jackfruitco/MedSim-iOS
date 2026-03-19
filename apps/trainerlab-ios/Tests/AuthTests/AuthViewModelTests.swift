@@ -18,7 +18,7 @@ private enum MockError: Error, LocalizedError {
 
 private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
     var signInResult: Result<AuthTokens, Error> = .success(
-        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer"),
+        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
     )
     var signOutCalled = false
     var hasActiveTokensValue = false
@@ -27,7 +27,7 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
         try signInResult.get()
     }
 
-    func signOut() {
+    func signOut() async {
         signOutCalled = true
     }
 
@@ -38,7 +38,11 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
 
 private func makeLabAccess() -> LabAccess {
     let json = Data(#"{"lab_slug":"test-lab","access_level":"trainer"}"#.utf8)
-    return try! JSONDecoder().decode(LabAccess.self, from: json)
+    do {
+        return try JSONDecoder().decode(LabAccess.self, from: json)
+    } catch {
+        fatalError("Failed to decode mock LabAccess: \(error)")
+    }
 }
 
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
@@ -64,7 +68,19 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockError.accessMeFailed
     }
 
+    func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut {
+        throw MockError.accessMeFailed
+    }
+
     func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockError.accessMeFailed
+    }
+
+    func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func triggerVitalsTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
         throw MockError.accessMeFailed
     }
 
@@ -172,6 +188,10 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockError.accessMeFailed
     }
 
+    func createNoteEvent(simulationID _: Int, request _: SimulationNoteCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
     func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut {
         throw MockError.accessMeFailed
     }
@@ -267,7 +287,7 @@ final class AuthViewModelTests: XCTestCase {
         await vm.signIn()
         XCTAssertTrue(vm.isAuthenticated)
 
-        vm.signOut()
+        await vm.signOut()
 
         XCTAssertFalse(vm.isAuthenticated)
         XCTAssertTrue(vm.email.isEmpty)

@@ -38,8 +38,8 @@ public final class AuthViewModel: ObservableObject {
         }
     }
 
-    public func signOut() {
-        authService.signOut()
+    public func signOut() async {
+        await authService.signOut()
         isAuthenticated = false
         email = ""
         password = ""
@@ -56,7 +56,7 @@ public final class AuthViewModel: ObservableObject {
             _ = try await trainerService.accessMe()
             isAuthenticated = true
         } catch {
-            authService.signOut()
+            await authService.signOut()
             isAuthenticated = false
         }
     }

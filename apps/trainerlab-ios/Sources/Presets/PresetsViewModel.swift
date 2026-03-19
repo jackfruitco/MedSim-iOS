@@ -59,7 +59,7 @@ public final class PresetsViewModel: ObservableObject {
             description: description,
             instructionText: instruction,
             injuries: [],
-            severity: severity,
+            severity: severity
         )
 
         do {
@@ -79,24 +79,11 @@ public final class PresetsViewModel: ObservableObject {
         }
     }
 
-    public func updatePreset(
-        id: Int,
-        title: String,
-        description: String,
-        instruction: String,
-        severity: String,
-        isActive: Bool,
-    ) async {
+    public func updatePreset(id: Int, request: ScenarioInstructionUpdateRequest) async {
         do {
             let updated = try await service.updatePreset(
                 presetID: id,
-                request: ScenarioInstructionUpdateRequest(
-                    title: title,
-                    description: description,
-                    instructionText: instruction,
-                    severity: severity,
-                    isActive: isActive,
-                ),
+                request: request
             )
             if let index = presets.firstIndex(where: { $0.id == id }) {
                 presets[index] = updated

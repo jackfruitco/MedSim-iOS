@@ -16,7 +16,7 @@ concurrency:
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-  IOS_SIMULATOR_DESTINATION: platform=iOS Simulator,OS=26.2,name=iPhone 17 Pro
+  IOS_SIMULATOR_DESTINATION: platform=iOS Simulator,name=iPhone 17 Pro
   XCODE_PROJECT: MedSim.xcodeproj
   XCODE_SCHEME: MedSim
   SWIFT_FORMAT_VERSION: 0.58.7
@@ -140,10 +140,29 @@ jobs:
       - name: Select Xcode 26.3
         run: sudo xcode-select -s "$DEVELOPER_DIR"
 
-      - name: Show toolchain versions
+      - name: Preflight iOS simulator availability
         run: |
+          set -euo pipefail
+          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
+          xcode-select -p
           xcodebuild -version
           swift --version
+          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
+            printf '%s\n' "$destinations_output"
+            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
+            exit 1
+          fi
+          printf '%s\n' "$destinations_output"
+          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
+            printf '%s\n' "$simctl_output"
+            echo "::error::Unable to query available iOS simulators on this runner."
+            exit 1
+          fi
+          printf '%s\n' "$simctl_output"
+          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
+            echo "::error::Configured simulator '$device_name' is not available on this runner."
+            exit 1
+          fi
 
       - name: Cache Xcode package dependencies
         uses: actions/cache@v4
@@ -206,10 +225,29 @@ jobs:
       - name: Select Xcode 26.3
         run: sudo xcode-select -s "$DEVELOPER_DIR"
 
-      - name: Show toolchain versions
+      - name: Preflight iOS simulator availability
         run: |
+          set -euo pipefail
+          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
+          xcode-select -p
           xcodebuild -version
           swift --version
+          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
+            printf '%s\n' "$destinations_output"
+            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
+            exit 1
+          fi
+          printf '%s\n' "$destinations_output"
+          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
+            printf '%s\n' "$simctl_output"
+            echo "::error::Unable to query available iOS simulators on this runner."
+            exit 1
+          fi
+          printf '%s\n' "$simctl_output"
+          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
+            echo "::error::Configured simulator '$device_name' is not available on this runner."
+            exit 1
+          fi
 
       - name: Cache Xcode package dependencies
         uses: actions/cache@v4
@@ -274,10 +312,29 @@ jobs:
       - name: Select Xcode 26.3
         run: sudo xcode-select -s "$DEVELOPER_DIR"
 
-      - name: Show toolchain versions
+      - name: Preflight iOS simulator availability
         run: |
+          set -euo pipefail
+          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
+          xcode-select -p
           xcodebuild -version
           swift --version
+          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
+            printf '%s\n' "$destinations_output"
+            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
+            exit 1
+          fi
+          printf '%s\n' "$destinations_output"
+          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
+            printf '%s\n' "$simctl_output"
+            echo "::error::Unable to query available iOS simulators on this runner."
+            exit 1
+          fi
+          printf '%s\n' "$simctl_output"
+          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
+            echo "::error::Configured simulator '$device_name' is not available on this runner."
+            exit 1
+          fi
 
       - name: Cache Xcode package dependencies
         uses: actions/cache@v4

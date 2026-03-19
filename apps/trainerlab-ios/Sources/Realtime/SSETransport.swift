@@ -46,7 +46,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
         session: URLSession = .shared,
-        staleThresholdSeconds: TimeInterval = 45,
+        staleThresholdSeconds: TimeInterval = 45
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -77,7 +77,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
                     }
 
                     var dataLines: [String] = []
-                    var currentEventType: String? = nil
+                    var currentEventType: String?
 
                     for try await line in bytes.lines {
                         if Task.isCancelled {

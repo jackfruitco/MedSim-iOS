@@ -22,7 +22,7 @@ let package = Package(
                 .product(name: "Persistence", package: "trainerlab-ios"),
                 .product(name: "DesignSystem", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
-            ],
+            ]
         ),
         .testTarget(
             name: "ChatLabiOSTests",
@@ -31,7 +31,7 @@ let package = Package(
                 .product(name: "Networking", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
                 .product(name: "Persistence", package: "trainerlab-ios"),
-            ],
+            ]
         ),
-    ],
+    ]
 )

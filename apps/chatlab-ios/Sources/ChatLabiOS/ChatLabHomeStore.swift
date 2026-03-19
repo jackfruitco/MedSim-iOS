@@ -38,7 +38,7 @@ public final class ChatLabHomeStore: ObservableObject {
                 cursor: nil,
                 status: nil,
                 query: searchQuery,
-                searchMessages: includeMessageSearch,
+                searchMessages: includeMessageSearch
             )
             simulations = page.items
             nextCursor = page.nextCursor
@@ -61,7 +61,7 @@ public final class ChatLabHomeStore: ObservableObject {
                 cursor: nextCursor,
                 status: nil,
                 query: searchQuery,
-                searchMessages: includeMessageSearch,
+                searchMessages: includeMessageSearch
             )
             simulations.append(contentsOf: page.items)
             nextCursor = page.nextCursor
@@ -78,7 +78,7 @@ public final class ChatLabHomeStore: ObservableObject {
                 cursor: nil,
                 status: nil,
                 query: searchQuery,
-                searchMessages: includeMessageSearch,
+                searchMessages: includeMessageSearch
             )
             simulations = page.items
             nextCursor = page.nextCursor
@@ -115,7 +115,7 @@ public final class ChatLabHomeStore: ObservableObject {
 
         do {
             let created = try await service.quickCreateSimulation(
-                request: ChatQuickCreateRequest(modifiers: selectedModifiers.sorted()),
+                request: ChatQuickCreateRequest(modifiers: selectedModifiers.sorted())
             )
             simulations.insert(created, at: 0)
             return created

@@ -19,7 +19,7 @@ public struct AuthGateView: View {
         appTitle: String = "TrainerLab",
         appSubtitle: String = "Instructor Console",
         environmentLabel: String,
-        onOpenEnvironmentSwitcher: @escaping () -> Void,
+        onOpenEnvironmentSwitcher: @escaping () -> Void
     ) {
         self.viewModel = viewModel
         self.appTitle = appTitle
@@ -33,7 +33,7 @@ public struct AuthGateView: View {
             LinearGradient(
                 colors: [TrainerLabTheme.setupBackground, TrainerLabTheme.setupSurface],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
@@ -115,9 +115,9 @@ public struct AuthGateView: View {
                     } else {
                         moveFocusForward()
                     }
-                },
+                }
             )
-            .frame(width: 0, height: 0),
+            .frame(width: 0, height: 0)
         )
         .onAppear {
             if focusedField == nil {

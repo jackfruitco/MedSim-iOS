@@ -27,6 +27,24 @@ private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     }
 }
 
+private final class RecordingTokenProvider: AuthTokenProvider, @unchecked Sendable {
+    var tokens: AuthTokens?
+    var cleared = false
+
+    func loadTokens() -> AuthTokens? {
+        tokens
+    }
+
+    func saveTokens(_ tokens: AuthTokens) {
+        self.tokens = tokens
+    }
+
+    func clearTokens() {
+        cleared = true
+        tokens = nil
+    }
+}
+
 final class TrainerLabContractTests: XCTestCase {
     func testTrainerRunDecodesWithoutLegacyID() throws {
         let json = """
@@ -84,6 +102,81 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNil(object?["session_id"])
     }
 
+    func testInterventionDictionaryDecodesInterventionTypeKey() throws {
+        let json = """
+        {
+          "intervention_type": "tourniquet",
+          "label": "Tourniquet",
+          "sites": []
+        }
+        """
+
+        let group = try JSONDecoder().decode(InterventionGroup.self, from: Data(json.utf8))
+        XCTAssertEqual(group.interventionType, "tourniquet")
+    }
+
+    func testIllnessEventRequestEncodesCurrentBackendKeys() throws {
+        let request = IllnessEventRequest(name: "sepsis", description: "Fever and hypotension")
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["illness_name"] as? String, "sepsis")
+        XCTAssertEqual(object?["illness_description"] as? String, "Fever and hypotension")
+        XCTAssertNil(object?["name"])
+        XCTAssertNil(object?["description"])
+    }
+
+    func testInterventionEventRequestEncodesCurrentBackendKeys() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "left_arm",
+            targetProblemID: 19,
+            status: .applied,
+            effectiveness: .effective,
+            notes: "Applied high and tight"
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let details = object?["details"] as? [String: Any]
+
+        XCTAssertEqual(object?["target_problem_id"] as? Int, 19)
+        XCTAssertEqual(object?["initiated_by_type"] as? String, "instructor")
+        XCTAssertNil(object?["performed_by_role"])
+        XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+    }
+
+    func testSimulationNoteCreateRequestEncodesCurrentBackendKeys() throws {
+        let request = SimulationNoteCreateRequest(
+            content: "Observe airway",
+            sendToAI: true,
+            performedByRole: "instructor"
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["content"] as? String, "Observe airway")
+        XCTAssertEqual(object?["send_to_ai"] as? Bool, true)
+        XCTAssertEqual(object?["performed_by_role"] as? String, "instructor")
+    }
+
+    func testAuthServiceLogoutPostsRefreshTokenAndClearsLocalTokens() async {
+        let api = RecordingAPIClient()
+        let tokenProvider = RecordingTokenProvider()
+        tokenProvider.tokens = AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
+        let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
+
+        await service.signOut()
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/auth/logout/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+        XCTAssertEqual(api.capturedEndpoints.last?.requiresAuth, false)
+        XCTAssertEqual(
+            try? decodeJSONBody(api.capturedEndpoints.last?.body)?["refresh_token"] as? String,
+            "r"
+        )
+        XCTAssertTrue(tokenProvider.cleared)
+    }
+
     func testTrainerLabServiceUsesSimulationFirstEndpoints() async throws {
         let api = RecordingAPIClient()
         let service = TrainerLabService(apiClient: api)
@@ -104,7 +197,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/run/start/",
+            "/api/v1/trainerlab/simulations/7/run/start/"
         )
 
         do {
@@ -118,9 +211,9 @@ final class TrainerLabContractTests: XCTestCase {
                     injuryRegion: nil,
                     avpuState: "alert",
                     interventionCode: nil,
-                    note: nil,
+                    note: nil
                 ),
-                idempotencyKey: "k2",
+                idempotencyKey: "k2"
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -128,7 +221,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/adjust/",
+            "/api/v1/trainerlab/simulations/7/adjust/"
         )
 
         do {
@@ -139,7 +232,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/events/",
+            "/api/v1/trainerlab/simulations/7/events/"
         )
 
         do {
@@ -147,7 +240,7 @@ final class TrainerLabContractTests: XCTestCase {
                 simulationID: 7,
                 problemID: 3,
                 request: ProblemStatusUpdateRequest(isTreated: true, isResolved: false),
-                idempotencyKey: "k3",
+                idempotencyKey: "k3"
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -155,7 +248,47 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/problems/3/",
+            "/api/v1/trainerlab/simulations/7/problems/3/"
+        )
+
+        do {
+            _ = try await service.getControlPlaneDebug(simulationID: 7)
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/control-plane/")
+
+        do {
+            _ = try await service.triggerRunTick(simulationID: 7, idempotencyKey: "k4")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/run/tick/")
+
+        do {
+            _ = try await service.triggerVitalsTick(simulationID: 7, idempotencyKey: "k5")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/run/tick/vitals/")
+
+        do {
+            _ = try await service.createNoteEvent(
+                simulationID: 7,
+                request: SimulationNoteCreateRequest(content: "Observe airway"),
+                idempotencyKey: "k6"
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/events/notes/")
+        XCTAssertEqual(
+            try decodeJSONBody(api.capturedEndpoints.last?.body)?["content"] as? String,
+            "Observe airway"
         )
     }
 
@@ -176,13 +309,119 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
+    func testTrainerRuntimeStateDecodesRuntimeAdditions() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "state_revision": 12,
+          "active_elapsed_seconds": 90,
+          "tick_interval_seconds": 30,
+          "next_tick_at": "2026-03-12T12:01:30Z",
+          "scenario_brief": null,
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "vitals": [],
+            "annotations": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "recommended_interventions": []
+          },
+          "ai_plan": {
+            "summary": "Monitor airway",
+            "rationale": "",
+            "trigger": "",
+            "eta_seconds": null,
+            "confidence": 0.5,
+            "upcoming_changes": [],
+            "monitoring_focus": []
+          },
+          "ai_rationale_notes": ["watching trend"],
+          "pending_runtime_reasons": [{"kind": "trend"}],
+          "pending_reasons": [{"kind": "manual"}],
+          "currently_processing_reasons": [{"kind": "tick"}],
+          "last_runtime_error": "none",
+          "last_ai_tick_at": "2026-03-12T12:01:00Z"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let state = try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.aiPlan?.summary, "Monitor airway")
+        XCTAssertEqual(state.pendingRuntimeReasons.count, 1)
+        XCTAssertEqual(state.currentlyProcessingReasons.count, 1)
+        XCTAssertEqual(state.lastRuntimeError, "none")
+        XCTAssertNotNil(state.nextTickAt)
+        XCTAssertNotNil(state.lastAITickAt)
+    }
+
+    func testControlPlaneDebugDecodesCurrentBackendShape() throws {
+        let json = """
+        {
+          "execution_plan": ["assess", "stabilize"],
+          "current_step_index": 1,
+          "queued_reasons": [{"reason": "manual"}],
+          "currently_processing_reasons": [{"reason": "tick"}],
+          "last_processed_reasons": [{"reason": "done"}],
+          "last_failed_step": "",
+          "last_failed_error": "",
+          "last_patch_evaluation_summary": {"accepted": 1},
+          "last_rejected_or_normalized_summary": {"normalized": true},
+          "status_flags": {"paused": false}
+        }
+        """
+
+        let debug = try JSONDecoder().decode(ControlPlaneDebugOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(debug.executionPlan, ["assess", "stabilize"])
+        XCTAssertEqual(debug.currentStepIndex, 1)
+        XCTAssertEqual(debug.queuedReasons.count, 1)
+        XCTAssertEqual(debug.lastPatchEvaluationSummary["accepted"], .number(1))
+        XCTAssertEqual(debug.statusFlags["paused"], .bool(false))
+    }
+
+    func testAnnotationEnumsMatchBackendContract() {
+        XCTAssertEqual(
+            AnnotationLearningObjective.allCases.map(\.rawValue),
+            [
+                "assessment",
+                "hemorrhage_control",
+                "airway",
+                "breathing",
+                "circulation",
+                "hypothermia",
+                "communication",
+                "triage",
+                "intervention",
+                "other",
+            ]
+        )
+        XCTAssertEqual(
+            AnnotationOutcome.allCases.map(\.rawValue),
+            [
+                "correct",
+                "incorrect",
+                "missed",
+                "improvised",
+                "pending",
+            ]
+        )
+    }
+
     func testAnnotationCreateRequestEncodesCurrentBackendKeys() throws {
         let request = AnnotationCreateRequest(
             observationText: "Applied tourniquet.",
-            learningObjective: "hemorrhage_control",
-            outcome: "correct",
+            learningObjective: .hemorrhageControl,
+            outcome: .correct,
             linkedEventID: 99,
-            elapsedSecondsAt: 120,
+            elapsedSecondsAt: 120
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -236,7 +475,7 @@ final class TrainerLabContractTests: XCTestCase {
               ack_state TEXT NOT NULL
             );
             INSERT INTO grdb_migrations(identifier) VALUES ('create_pending_commands');
-            """,
+            """
         )
 
         try execSQL(
@@ -248,7 +487,7 @@ final class TrainerLabContractTests: XCTestCase {
               ('old-adjust', '/api/v1/simulations/77/adjust/', 'POST', NULL, 'h1', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-session-run', '/api/v1/trainerlab/sessions/55/run/start/', 'POST', NULL, 'h2', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-sessions-root', '/api/v1/trainerlab/sessions/', 'POST', NULL, 'h3', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending');
-            """,
+            """
         )
     }
 
@@ -261,8 +500,13 @@ final class TrainerLabContractTests: XCTestCase {
             throw NSError(
                 domain: "TrainerLabContractTests",
                 code: Int(result),
-                userInfo: [NSLocalizedDescriptionKey: message],
+                userInfo: [NSLocalizedDescriptionKey: message]
             )
         }
+    }
+
+    private func decodeJSONBody(_ data: Data?) throws -> [String: Any]? {
+        guard let data else { return nil }
+        return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
     }
 }

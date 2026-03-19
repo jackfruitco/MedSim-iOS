@@ -73,7 +73,7 @@ public final class SessionHubViewModel: ObservableObject {
                 "tick_interval_seconds": .number(10),
             ],
             directives: "Begin with unstable vitals and evolving airway compromise.",
-            modifiers: ["night-ops", "limited-resources"],
+            modifiers: ["night-ops", "limited-resources"]
         )
 
         do {

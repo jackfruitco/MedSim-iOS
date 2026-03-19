@@ -1,2 +1,2 @@
 --swift-version 6.2
---exclude .build,.git,MedSim.xcodeproj
+--exclude .build,.git,.swiftpm,DerivedData,build,MedSim.xcodeproj,apps/chatlab-ios/.build,apps/medsim-shell-ios/.build,apps/trainerlab-ios/.build

@@ -18,7 +18,7 @@ private final class PollingWithEventTransport: PollingTransportProtocol {
             eventType: "trainerlab.adjustment.accepted",
             createdAt: Date(),
             correlationID: nil,
-            payload: ["target": .string("avpu")],
+            payload: ["target": .string("avpu")]
         )
         return PaginatedResponse(items: [event], nextCursor: "event-1", hasMore: false)
     }
@@ -28,27 +28,23 @@ final class RealtimeClientTests: XCTestCase {
     func testFallsBackToPollingAfterSSEFailure() async {
         let realtime = RealtimeClient(
             sseTransport: FailingSSETransport(),
-            pollingTransport: PollingWithEventTransport(),
+            pollingTransport: PollingWithEventTransport()
         )
 
         let eventExpectation = expectation(description: "polling event received")
         let stateExpectation = expectation(description: "polling state emitted")
 
         let eventTask = Task {
-            for await event in realtime.events {
-                if event.eventID == "event-1" {
-                    eventExpectation.fulfill()
-                    break
-                }
+            for await event in realtime.events where event.eventID == "event-1" {
+                eventExpectation.fulfill()
+                break
             }
         }
 
         let stateTask = Task {
-            for await state in realtime.transportStates {
-                if state == .polling {
-                    stateExpectation.fulfill()
-                    break
-                }
+            for await state in realtime.transportStates where state == .polling {
+                stateExpectation.fulfill()
+                break
             }
         }
 

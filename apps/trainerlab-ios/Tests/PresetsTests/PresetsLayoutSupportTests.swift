@@ -51,20 +51,20 @@ final class PresetsLayoutSupportTests: XCTestCase {
                     "modified_at": "2026-03-12T12:00:00Z"
                   }
                 ]
-                """.utf8,
-            ),
+                """.utf8
+            )
         )
 
         XCTAssertEqual(
             PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .pad),
-            9,
+            9
         )
         XCTAssertNil(
-            PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .phone),
+            PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .phone)
         )
         XCTAssertEqual(
             PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: 11, presets: presets, layoutMode: .pad),
-            11,
+            11
         )
     }
 }

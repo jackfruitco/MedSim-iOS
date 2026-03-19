@@ -4,24 +4,28 @@ included:
   - MedSimUITests
   - apps
 
+cache_path: /tmp/.swiftlint-cache-medsim
+
 excluded:
   - .build
+  - .swiftpm
+  - DerivedData
+  - build
+  - MedSim.xcodeproj
   - apps/chatlab-ios/.build
   - apps/medsim-shell-ios/.build
   - apps/trainerlab-ios/.build
-  - MedSim.xcodeproj
 
-only_rules:
-  - closing_brace
-  - colon
-  - control_statement
-  - operator_usage_whitespace
-  - return_arrow_whitespace
-  - statement_position
-  - trailing_semicolon
-  - trailing_whitespace
-  - vertical_whitespace
+disabled_rules:
+  - cyclomatic_complexity
+  - file_length
+  - function_body_length
+  - identifier_name
+  - large_tuple
+  - line_length
+  - opening_brace
+  - static_over_final_class
+  - trailing_comma
+  - type_body_length
 
-reporter: github-actions-logging
-
-strict: true
+reporter: "xcode"

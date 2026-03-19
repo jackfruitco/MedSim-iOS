@@ -1,5 +1,4 @@
 import Foundation
-import Networking
 import Persistence
 import SharedModels
 
@@ -11,6 +10,42 @@ public protocol ChatRealtimeClientProtocol: Sendable {
     func send(eventType: String, payload: [String: JSONValue]) async
 }
 
+private enum ChatSSEStreamItem {
+    case event(ChatEventEnvelope)
+    case keepAlive
+}
+
+private actor ChatSSEFreshnessTracker {
+    private var lastSignalAt = Date()
+    private var staleTriggered = false
+
+    func markSignal() {
+        lastSignalAt = Date()
+    }
+
+    func shouldTriggerStale(threshold: TimeInterval) -> Bool {
+        guard !staleTriggered else { return false }
+        if Date().timeIntervalSince(lastSignalAt) > threshold {
+            staleTriggered = true
+            return true
+        }
+        return false
+    }
+
+    func didTriggerStale() -> Bool {
+        staleTriggered
+    }
+}
+
+enum ChatSSEParser {
+    static func parseEvent(dataString: String, decoder: JSONDecoder) throws -> ChatEventEnvelope? {
+        guard let data = dataString.data(using: .utf8) else {
+            return nil
+        }
+        return try decoder.decode(ChatEventEnvelope.self, from: data)
+    }
+}
+
 public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Sendable {
     public let events: AsyncStream<ChatEventEnvelope>
     public let connectionStates: AsyncStream<ChatRealtimeConnectionState>
@@ -20,12 +55,12 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     private let service: ChatLabServiceProtocol
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let staleThresholdSeconds: TimeInterval
 
     private let eventContinuation: AsyncStream<ChatEventEnvelope>.Continuation
     private let stateContinuation: AsyncStream<ChatRealtimeConnectionState>.Continuation
 
     private var runTask: Task<Void, Never>?
-    private var socketTask: URLSessionWebSocketTask?
     private var simulationID: Int?
     private var cursor: String?
     private var reconnectAttempt = 0
@@ -39,11 +74,13 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         tokenProvider: AuthTokenProvider,
         service: ChatLabServiceProtocol,
         session: URLSession = .shared,
+        staleThresholdSeconds: TimeInterval = 45
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
         self.service = service
         self.session = session
+        self.staleThresholdSeconds = staleThresholdSeconds
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -54,7 +91,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             }
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Invalid date string: \(value)",
+                debugDescription: "Invalid date string: \(value)"
             )
         }
         self.decoder = decoder
@@ -89,38 +126,22 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     public func disconnect() {
         runTask?.cancel()
         runTask = nil
-        socketTask?.cancel(with: .goingAway, reason: nil)
-        socketTask = nil
         stateContinuation.yield(.disconnected)
     }
 
-    public func send(eventType: String, payload: [String: JSONValue]) async {
-        guard let socketTask else {
-            return
-        }
-        var wirePayload: [String: Any] = ["type": eventType]
-        for (key, value) in payload {
-            wirePayload[key] = value.rawValue
-        }
-        guard JSONSerialization.isValidJSONObject(wirePayload),
-              let data = try? JSONSerialization.data(withJSONObject: wirePayload),
-              let text = String(data: data, encoding: .utf8)
-        else {
-            return
-        }
-        do {
-            try await socketTask.send(.string(text))
-        } catch {
-            // Socket send failures are handled by reconnect loop.
-        }
+    public func send(eventType _: String, payload _: [String: JSONValue]) async {
+        // Generic simulation realtime is SSE-only in the backend contract.
+        // Typing remains a local UI affordance until a supported upstream channel exists.
     }
 
     private func runLoop() async {
         guard let simulationID else { return }
+        var currentCursor = cursor
+
         while !Task.isCancelled {
             do {
                 stateContinuation.yield(.connecting)
-                try await connectAndConsume(simulationID: simulationID)
+                try await consumeSSE(simulationID: simulationID, currentCursor: &currentCursor)
                 reconnectAttempt = 0
             } catch {
                 if Task.isCancelled {
@@ -128,41 +149,120 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 }
                 reconnectAttempt += 1
                 stateContinuation.yield(.reconnecting(attempt: reconnectAttempt))
-                await performCatchup(simulationID: simulationID)
+                await performCatchup(simulationID: simulationID, currentCursor: &currentCursor)
 
                 let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
                 let jitter = Double.random(in: 0 ... 0.35)
                 try? await Task.sleep(nanoseconds: UInt64((delaySeconds + jitter) * 1_000_000_000))
             }
         }
+
+        cursor = currentCursor
         stateContinuation.yield(.disconnected)
     }
 
-    private func connectAndConsume(simulationID: Int) async throws {
-        let request = try makeWebSocketRequest(simulationID: simulationID)
-        let task = session.webSocketTask(with: request)
-        socketTask = task
-        task.resume()
+    private func consumeSSE(simulationID: Int, currentCursor: inout String?) async throws {
         stateContinuation.yield(.connected)
-
-        let readyPayload = #"{"type":"client_ready","content_mode":"rawOutput"}"#
-        try await task.send(.string(readyPayload))
-
-        while !Task.isCancelled {
-            let message = try await task.receive()
-            switch message {
-            case let .string(text):
-                try handleSocketText(text)
-            case let .data(data):
-                guard let text = String(data: data, encoding: .utf8) else { continue }
-                try handleSocketText(text)
-            @unknown default:
+        for try await item in streamSSE(simulationID: simulationID, cursor: currentCursor) {
+            switch item {
+            case let .event(event):
+                currentCursor = event.eventID
+                cursor = event.eventID
+                emitIfNew(event)
+            case .keepAlive:
                 continue
+            }
+        }
+        throw URLError(.networkConnectionLost)
+    }
+
+    private func streamSSE(simulationID: Int, cursor: String?) -> AsyncThrowingStream<ChatSSEStreamItem, Error> {
+        AsyncThrowingStream { continuation in
+            let freshness = ChatSSEFreshnessTracker()
+            let task = Task {
+                do {
+                    let request = try makeSSERequest(simulationID: simulationID, cursor: cursor)
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+                        throw URLError(.badServerResponse)
+                    }
+
+                    var dataLines: [String] = []
+                    var currentEventType: String?
+
+                    for try await line in bytes.lines {
+                        if Task.isCancelled {
+                            break
+                        }
+
+                        if line.hasPrefix(":") {
+                            await freshness.markSignal()
+                            continuation.yield(.keepAlive)
+                            continue
+                        }
+
+                        if line.isEmpty {
+                            let isHeartbeat = currentEventType == "heartbeat"
+                            if isHeartbeat {
+                                await freshness.markSignal()
+                                continuation.yield(.keepAlive)
+                            } else if !dataLines.isEmpty {
+                                let payload = dataLines.joined(separator: "\n")
+                                if let event = try ChatSSEParser.parseEvent(dataString: payload, decoder: decoder) {
+                                    await freshness.markSignal()
+                                    continuation.yield(.event(event))
+                                }
+                            }
+                            dataLines.removeAll(keepingCapacity: true)
+                            currentEventType = nil
+                            continue
+                        }
+
+                        if line.hasPrefix("event:") {
+                            currentEventType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                            continue
+                        }
+
+                        if line.hasPrefix("data:") {
+                            let value = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                            dataLines.append(value)
+                        }
+                    }
+
+                    if await freshness.didTriggerStale() {
+                        continuation.finish(throwing: URLError(.timedOut))
+                    } else {
+                        continuation.finish()
+                    }
+                } catch {
+                    if await freshness.didTriggerStale() {
+                        continuation.finish(throwing: URLError(.timedOut))
+                    } else if Task.isCancelled {
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
+
+            let watchdog = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if await freshness.shouldTriggerStale(threshold: staleThresholdSeconds) {
+                        task.cancel()
+                        return
+                    }
+                }
+            }
+
+            continuation.onTermination = { _ in
+                watchdog.cancel()
+                task.cancel()
             }
         }
     }
 
-    private func makeWebSocketRequest(simulationID: Int) throws -> URLRequest {
+    private func makeSSERequest(simulationID: Int, cursor: String?) throws -> URLRequest {
         guard let tokens = tokenProvider.loadTokens() else {
             throw URLError(.userAuthenticationRequired)
         }
@@ -171,47 +271,21 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw URLError(.badURL)
         }
-        components.path = "/ws/simulation/\(simulationID)/"
-        if let scheme = components.scheme {
-            components.scheme = scheme == "https" ? "wss" : "ws"
+        components.path = "/api/v1/simulations/\(simulationID)/events/stream/"
+        if let cursor {
+            components.queryItems = [URLQueryItem(name: "cursor", value: cursor)]
         }
+
         guard let url = components.url else {
             throw URLError(.badURL)
         }
 
         var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
         return request
-    }
-
-    private func handleSocketText(_ text: String) throws {
-        guard let data = text.data(using: .utf8) else { return }
-        if let envelope = try? decoder.decode(ChatEventEnvelope.self, from: data) {
-            cursor = envelope.eventID
-            emitIfNew(envelope)
-            return
-        }
-
-        // Legacy web socket payload format: {"type":"typing", ...}
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return
-        }
-        guard let type = object["type"] as? String else { return }
-
-        var payload: [String: JSONValue] = [:]
-        for (key, value) in object where key != "type" {
-            payload[key] = Self.toJSONValue(value)
-        }
-
-        let legacyEnvelope = ChatEventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
-            eventType: type,
-            createdAt: Date(),
-            correlationID: nil,
-            payload: payload,
-        )
-        emitIfNew(legacyEnvelope)
     }
 
     private func emitIfNew(_ event: ChatEventEnvelope) {
@@ -227,15 +301,14 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         eventContinuation.yield(event)
     }
 
-    private func performCatchup(simulationID: Int) async {
+    private func performCatchup(simulationID: Int, currentCursor: inout String?) async {
         stateContinuation.yield(.catchingUp)
-        var currentCursor = cursor
         do {
             while !Task.isCancelled {
                 let page = try await service.listEvents(
                     simulationID: simulationID,
                     cursor: currentCursor,
-                    limit: 50,
+                    limit: 50
                 )
                 if page.items.isEmpty, !page.hasMore {
                     break
@@ -252,7 +325,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             }
             cursor = currentCursor
         } catch {
-            // Ignore catch-up failures and continue reconnect attempts.
+            // Keep reconnect loop alive and try SSE again.
         }
     }
 
@@ -265,20 +338,5 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         let standard = ISO8601DateFormatter()
         standard.formatOptions = [.withInternetDateTime]
         return standard.date(from: value)
-    }
-
-    private nonisolated static func toJSONValue(_ any: Any) -> JSONValue {
-        if any is NSNull { return .null }
-        if let value = any as? Bool { return .bool(value) }
-        if let value = any as? Double { return .number(value) }
-        if let value = any as? Int { return .number(Double(value)) }
-        if let value = any as? String { return .string(value) }
-        if let value = any as? [Any] {
-            return .array(value.map(toJSONValue))
-        }
-        if let value = any as? [String: Any] {
-            return .object(value.mapValues(toJSONValue))
-        }
-        return .null
     }
 }

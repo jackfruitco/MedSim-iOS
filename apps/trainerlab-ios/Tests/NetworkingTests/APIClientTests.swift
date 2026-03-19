@@ -80,30 +80,30 @@ final class APIClientTests: XCTestCase {
 
             if path == "/api/v1/protected" {
                 if auth == "Bearer old-token" {
-                    let body = "{\"type\":\"http_error\",\"title\":\"Unauthorized\",\"status\":401,\"detail\":\"expired\",\"instance\":\"/api/v1/protected/\",\"correlation_id\":\"abc\"}".data(using: .utf8)!
+                    let body = Data("{\"type\":\"http_error\",\"title\":\"Unauthorized\",\"status\":401,\"detail\":\"expired\",\"instance\":\"/api/v1/protected/\",\"correlation_id\":\"abc\"}".utf8)
                     return (HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!, body)
                 }
                 if auth == "Bearer new-token" {
-                    let body = "{\"value\":\"ok\"}".data(using: .utf8)!
+                    let body = Data("{\"value\":\"ok\"}".utf8)
                     return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
                 }
             }
 
             if path == "/api/v1/auth/token/refresh" {
                 XCTAssertEqual(method, "POST")
-                let body = "{\"access_token\":\"new-token\",\"refresh_token\":\"refresh-2\",\"expires_in\":3600,\"token_type\":\"Bearer\"}".data(using: .utf8)!
+                let body = Data("{\"access_token\":\"new-token\",\"refresh_token\":\"refresh-2\",\"expires_in\":3600,\"token_type\":\"Bearer\"}".utf8)
                 return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
             }
 
             XCTFail("Unhandled request in URLProtocolMock: method=\(method), path=\(url.path), auth=\(auth)")
-            let body = "{\"type\":\"http_error\",\"title\":\"Unhandled request\",\"status\":500,\"detail\":\"Unhandled request in test mock\",\"instance\":\"\(url.path)\"}".data(using: .utf8)!
+            let body = Data("{\"type\":\"http_error\",\"title\":\"Unhandled request\",\"status\":500,\"detail\":\"Unhandled request in test mock\",\"instance\":\"\(url.path)\"}".utf8)
             return (HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!, body)
         }
 
         let client = APIClient(
             baseURLProvider: { URL(string: "https://example.com")! },
             tokenProvider: tokenProvider,
-            session: session,
+            session: session
         )
 
         let endpoint = Endpoint(path: "/api/v1/protected/")

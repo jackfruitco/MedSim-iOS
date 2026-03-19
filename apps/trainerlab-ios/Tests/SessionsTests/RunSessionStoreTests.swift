@@ -31,7 +31,19 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
+    func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut {
+        throw MockServiceError.unused
+    }
+
     func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockServiceError.unused
+    }
+
+    func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
+    func triggerVitalsTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
         throw MockServiceError.unused
     }
 
@@ -139,6 +151,10 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
+    func createNoteEvent(simulationID _: Int, request _: SimulationNoteCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockServiceError.unused
+    }
+
     func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut {
         throw MockServiceError.unused
     }
@@ -203,7 +219,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore(),
+            commandQueue: InMemoryCommandQueueStore()
         )
         store.bind(session: makeSession(status: .seeded))
         store.startConsole()
@@ -214,7 +230,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "trainerlab.adjustment.applied",
             createdAt: Date(),
             correlationID: "corr-1",
-            payload: ["target": .string("avpu")],
+            payload: ["target": .string("avpu")]
         )
 
         realtime.emit(event: event)
@@ -234,7 +250,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore(),
+            commandQueue: InMemoryCommandQueueStore()
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -249,7 +265,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "vital_type": .string("heart_rate"),
                 "min_value": .number(80),
                 "max_value": .number(140),
-            ],
+            ]
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -264,7 +280,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore(),
+            commandQueue: InMemoryCommandQueueStore()
         )
         store.bind(session: makeSession(status: .seeded))
         store.startConsole()
@@ -275,7 +291,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "run.started",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: [:]
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -293,7 +309,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "run.paused",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: [:]
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -309,7 +325,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "trainerlab.run.resumed",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: [:]
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -328,7 +344,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: queue,
+            commandQueue: queue
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -352,7 +368,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: MockRealtimeClient(),
-            commandQueue: InMemoryCommandQueueStore(),
+            commandQueue: InMemoryCommandQueueStore()
         )
 
         store.addTrainerNote("Patient became more agitated after intervention.")
@@ -362,7 +378,7 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .note)
         XCTAssertEqual(
             store.state.clinicalTimelineEntries.first?.message,
-            "Patient became more agitated after intervention.",
+            "Patient became more agitated after intervention."
         )
     }
 
@@ -379,13 +395,13 @@ final class RunSessionStoreTests: XCTestCase {
             runCompletedAt: nil,
             lastAITickAt: nil,
             createdAt: Date(),
-            modifiedAt: Date(),
+            modifiedAt: Date()
         )
     }
 
     private func waitUntil(
         timeout: TimeInterval,
-        condition: @escaping @MainActor () -> Bool,
+        condition: @escaping @MainActor () -> Bool
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

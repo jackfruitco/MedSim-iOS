@@ -32,7 +32,7 @@ enum RunConsoleCompactControlPresentation: Equatable {
 
     static func resolve(
         layoutMode: RunConsoleLayoutMode,
-        horizontalSizeClass: UserInterfaceSizeClass?,
+        horizontalSizeClass: UserInterfaceSizeClass?
     ) -> Self {
         guard layoutMode == .compact, horizontalSizeClass == .compact else {
             return .labeled
@@ -106,7 +106,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 40,
         vitalCellPadding: 7,
-        vitalValueVerticalPadding: 3,
+        vitalValueVerticalPadding: 3
     )
 
     static let narrowPhone = Self(
@@ -124,7 +124,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 38,
         vitalCellPadding: 6,
-        vitalValueVerticalPadding: 3,
+        vitalValueVerticalPadding: 3
     )
 }
 
@@ -329,7 +329,7 @@ struct PatientDiagramPanel: View {
         injury: InjuryAnnotation,
         interventions: [InterventionAnnotation],
         problems: [ProblemAnnotation],
-        size: CGSize,
+        size: CGSize
     ) -> some View {
         let cx = injury.x * size.width
         let cy = injury.y * size.height
@@ -513,7 +513,7 @@ struct PatientDiagramPanel: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08)),
+                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08))
                 )
             }
         }
@@ -673,7 +673,7 @@ struct PatientDiagramPanel: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
-                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15)),
+                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15))
                 )
         }
         .padding(.vertical, 3)
@@ -850,11 +850,11 @@ struct PatientDiagramPanel: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(TrainerLabTheme.tacticalSurfaceElevated),
+                .fill(TrainerLabTheme.tacticalSurfaceElevated)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
         )
     }
 
@@ -884,7 +884,7 @@ struct PatientDiagramPanel: View {
     private func problemStatusButton(
         _ title: String,
         status: ProblemLifecycleState,
-        for problem: ProblemAnnotation,
+        for problem: ProblemAnnotation
     ) -> some View {
         Button(title) {
             onUpdateProblemStatus?(problem, status)
@@ -982,7 +982,7 @@ struct PulsingModifier: ViewModifier {
             .scaleEffect(active && isPulsing ? 1.25 : 1.0)
             .animation(
                 active ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
-                value: isPulsing,
+                value: isPulsing
             )
             .onAppear {
                 if active { isPulsing = true }

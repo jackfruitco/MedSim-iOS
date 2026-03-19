@@ -59,7 +59,7 @@ public final class ChatToolsStore: ObservableObject {
         do {
             _ = try await service.signOrders(
                 simulationID: simulationID,
-                request: ChatSignOrdersRequest(submittedOrders: stagedOrders),
+                request: ChatSignOrdersRequest(submittedOrders: stagedOrders)
             )
             stagedOrders.removeAll()
             await refreshTools()

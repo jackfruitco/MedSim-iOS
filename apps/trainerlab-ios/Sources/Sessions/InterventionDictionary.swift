@@ -72,7 +72,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
                 InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "wound_packing",
@@ -84,7 +84,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "LEFT_INGUINAL", label: "Left Inguinal"),
                 InterventionSite(code: "RIGHT_NECK", label: "Right Neck"),
                 InterventionSite(code: "LEFT_NECK", label: "Left Neck"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "pressure_dressing",
@@ -94,7 +94,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
                 InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "npa",
@@ -102,14 +102,14 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "RIGHT_NARE", label: "Right Nare"),
                 InterventionSite(code: "LEFT_NARE", label: "Left Nare"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "opa",
             label: "Oropharyngeal Airway (OPA)",
             sites: [
                 InterventionSite(code: "ORAL", label: "Oral"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "needle_decompression",
@@ -119,14 +119,14 @@ public enum InterventionDictionary {
                 InterventionSite(code: "LEFT_ANTERIOR_CHEST", label: "Left Anterior Chest"),
                 InterventionSite(code: "RIGHT_LATERAL_CHEST", label: "Right Lateral Chest"),
                 InterventionSite(code: "LEFT_LATERAL_CHEST", label: "Left Lateral Chest"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "surgical_cric",
             label: "Surgical Cricothyrotomy",
             sites: [
                 InterventionSite(code: "ANTERIOR_NECK_MIDLINE", label: "Anterior Neck Midline"),
-            ],
+            ]
         ),
     ]
 
@@ -141,21 +141,21 @@ public enum InterventionDictionary {
                 InterventionSite(code: "JTQ-LEFT-GROIN", label: "Left Groin"),
                 InterventionSite(code: "JTQ-RIGHT-AXILLA", label: "Right Axilla"),
                 InterventionSite(code: "JTQ-LEFT-AXILLA", label: "Left Axilla"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "hemostatic_agent",
             label: "Hemostatic Agent",
             sites: [
                 InterventionSite(code: "HA-WOUND-SITE", label: "Wound Site"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "pelvic_binder",
             label: "Pelvic Binder",
             sites: [
                 InterventionSite(code: "PB-PELVIS", label: "Pelvis"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "iv_access",
@@ -167,7 +167,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "IV-LEFT-EJ", label: "Left External Jugular"),
                 InterventionSite(code: "IV-RIGHT-FEM", label: "Right Femoral"),
                 InterventionSite(code: "IV-LEFT-FEM", label: "Left Femoral"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "io_access",
@@ -178,7 +178,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "IO-STERNUM", label: "Sternum"),
                 InterventionSite(code: "IO-RIGHT-HUMERUS", label: "Right Humerus"),
                 InterventionSite(code: "IO-LEFT-HUMERUS", label: "Left Humerus"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "fluid_resuscitation",
@@ -186,7 +186,7 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
                 InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "blood_transfusion",
@@ -194,7 +194,7 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
                 InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "advanced_airway",
@@ -202,7 +202,7 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "AA-ORAL-TRACHEA", label: "Oral/Tracheal"),
                 InterventionSite(code: "AA-NASAL-TRACHEA", label: "Nasotracheal"),
-            ],
+            ]
         ),
         InterventionGroup(
             interventionType: "chest_tube",
@@ -212,7 +212,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "CT-LEFT-4TH-ICS", label: "Left 4th ICS"),
                 InterventionSite(code: "CT-RIGHT-5TH-ICS", label: "Right 5th ICS"),
                 InterventionSite(code: "CT-LEFT-5TH-ICS", label: "Left 5th ICS"),
-            ],
+            ]
         ),
     ]
 
@@ -302,7 +302,7 @@ public enum InterventionDictionary {
     /// Find a group by its intervention_type code, checking live cache first.
     public static func group(
         for interventionType: String,
-        in live: [InterventionGroup],
+        in live: [InterventionGroup]
     ) -> InterventionGroup? {
         (live.isEmpty ? bundled : live).first { $0.interventionType == interventionType }
     }
