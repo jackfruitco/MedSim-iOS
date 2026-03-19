@@ -612,13 +612,13 @@ public struct RunConsoleView: View {
                     briefRow(label: "Threat", value: threat)
                 }
                 if !brief.evacuationOptions.isEmpty {
-                    briefRow(label: "Evacuation", value: brief.evacuationOptions.joined(separator: ", "))
+                    briefListRow(label: "Evacuation", values: brief.evacuationOptions)
                 }
                 if let evacTime = brief.evacuationTime {
                     briefRow(label: "EVAC ETA", value: evacTime)
                 }
                 if !brief.specialConsiderations.isEmpty {
-                    briefRow(label: "Special", value: brief.specialConsiderations.joined(separator: ", "))
+                    briefListRow(label: "Special", values: brief.specialConsiderations)
                 }
             }
         } else {
@@ -717,6 +717,23 @@ public struct RunConsoleView: View {
             Text(value)
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func briefListRow(label: String, values: [String]) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label + ":")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(values, id: \.self) { value in
+                    Text("• \(value)")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -2361,11 +2378,13 @@ private struct ScenarioBriefEditSheet: View {
                     TextField("Threat context", text: $threatContext)
                 }
                 Section("Evacuation") {
-                    TextField("Options", text: $evacuationOptions)
+                    TextField("Options (comma or newline separated)", text: $evacuationOptions, axis: .vertical)
+                        .lineLimit(2...4)
                     TextField("ETA", text: $evacuationTime)
                 }
                 Section("Special Considerations") {
-                    TextField("Special considerations", text: $specialConsiderations)
+                    TextField("Special considerations (comma or newline separated)", text: $specialConsiderations, axis: .vertical)
+                        .lineLimit(2...4)
                 }
             }
             .navigationTitle("Edit Scenario Brief")
@@ -2381,9 +2400,9 @@ private struct ScenarioBriefEditSheet: View {
                             environment: environment,
                             locationOverview: locationOverview.isEmpty ? nil : locationOverview,
                             threatContext: threatContext.isEmpty ? nil : threatContext,
-                            evacuationOptions: csvList(from: evacuationOptions),
+                            evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: csvList(from: specialConsiderations)
+                            specialConsiderations: parseList(from: specialConsiderations)
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -2392,8 +2411,9 @@ private struct ScenarioBriefEditSheet: View {
         }
     }
 
-    private func csvList(from input: String) -> [String]? {
-        let values = input
+    private func parseList(from input: String) -> [String]? {
+        let normalized = input.replacingOccurrences(of: "\n", with: ",")
+        let values = normalized
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
