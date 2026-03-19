@@ -617,18 +617,18 @@ public struct ScenarioBriefOut: Codable, Sendable {
     public let environment: String
     public let locationOverview: String?
     public let threatContext: String?
-    public let evacuationOptions: String?
+    public let evacuationOptions: [String]
     public let evacuationTime: String?
-    public let specialConsiderations: String?
+    public let specialConsiderations: [String]
 
     public init(
         readAloudBrief: String,
         environment: String,
         locationOverview: String? = nil,
         threatContext: String? = nil,
-        evacuationOptions: String? = nil,
+        evacuationOptions: [String] = [],
         evacuationTime: String? = nil,
-        specialConsiderations: String? = nil
+        specialConsiderations: [String] = []
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment
@@ -647,6 +647,29 @@ public struct ScenarioBriefOut: Codable, Sendable {
         case evacuationOptions = "evacuation_options"
         case evacuationTime = "evacuation_time"
         case specialConsiderations = "special_considerations"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        readAloudBrief = try container.decodeIfPresent(String.self, forKey: .readAloudBrief) ?? ""
+        environment = try container.decodeIfPresent(String.self, forKey: .environment) ?? ""
+        locationOverview = try container.decodeIfPresent(String.self, forKey: .locationOverview)
+        threatContext = try container.decodeIfPresent(String.self, forKey: .threatContext)
+        evacuationOptions = try container.decodeStringArrayOrSingle(forKey: .evacuationOptions)
+        evacuationTime = try container.decodeIfPresent(String.self, forKey: .evacuationTime)
+        specialConsiderations = try container.decodeStringArrayOrSingle(forKey: .specialConsiderations)
+    }
+}
+
+private extension KeyedDecodingContainer where K == ScenarioBriefOut.CodingKeys {
+    func decodeStringArrayOrSingle(forKey key: K) throws -> [String] {
+        if let values = try decodeIfPresent([String].self, forKey: key) {
+            return values
+        }
+        if let single = try decodeIfPresent(String.self, forKey: key), !single.isEmpty {
+            return [single]
+        }
+        return []
     }
 }
 
@@ -1438,32 +1461,35 @@ public enum AVPUState: String, CaseIterable, Codable, Sendable {
 // MARK: - Problem State Updates
 
 public struct ProblemStatusUpdateRequest: Codable, Sendable {
-    public let status: ProblemLifecycleState
+    public let isTreated: Bool?
+    public let isResolved: Bool?
 
-    public init(status: ProblemLifecycleState) {
-        self.status = status
+    public init(isTreated: Bool? = nil, isResolved: Bool? = nil) {
+        self.isTreated = isTreated
+        self.isResolved = isResolved
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case isTreated = "is_treated"
+        case isResolved = "is_resolved"
     }
 }
 
 public struct ProblemStatusOut: Codable, Sendable {
     public let problemID: Int
+    public let isTreated: Bool
+    public let isControlled: Bool
+    public let isResolved: Bool
     public let status: ProblemLifecycleState
-    public let previousStatus: ProblemLifecycleState?
-    public let title: String?
-    public let displayName: String?
-    public let treatedAt: Date?
-    public let controlledAt: Date?
-    public let resolvedAt: Date?
+    public let label: String
 
     enum CodingKeys: String, CodingKey {
         case problemID = "problem_id"
+        case isTreated = "is_treated"
+        case isControlled = "is_controlled"
+        case isResolved = "is_resolved"
         case status
-        case previousStatus = "previous_status"
-        case title
-        case displayName = "display_name"
-        case treatedAt = "treated_at"
-        case controlledAt = "controlled_at"
-        case resolvedAt = "resolved_at"
+        case label
     }
 }
 
@@ -1630,32 +1656,61 @@ public struct DispositionStateCreateRequest: Codable, Sendable {
 // MARK: - Annotations
 
 public struct AnnotationCreateRequest: Codable, Sendable {
-    public let content: String
-    public let annotationType: String?
+    public let learningObjective: String
+    public let observationText: String
+    public let outcome: String
+    public let linkedEventID: Int?
+    public let elapsedSecondsAt: Int?
 
-    public init(content: String, annotationType: String? = nil) {
-        self.content = content
-        self.annotationType = annotationType
+    public init(
+        observationText: String,
+        learningObjective: String = "other",
+        outcome: String = "pending",
+        linkedEventID: Int? = nil,
+        elapsedSecondsAt: Int? = nil
+    ) {
+        self.learningObjective = learningObjective
+        self.observationText = observationText
+        self.outcome = outcome
+        self.linkedEventID = linkedEventID
+        self.elapsedSecondsAt = elapsedSecondsAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case content
-        case annotationType = "annotation_type"
+        case learningObjective = "learning_objective"
+        case observationText = "observation_text"
+        case outcome
+        case linkedEventID = "linked_event_id"
+        case elapsedSecondsAt = "elapsed_seconds_at"
     }
 }
 
 public struct AnnotationOut: Codable, Identifiable, Sendable {
     public let id: Int
-    public let content: String
-    public let annotationType: String?
-    public let createdBy: Int?
+    public let sessionID: Int
+    public let simulationID: Int
+    public let createdByID: Int?
+    public let learningObjective: String
+    public let learningObjectiveLabel: String
+    public let observationText: String
+    public let outcome: String
+    public let outcomeLabel: String
+    public let linkedEventID: Int?
+    public let elapsedSecondsAt: Int?
     public let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
         case id
-        case content
-        case annotationType = "annotation_type"
-        case createdBy = "created_by"
+        case sessionID = "session_id"
+        case simulationID = "simulation_id"
+        case createdByID = "created_by_id"
+        case learningObjective = "learning_objective"
+        case learningObjectiveLabel = "learning_objective_label"
+        case observationText = "observation_text"
+        case outcome
+        case outcomeLabel = "outcome_label"
+        case linkedEventID = "linked_event_id"
+        case elapsedSecondsAt = "elapsed_seconds_at"
         case createdAt = "created_at"
     }
 }
@@ -1667,18 +1722,18 @@ public struct ScenarioBriefUpdateRequest: Codable, Sendable {
     public let environment: String?
     public let locationOverview: String?
     public let threatContext: String?
-    public let evacuationOptions: String?
+    public let evacuationOptions: [String]?
     public let evacuationTime: String?
-    public let specialConsiderations: String?
+    public let specialConsiderations: [String]?
 
     public init(
         readAloudBrief: String? = nil,
         environment: String? = nil,
         locationOverview: String? = nil,
         threatContext: String? = nil,
-        evacuationOptions: String? = nil,
+        evacuationOptions: [String]? = nil,
         evacuationTime: String? = nil,
-        specialConsiderations: String? = nil
+        specialConsiderations: [String]? = nil
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment

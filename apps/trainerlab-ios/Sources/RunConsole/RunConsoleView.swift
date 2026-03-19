@@ -611,14 +611,14 @@ public struct RunConsoleView: View {
                 if let threat = brief.threatContext {
                     briefRow(label: "Threat", value: threat)
                 }
-                if let evac = brief.evacuationOptions {
-                    briefRow(label: "Evacuation", value: evac)
+                if !brief.evacuationOptions.isEmpty {
+                    briefRow(label: "Evacuation", value: brief.evacuationOptions.joined(separator: ", "))
                 }
                 if let evacTime = brief.evacuationTime {
                     briefRow(label: "EVAC ETA", value: evacTime)
                 }
-                if let special = brief.specialConsiderations {
-                    briefRow(label: "Special", value: special)
+                if !brief.specialConsiderations.isEmpty {
+                    briefRow(label: "Special", value: brief.specialConsiderations.joined(separator: ", "))
                 }
             }
         } else {
@@ -2339,9 +2339,9 @@ private struct ScenarioBriefEditSheet: View {
         _environment = State(initialValue: brief.environment)
         _locationOverview = State(initialValue: brief.locationOverview ?? "")
         _threatContext = State(initialValue: brief.threatContext ?? "")
-        _evacuationOptions = State(initialValue: brief.evacuationOptions ?? "")
+        _evacuationOptions = State(initialValue: brief.evacuationOptions.joined(separator: ", "))
         _evacuationTime = State(initialValue: brief.evacuationTime ?? "")
-        _specialConsiderations = State(initialValue: brief.specialConsiderations ?? "")
+        _specialConsiderations = State(initialValue: brief.specialConsiderations.joined(separator: ", "))
     }
 
     var body: some View {
@@ -2381,14 +2381,22 @@ private struct ScenarioBriefEditSheet: View {
                             environment: environment,
                             locationOverview: locationOverview.isEmpty ? nil : locationOverview,
                             threatContext: threatContext.isEmpty ? nil : threatContext,
-                            evacuationOptions: evacuationOptions.isEmpty ? nil : evacuationOptions,
+                            evacuationOptions: csvList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: specialConsiderations.isEmpty ? nil : specialConsiderations
+                            specialConsiderations: csvList(from: specialConsiderations)
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
+    }
+
+    private func csvList(from input: String) -> [String]? {
+        let values = input
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return values.isEmpty ? nil : values
     }
 }

@@ -402,7 +402,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         let body = try encoder.encode(request)
         return try await apiClient.request(
             Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/status/",
+                path: "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/",
                 method: .patch,
                 body: body,
                 idempotencyKey: idempotencyKey
