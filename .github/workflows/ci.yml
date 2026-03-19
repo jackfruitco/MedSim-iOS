@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           swiftlint version
-          swiftlint lint --strict --config .swiftlint.yml --force-exclude
+          swiftlint lint --strict --config .swiftlint.yml --force-exclude --no-cache
 
   spm-package-validation:
     name: SPM Package Validation (${{ matrix.package.name }})
@@ -346,8 +346,8 @@ jobs:
           XCRESULT_PATH: /tmp/coverage-input/ios-unit-tests.xcresult
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/coverage"
-          xcrun xccov view --report --json "$XCRESULT_PATH" > "$RUNNER_TEMP/coverage/coverage-report.json"
+          mkdir -p /tmp/coverage
+          xcrun xccov view --report --json "$XCRESULT_PATH" > /tmp/coverage/coverage-report.json
 
           python3 - <<'PY'
           import json
@@ -355,9 +355,9 @@ jobs:
           import pathlib
           import sys
 
-          coverage_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coverage" / "coverage-report.json"
-          summary_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coverage" / "coverage-summary.md"
-          text_path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "coverage" / "coverage-summary.txt"
+          coverage_path = pathlib.Path("/tmp/coverage/coverage-report.json")
+          summary_path = pathlib.Path("/tmp/coverage/coverage-summary.md")
+          text_path = pathlib.Path("/tmp/coverage/coverage-summary.txt")
           threshold = float(os.environ["COVERAGE_THRESHOLD"])
 
           report = json.loads(coverage_path.read_text())

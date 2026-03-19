@@ -25,24 +25,24 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
 
     private var seenEventIDs = Set<String>()
     private var seenEventOrder: [String] = []
-    private let seenCapacity = 2_000
+    private let seenCapacity = 2000
 
     public init(sseTransport: SSETransportProtocol, pollingTransport: PollingTransportProtocol) {
         self.sseTransport = sseTransport
         self.pollingTransport = pollingTransport
 
         var eventCont: AsyncStream<EventEnvelope>.Continuation!
-        self.events = AsyncStream<EventEnvelope> { continuation in
+        events = AsyncStream<EventEnvelope> { continuation in
             eventCont = continuation
         }
-        self.eventContinuation = eventCont
+        eventContinuation = eventCont
 
         var stateCont: AsyncStream<RealtimeTransportState>.Continuation!
-        self.transportStates = AsyncStream<RealtimeTransportState> { continuation in
+        transportStates = AsyncStream<RealtimeTransportState> { continuation in
             stateCont = continuation
             continuation.yield(.disconnected)
         }
-        self.stateContinuation = stateCont
+        stateContinuation = stateCont
     }
 
     public func connect(simulationID: Int, cursor: String?) async {
@@ -63,7 +63,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
                     try await consumeSSE(
                         simulationID: simulationID,
                         cursor: currentCursor,
-                        currentCursor: &currentCursor
+                        currentCursor: &currentCursor,
                     )
                     reconnectAttempt = 0
                 } catch {
@@ -82,7 +82,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
                         try await consumePollingUntilRetry(
                             simulationID: simulationID,
                             currentCursor: &currentCursor,
-                            retryDeadline: retryDeadline
+                            retryDeadline: retryDeadline,
                         )
                     } catch {
                         // Keep retry loop alive.
@@ -109,7 +109,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     private func consumeSSE(
         simulationID: Int,
         cursor: String?,
-        currentCursor: inout String?
+        currentCursor: inout String?,
     ) async throws {
         logger.info("SSE connected to simulation \(simulationID) cursor=\(cursor ?? "nil")")
         stateContinuation.yield(.connectedSSE)
@@ -128,12 +128,12 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     private func consumePollingUntilRetry(
         simulationID: Int,
         currentCursor: inout String?,
-        retryDeadline: Date
+        retryDeadline: Date,
     ) async throws {
         while Date() < retryDeadline {
             let page = try await pollingTransport.fetch(
                 simulationID: simulationID,
-                cursor: currentCursor
+                cursor: currentCursor,
             )
             if !page.items.isEmpty {
                 for event in page.items {
@@ -174,6 +174,6 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     }
 
     private func jitterSeconds() -> TimeInterval {
-        Double.random(in: 0.0...0.25)
+        Double.random(in: 0.0 ... 0.25)
     }
 }

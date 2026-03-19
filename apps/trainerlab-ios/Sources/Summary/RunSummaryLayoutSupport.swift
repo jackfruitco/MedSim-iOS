@@ -10,9 +10,9 @@ enum RunSummarySection: String, CaseIterable {
     func defaultExpanded(for layoutMode: RunSummaryLayoutMode) -> Bool {
         switch layoutMode {
         case .pad:
-            return true
+            true
         case .phone, .narrowPhone:
-            return self == .timeline
+            self == .timeline
         }
     }
 }

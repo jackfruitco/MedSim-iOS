@@ -1,13 +1,13 @@
 #if canImport(UIKit)
-import UIKit
+    import UIKit
 #endif
 import SwiftUI
 
 enum ChatLabTheme {
     #if canImport(UIKit)
-    static let systemBackground = Color(uiColor: .systemBackground)
+        static let systemBackground = Color(uiColor: .systemBackground)
     #else
-    static let systemBackground = Color.white
+        static let systemBackground = Color.white
     #endif
 }
 
@@ -62,26 +62,26 @@ enum ChatToolsSection: String, CaseIterable {
     var title: String {
         switch self {
         case .patientHistory:
-            return "Patient History"
+            "Patient History"
         case .patientResults:
-            return "Patient Results"
+            "Patient Results"
         case .simulationFeedback:
-            return "Simulation Feedback"
+            "Simulation Feedback"
         case .simulationMetadata:
-            return "Simulation Metadata"
+            "Simulation Metadata"
         case .requestLabs:
-            return "Request Labs"
+            "Request Labs"
         }
     }
 
     func defaultExpanded(for mode: ChatRunLayoutMode) -> Bool {
         switch mode {
         case .padWorkspace:
-            return true
+            true
         case .widePhoneMessenger:
-            return self == .patientResults || self == .requestLabs
+            self == .patientResults || self == .requestLabs
         case .compactMessenger:
-            return self == .requestLabs
+            self == .requestLabs
         }
     }
 }

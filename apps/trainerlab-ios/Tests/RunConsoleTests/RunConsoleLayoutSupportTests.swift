@@ -1,6 +1,6 @@
+@testable import RunConsole
 import SharedModels
 import SwiftUI
-@testable import RunConsole
 import XCTest
 
 final class RunConsoleLayoutSupportTests: XCTestCase {
@@ -22,26 +22,26 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     func testCompactDensityUsesNarrowPhoneAtOrBelow390Points() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 320, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 390, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
     }
 
     func testCompactDensityUsesStandardAbove390PointsOrOutsideCompactMode() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 393, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 430, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 375, layoutMode: .regular),
-            .standard
+            .standard,
         )
     }
 
@@ -77,23 +77,23 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 layoutMode: .compact,
-                horizontalSizeClass: .compact
+                horizontalSizeClass: .compact,
             ),
-            .iconOnly
+            .iconOnly,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 layoutMode: .compact,
-                horizontalSizeClass: .regular
+                horizontalSizeClass: .regular,
             ),
-            .labeled
+            .labeled,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 layoutMode: .regular,
-                horizontalSizeClass: .compact
+                horizontalSizeClass: .compact,
             ),
-            .labeled
+            .labeled,
         )
     }
 
@@ -103,21 +103,21 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             kind: .injury,
             title: "Injury Change",
             message: "Left arm",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let lifecycleEntry = ClinicalTimelineEntry(
             dedupeKey: "run-1",
             kind: .lifecycle,
             title: "Run Started",
             message: "Run started",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let noteEntry = ClinicalTimelineEntry(
             dedupeKey: "note-1",
             kind: .note,
             title: "Anything",
             message: "Trainer note",
-            createdAt: Date()
+            createdAt: Date(),
         )
 
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .injury), "INJURY")

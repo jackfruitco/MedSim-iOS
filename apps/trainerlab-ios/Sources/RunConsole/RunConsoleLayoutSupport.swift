@@ -32,7 +32,7 @@ enum RunConsoleCompactControlPresentation: Equatable {
 
     static func resolve(
         layoutMode: RunConsoleLayoutMode,
-        horizontalSizeClass: UserInterfaceSizeClass?
+        horizontalSizeClass: UserInterfaceSizeClass?,
     ) -> Self {
         guard layoutMode == .compact, horizontalSizeClass == .compact else {
             return .labeled
@@ -45,22 +45,22 @@ enum RunConsoleTimelinePresentation {
     static func chipText(for kind: ClinicalTimelineKind) -> String {
         switch kind {
         case .loc:
-            return "LOC"
+            "LOC"
         default:
-            return kind.rawValue.uppercased()
+            kind.rawValue.uppercased()
         }
     }
 
     static func title(for entry: ClinicalTimelineEntry) -> String {
         switch entry.kind {
         case .cause, .injury, .illness, .intervention, .loc, .problem, .recommendation:
-            return "Change"
+            "Change"
         case .lifecycle:
-            return entry.title
+            entry.title
         case .note:
-            return "Trainer Note"
+            "Trainer Note"
         case .vitals:
-            return entry.title
+            entry.title
         }
     }
 }
@@ -85,9 +85,9 @@ struct RunConsoleCompactMetrics {
     static func resolve(width: CGFloat, layoutMode: RunConsoleLayoutMode) -> Self {
         switch RunConsoleCompactDensity.resolve(width: width, layoutMode: layoutMode) {
         case .standard:
-            return .standard
+            .standard
         case .narrowPhone:
-            return .narrowPhone
+            .narrowPhone
         }
     }
 
@@ -106,7 +106,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 40,
         vitalCellPadding: 7,
-        vitalValueVerticalPadding: 3
+        vitalValueVerticalPadding: 3,
     )
 
     static let narrowPhone = Self(
@@ -124,7 +124,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 38,
         vitalCellPadding: 6,
-        vitalValueVerticalPadding: 3
+        vitalValueVerticalPadding: 3,
     )
 }
 
@@ -132,20 +132,20 @@ struct RunConsoleCompactMetrics {
 
 enum InterventionMARCHGroup: String, CaseIterable {
     case massiveHemorrhage = "M – Massive Hemorrhage"
-    case airway            = "A – Airway"
-    case respiration       = "R – Respiration"
-    case access            = "C – Circulation / Access"
+    case airway = "A – Airway"
+    case respiration = "R – Respiration"
+    case access = "C – Circulation / Access"
 
     var interventionTypes: [String] {
         switch self {
         case .massiveHemorrhage:
-            return ["tourniquet", "junctional_tourniquet", "wound_packing", "pressure_dressing", "hemostatic_agent", "pelvic_binder"]
+            ["tourniquet", "junctional_tourniquet", "wound_packing", "pressure_dressing", "hemostatic_agent", "pelvic_binder"]
         case .airway:
-            return ["npa", "opa", "surgical_cric", "advanced_airway"]
+            ["npa", "opa", "surgical_cric", "advanced_airway"]
         case .respiration:
-            return ["needle_decompression", "chest_tube"]
+            ["needle_decompression", "chest_tube"]
         case .access:
-            return ["iv_access", "io_access", "fluid_resuscitation", "blood_transfusion"]
+            ["iv_access", "io_access", "fluid_resuscitation", "blood_transfusion"]
         }
     }
 
@@ -163,39 +163,39 @@ enum RunConsoleLifecycleAction: String, CaseIterable {
     var title: String {
         switch self {
         case .start:
-            return "Start"
+            "Start"
         case .pause:
-            return "Pause"
+            "Pause"
         case .resume:
-            return "Resume"
+            "Resume"
         case .stop:
-            return "Stop"
+            "Stop"
         }
     }
 
     var systemImage: String {
         switch self {
         case .start:
-            return "play.fill"
+            "play.fill"
         case .pause:
-            return "pause.fill"
+            "pause.fill"
         case .resume:
-            return "playpause.fill"
+            "playpause.fill"
         case .stop:
-            return "stop.fill"
+            "stop.fill"
         }
     }
 
     static func visibleActions(for status: TrainerSessionStatus?) -> [Self] {
         switch status {
         case .seeded:
-            return [.start]
+            [.start]
         case .running:
-            return [.pause, .stop]
+            [.pause, .stop]
         case .paused:
-            return [.resume, .stop]
+            [.resume, .stop]
         case .completed, .failed, .none:
-            return []
+            []
         }
     }
 }
@@ -219,17 +219,17 @@ struct TransportChip: View {
 
     private var chipColor: Color {
         switch banner.style {
-        case .healthy: return TrainerLabTheme.success
-        case .warning: return TrainerLabTheme.warning
-        case .error: return TrainerLabTheme.danger
+        case .healthy: TrainerLabTheme.success
+        case .warning: TrainerLabTheme.warning
+        case .error: TrainerLabTheme.danger
         }
     }
 
     private var iconName: String {
         switch banner.style {
-        case .healthy: return "antenna.radiowaves.left.and.right"
-        case .warning: return "exclamationmark.triangle.fill"
-        case .error: return "xmark.circle.fill"
+        case .healthy: "antenna.radiowaves.left.and.right"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.circle.fill"
         }
     }
 }
@@ -329,7 +329,7 @@ struct PatientDiagramPanel: View {
         injury: InjuryAnnotation,
         interventions: [InterventionAnnotation],
         problems: [ProblemAnnotation],
-        size: CGSize
+        size: CGSize,
     ) -> some View {
         let cx = injury.x * size.width
         let cy = injury.y * size.height
@@ -368,9 +368,9 @@ struct PatientDiagramPanel: View {
 
     private func injuryColor(for injury: InjuryAnnotation) -> Color {
         switch injury.status {
-        case .pending: return TrainerLabTheme.warning
-        case .active: return injury.kind.lowercased() == "illness" ? TrainerLabTheme.warning : TrainerLabTheme.danger
-        case .inactive: return .gray
+        case .pending: TrainerLabTheme.warning
+        case .active: injury.kind.lowercased() == "illness" ? TrainerLabTheme.warning : TrainerLabTheme.danger
+        case .inactive: .gray
         }
     }
 
@@ -419,7 +419,6 @@ struct PatientDiagramPanel: View {
             .onTapGesture { selected = .pulse(pulse) }
     }
 
-    @ViewBuilder
     private func problemBadge(_ problem: ProblemAnnotation) -> some View {
         ZStack {
             Circle()
@@ -514,7 +513,7 @@ struct PatientDiagramPanel: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08))
+                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08)),
                 )
             }
         }
@@ -674,7 +673,7 @@ struct PatientDiagramPanel: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
-                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15))
+                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15)),
                 )
         }
         .padding(.vertical, 3)
@@ -730,7 +729,6 @@ struct PatientDiagramPanel: View {
 
     // MARK: - Selected Detail Card
 
-    @ViewBuilder
     private func selectedDetailCard(_ sel: PatientDiagramSelection) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -746,7 +744,7 @@ struct PatientDiagramPanel: View {
             }
             Divider()
             switch sel {
-            case .injury(let injury):
+            case let .injury(injury):
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(injury.kind.uppercased())\(injury.category.map { " (\($0.uppercased()))" } ?? "")")
                         .font(.caption.bold())
@@ -759,7 +757,7 @@ struct PatientDiagramPanel: View {
                     Text("Cause Type: \(injury.kind.replacingOccurrences(of: "_", with: " ").capitalized)")
                         .font(.caption2)
                 }
-            case .intervention(let intervention):
+            case let .intervention(intervention):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(intervention.title)
                         .font(.caption.bold())
@@ -779,7 +777,7 @@ struct PatientDiagramPanel: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            case .problem(let problem):
+            case let .problem(problem):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(problem.label)
                         .font(.caption.bold())
@@ -820,7 +818,7 @@ struct PatientDiagramPanel: View {
                         }
                     }
                 }
-            case .pulse(let pulse):
+            case let .pulse(pulse):
                 VStack(alignment: .leading, spacing: 4) {
                     Text(pulse.locationLabel)
                         .font(.caption.bold())
@@ -852,11 +850,11 @@ struct PatientDiagramPanel: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(TrainerLabTheme.tacticalSurfaceElevated)
+                .fill(TrainerLabTheme.tacticalSurfaceElevated),
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
         )
     }
 
@@ -886,7 +884,7 @@ struct PatientDiagramPanel: View {
     private func problemStatusButton(
         _ title: String,
         status: ProblemLifecycleState,
-        for problem: ProblemAnnotation
+        for problem: ProblemAnnotation,
     ) -> some View {
         Button(title) {
             onUpdateProblemStatus?(problem, status)
@@ -984,7 +982,7 @@ struct PulsingModifier: ViewModifier {
             .scaleEffect(active && isPulsing ? 1.25 : 1.0)
             .animation(
                 active ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
-                value: isPulsing
+                value: isPulsing,
             )
             .onAppear {
                 if active { isPulsing = true }

@@ -19,7 +19,7 @@ public struct AuthGateView: View {
         appTitle: String = "TrainerLab",
         appSubtitle: String = "Instructor Console",
         environmentLabel: String,
-        onOpenEnvironmentSwitcher: @escaping () -> Void
+        onOpenEnvironmentSwitcher: @escaping () -> Void,
     ) {
         self.viewModel = viewModel
         self.appTitle = appTitle
@@ -33,7 +33,7 @@ public struct AuthGateView: View {
             LinearGradient(
                 colors: [TrainerLabTheme.setupBackground, TrainerLabTheme.setupSurface],
                 startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                endPoint: .bottomTrailing,
             )
             .ignoresSafeArea()
 
@@ -115,9 +115,9 @@ public struct AuthGateView: View {
                     } else {
                         moveFocusForward()
                     }
-                }
+                },
             )
-            .frame(width: 0, height: 0)
+            .frame(width: 0, height: 0),
         )
         .onAppear {
             if focusedField == nil {
@@ -160,80 +160,81 @@ private extension View {
     @ViewBuilder
     func authEmailFieldModifiers() -> some View {
         #if os(iOS)
-        self
-            .textInputAutocapitalization(.never)
-            .keyboardType(.emailAddress)
+            textInputAutocapitalization(.never)
+                .keyboardType(.emailAddress)
         #else
-        self
+            self
         #endif
     }
 }
 
 #if os(iOS)
-import UIKit
+    import UIKit
 
-private struct KeyboardCommandBridge: UIViewRepresentable {
-    let onTab: () -> Void
-    let onShiftTab: () -> Void
-    let onEnter: () -> Void
+    private struct KeyboardCommandBridge: UIViewRepresentable {
+        let onTab: () -> Void
+        let onShiftTab: () -> Void
+        let onEnter: () -> Void
 
-    func makeUIView(context: Context) -> KeyboardCommandView {
-        let view = KeyboardCommandView()
-        view.onTab = onTab
-        view.onShiftTab = onShiftTab
-        view.onEnter = onEnter
-        return view
-    }
+        func makeUIView(context _: Context) -> KeyboardCommandView {
+            let view = KeyboardCommandView()
+            view.onTab = onTab
+            view.onShiftTab = onShiftTab
+            view.onEnter = onEnter
+            return view
+        }
 
-    func updateUIView(_ uiView: KeyboardCommandView, context: Context) {
-        uiView.onTab = onTab
-        uiView.onShiftTab = onShiftTab
-        uiView.onEnter = onEnter
-    }
-}
-
-private final class KeyboardCommandView: UIView {
-    var onTab: (() -> Void)?
-    var onShiftTab: (() -> Void)?
-    var onEnter: (() -> Void)?
-
-    override var canBecomeFirstResponder: Bool { true }
-
-    override var keyCommands: [UIKeyCommand]? {
-        [
-            UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(handleTab)),
-            UIKeyCommand(input: "\t", modifierFlags: [.shift], action: #selector(handleShiftTab)),
-            UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(handleEnter)),
-        ]
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        DispatchQueue.main.async { [weak self] in
-            self?.becomeFirstResponder()
+        func updateUIView(_ uiView: KeyboardCommandView, context _: Context) {
+            uiView.onTab = onTab
+            uiView.onShiftTab = onShiftTab
+            uiView.onEnter = onEnter
         }
     }
 
-    @objc private func handleTab() {
-        onTab?()
-    }
+    private final class KeyboardCommandView: UIView {
+        var onTab: (() -> Void)?
+        var onShiftTab: (() -> Void)?
+        var onEnter: (() -> Void)?
 
-    @objc private func handleShiftTab() {
-        onShiftTab?()
-    }
+        override var canBecomeFirstResponder: Bool {
+            true
+        }
 
-    @objc private func handleEnter() {
-        onEnter?()
+        override var keyCommands: [UIKeyCommand]? {
+            [
+                UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(handleTab)),
+                UIKeyCommand(input: "\t", modifierFlags: [.shift], action: #selector(handleShiftTab)),
+                UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(handleEnter)),
+            ]
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in
+                self?.becomeFirstResponder()
+            }
+        }
+
+        @objc private func handleTab() {
+            onTab?()
+        }
+
+        @objc private func handleShiftTab() {
+            onShiftTab?()
+        }
+
+        @objc private func handleEnter() {
+            onEnter?()
+        }
     }
-}
 #else
-private struct KeyboardCommandBridge: View {
-    let onTab: () -> Void
-    let onShiftTab: () -> Void
-    let onEnter: () -> Void
+    private struct KeyboardCommandBridge: View {
+        let onTab: () -> Void
+        let onShiftTab: () -> Void
+        let onEnter: () -> Void
 
-    var body: some View {
-        EmptyView()
+        var body: some View {
+            EmptyView()
+        }
     }
-}
 #endif

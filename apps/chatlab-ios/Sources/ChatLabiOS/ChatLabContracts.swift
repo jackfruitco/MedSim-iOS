@@ -46,7 +46,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
         terminalReasonCode: String,
         terminalReasonText: String,
         terminalAt: Date?,
-        retryable: Bool?
+        retryable: Bool?,
     ) {
         self.id = id
         self.userID = userID
@@ -104,7 +104,7 @@ public struct ChatConversation: Codable, Identifiable, Sendable, Equatable {
         displayName: String,
         displayInitials: String,
         isLocked: Bool,
-        createdAt: Date
+        createdAt: Date,
     ) {
         self.id = id
         self.uuid = uuid
@@ -173,7 +173,7 @@ public struct ChatMessage: Codable, Identifiable, Sendable, Equatable {
         deliveryErrorCode: String,
         deliveryErrorText: String,
         deliveryRetryable: Bool,
-        deliveryRetryCount: Int
+        deliveryRetryCount: Int,
     ) {
         self.id = id
         self.simulationID = simulationID
@@ -225,7 +225,7 @@ public struct ChatToolState: Codable, Sendable, Equatable {
         displayName: String,
         data: [[String: JSONValue]],
         isGeneric: Bool,
-        checksum: String
+        checksum: String,
     ) {
         self.name = name
         self.displayName = displayName
@@ -275,14 +275,16 @@ public struct ChatEventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let correlationID: String?
     public let payload: [String: JSONValue]
 
-    public var id: String { eventID }
+    public var id: String {
+        eventID
+    }
 
     public init(
         eventID: String,
         eventType: String,
         createdAt: Date,
         correlationID: String?,
-        payload: [String: JSONValue]
+        payload: [String: JSONValue],
     ) {
         self.eventID = eventID
         self.eventType = eventType

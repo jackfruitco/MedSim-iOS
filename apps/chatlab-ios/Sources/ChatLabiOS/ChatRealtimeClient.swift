@@ -32,13 +32,13 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
 
     private var seenEventIDs = Set<String>()
     private var seenOrder: [String] = []
-    private let seenCapacity = 2_000
+    private let seenCapacity = 2000
 
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
         service: ChatLabServiceProtocol,
-        session: URLSession = .shared
+        session: URLSession = .shared,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -54,23 +54,23 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             }
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Invalid date string: \(value)"
+                debugDescription: "Invalid date string: \(value)",
             )
         }
         self.decoder = decoder
 
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
-        self.events = AsyncStream<ChatEventEnvelope> { continuation in
+        events = AsyncStream<ChatEventEnvelope> { continuation in
             eventCont = continuation
         }
-        self.eventContinuation = eventCont
+        eventContinuation = eventCont
 
         var stateCont: AsyncStream<ChatRealtimeConnectionState>.Continuation!
-        self.connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
+        connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
             stateCont = continuation
             continuation.yield(.disconnected)
         }
-        self.stateContinuation = stateCont
+        stateContinuation = stateCont
     }
 
     public func connect(simulationID: Int, cursor: String?) async {
@@ -104,7 +104,8 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         }
         guard JSONSerialization.isValidJSONObject(wirePayload),
               let data = try? JSONSerialization.data(withJSONObject: wirePayload),
-              let text = String(data: data, encoding: .utf8) else {
+              let text = String(data: data, encoding: .utf8)
+        else {
             return
         }
         do {
@@ -208,7 +209,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             eventType: type,
             createdAt: Date(),
             correlationID: nil,
-            payload: payload
+            payload: payload,
         )
         emitIfNew(legacyEnvelope)
     }
@@ -234,7 +235,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 let page = try await service.listEvents(
                     simulationID: simulationID,
                     cursor: currentCursor,
-                    limit: 50
+                    limit: 50,
                 )
                 if page.items.isEmpty, !page.hasMore {
                     break
@@ -281,4 +282,3 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         return .null
     }
 }
-

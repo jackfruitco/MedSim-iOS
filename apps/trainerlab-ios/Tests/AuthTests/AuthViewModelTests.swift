@@ -1,7 +1,7 @@
+@testable import Auth
 import Foundation
 import Networking
 import SharedModels
-@testable import Auth
 import XCTest
 
 private enum MockError: Error, LocalizedError {
@@ -10,26 +10,30 @@ private enum MockError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .signInFailed: return "Sign in failed."
-        case .accessMeFailed: return "Access check failed."
+        case .signInFailed: "Sign in failed."
+        case .accessMeFailed: "Access check failed."
         }
     }
 }
 
 private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
     var signInResult: Result<AuthTokens, Error> = .success(
-        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
+        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer"),
     )
     var signOutCalled = false
     var hasActiveTokensValue = false
 
-    func signIn(email: String, password: String) async throws -> AuthTokens {
+    func signIn(email _: String, password _: String) async throws -> AuthTokens {
         try signInResult.get()
     }
 
-    func signOut() { signOutCalled = true }
+    func signOut() {
+        signOutCalled = true
+    }
 
-    func hasActiveTokens() -> Bool { hasActiveTokensValue }
+    func hasActiveTokens() -> Bool {
+        hasActiveTokensValue
+    }
 }
 
 private func makeLabAccess() -> LabAccess {
@@ -40,42 +44,147 @@ private func makeLabAccess() -> LabAccess {
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
     var accessMeResult: Result<LabAccess, Error> = .success(makeLabAccess())
 
-    func accessMe() async throws -> LabAccess { try accessMeResult.get() }
-    func listSessions(limit: Int, cursor: String?, status: String?, query: String?) async throws -> PaginatedResponse<TrainerSessionDTO> { throw MockError.accessMeFailed }
-    func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
-    func getSession(simulationID: Int) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
-    func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut { throw MockError.accessMeFailed }
-    func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
-    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope> { throw MockError.accessMeFailed }
-    func getRunSummary(simulationID: Int) async throws -> RunSummary { throw MockError.accessMeFailed }
-    func adjustSimulation(simulationID: Int, request: SimulationAdjustRequest, idempotencyKey: String) async throws -> SimulationAdjustAck { throw MockError.accessMeFailed }
-    func steerPrompt(simulationID: Int, request: SteerPromptRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func injectInjuryEvent(simulationID: Int, request: InjuryEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func injectIllnessEvent(simulationID: Int, request: IllnessEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func createProblem(simulationID: Int, request: ProblemCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func createAssessmentFinding(simulationID: Int, request: AssessmentFindingCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func createDiagnosticResult(simulationID: Int, request: DiagnosticResultCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func createResourceState(simulationID: Int, request: ResourceStateCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func createDispositionState(simulationID: Int, request: DispositionStateCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func injectVitalEvent(simulationID: Int, request: VitalEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func injectInterventionEvent(simulationID: Int, request: InterventionEventRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func listPresets(limit: Int, cursor: String?) async throws -> PaginatedResponse<ScenarioInstruction> { throw MockError.accessMeFailed }
-    func createPreset(request: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction { throw MockError.accessMeFailed }
-    func getPreset(presetID: Int) async throws -> ScenarioInstruction { throw MockError.accessMeFailed }
-    func updatePreset(presetID: Int, request: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction { throw MockError.accessMeFailed }
-    func deletePreset(presetID: Int) async throws { throw MockError.accessMeFailed }
-    func duplicatePreset(presetID: Int) async throws -> ScenarioInstruction { throw MockError.accessMeFailed }
-    func sharePreset(presetID: Int, request: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission { throw MockError.accessMeFailed }
-    func unsharePreset(presetID: Int, request: ScenarioInstructionUnshareRequest) async throws { throw MockError.accessMeFailed }
-    func applyPreset(presetID: Int, request: ScenarioInstructionApplyRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
-    func injuryDictionary() async throws -> InjuryDictionary { throw MockError.accessMeFailed }
-    func interventionDictionary() async throws -> [InterventionGroup] { throw MockError.accessMeFailed }
-    func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> { throw MockError.accessMeFailed }
-    func updateProblemStatus(simulationID: Int, problemID: Int, request: ProblemStatusUpdateRequest, idempotencyKey: String) async throws -> ProblemStatusOut { throw MockError.accessMeFailed }
-    func createAnnotation(simulationID: Int, request: AnnotationCreateRequest, idempotencyKey: String) async throws -> AnnotationOut { throw MockError.accessMeFailed }
-    func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] { throw MockError.accessMeFailed }
-    func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut { throw MockError.accessMeFailed }
-    func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws {}
+    func accessMe() async throws -> LabAccess {
+        try accessMeResult.get()
+    }
+
+    func listSessions(limit _: Int, cursor _: String?, status _: String?, query _: String?) async throws -> PaginatedResponse<TrainerSessionDTO> {
+        throw MockError.accessMeFailed
+    }
+
+    func createSession(request _: TrainerSessionCreateRequest, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockError.accessMeFailed
+    }
+
+    func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
+        throw MockError.accessMeFailed
+    }
+
+    func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
+        throw MockError.accessMeFailed
+    }
+
+    func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw MockError.accessMeFailed
+    }
+
+    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<EventEnvelope> {
+        throw MockError.accessMeFailed
+    }
+
+    func getRunSummary(simulationID _: Int) async throws -> RunSummary {
+        throw MockError.accessMeFailed
+    }
+
+    func adjustSimulation(simulationID _: Int, request _: SimulationAdjustRequest, idempotencyKey _: String) async throws -> SimulationAdjustAck {
+        throw MockError.accessMeFailed
+    }
+
+    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func injectInjuryEvent(simulationID _: Int, request _: InjuryEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func injectIllnessEvent(simulationID _: Int, request _: IllnessEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func createProblem(simulationID _: Int, request _: ProblemCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func createAssessmentFinding(simulationID _: Int, request _: AssessmentFindingCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func createDiagnosticResult(simulationID _: Int, request _: DiagnosticResultCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func createResourceState(simulationID _: Int, request _: ResourceStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func createDispositionState(simulationID _: Int, request _: DispositionStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func injectVitalEvent(simulationID _: Int, request _: VitalEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func injectInterventionEvent(simulationID _: Int, request _: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func listPresets(limit _: Int, cursor _: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
+        throw MockError.accessMeFailed
+    }
+
+    func createPreset(request _: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction {
+        throw MockError.accessMeFailed
+    }
+
+    func getPreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw MockError.accessMeFailed
+    }
+
+    func updatePreset(presetID _: Int, request _: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction {
+        throw MockError.accessMeFailed
+    }
+
+    func deletePreset(presetID _: Int) async throws {
+        throw MockError.accessMeFailed
+    }
+
+    func duplicatePreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw MockError.accessMeFailed
+    }
+
+    func sharePreset(presetID _: Int, request _: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission {
+        throw MockError.accessMeFailed
+    }
+
+    func unsharePreset(presetID _: Int, request _: ScenarioInstructionUnshareRequest) async throws {
+        throw MockError.accessMeFailed
+    }
+
+    func applyPreset(presetID _: Int, request _: ScenarioInstructionApplyRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw MockError.accessMeFailed
+    }
+
+    func injuryDictionary() async throws -> InjuryDictionary {
+        throw MockError.accessMeFailed
+    }
+
+    func interventionDictionary() async throws -> [InterventionGroup] {
+        throw MockError.accessMeFailed
+    }
+
+    func listAccounts(query _: String, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<AccountListUser> {
+        throw MockError.accessMeFailed
+    }
+
+    func updateProblemStatus(simulationID _: Int, problemID _: Int, request _: ProblemStatusUpdateRequest, idempotencyKey _: String) async throws -> ProblemStatusOut {
+        throw MockError.accessMeFailed
+    }
+
+    func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut {
+        throw MockError.accessMeFailed
+    }
+
+    func listAnnotations(simulationID _: Int) async throws -> [AnnotationOut] {
+        throw MockError.accessMeFailed
+    }
+
+    func updateScenarioBrief(simulationID _: Int, request _: ScenarioBriefUpdateRequest, idempotencyKey _: String) async throws -> ScenarioBriefOut {
+        throw MockError.accessMeFailed
+    }
+
+    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {}
 }
 
 @MainActor

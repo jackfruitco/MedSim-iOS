@@ -7,12 +7,11 @@ public extension InterventionSite {
     /// Anatomical location without laterality, e.g. "Arm" from "RIGHT_ARM"
     var locationLabel: String {
         let lower = code.lowercased()
-        let stripped = lower
+        return lower
             .replacingOccurrences(of: "right_", with: "")
             .replacingOccurrences(of: "left_", with: "")
             .replacingOccurrences(of: "_", with: " ")
             .capitalized
-        return stripped
     }
 
     /// "left" or "right" extracted from the code prefix, nil if not bilateral
@@ -58,7 +57,6 @@ public struct InterventionSuggestion: Sendable {
 /// In-memory intervention dictionary seeded from this bundle at startup, then
 /// replaced by a live fetch from /api/v1/trainerlab/dictionaries/interventions/.
 public enum InterventionDictionary {
-
     // MARK: Bundled data (reflects backend v0.7.5 + TCCC-CPP tier)
 
     public static let bundled: [InterventionGroup] = basicTCCC + tcccCPP
@@ -71,64 +69,64 @@ public enum InterventionDictionary {
             label: "Tourniquet",
             sites: [
                 InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
-                InterventionSite(code: "LEFT_ARM",  label: "Left Arm"),
+                InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG",  label: "Left Leg"),
-            ]
+                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+            ],
         ),
         InterventionGroup(
             interventionType: "wound_packing",
             label: "Wound Packing",
             sites: [
-                InterventionSite(code: "RIGHT_AXILLA",   label: "Right Axilla"),
-                InterventionSite(code: "LEFT_AXILLA",    label: "Left Axilla"),
+                InterventionSite(code: "RIGHT_AXILLA", label: "Right Axilla"),
+                InterventionSite(code: "LEFT_AXILLA", label: "Left Axilla"),
                 InterventionSite(code: "RIGHT_INGUINAL", label: "Right Inguinal"),
-                InterventionSite(code: "LEFT_INGUINAL",  label: "Left Inguinal"),
-                InterventionSite(code: "RIGHT_NECK",     label: "Right Neck"),
-                InterventionSite(code: "LEFT_NECK",      label: "Left Neck"),
-            ]
+                InterventionSite(code: "LEFT_INGUINAL", label: "Left Inguinal"),
+                InterventionSite(code: "RIGHT_NECK", label: "Right Neck"),
+                InterventionSite(code: "LEFT_NECK", label: "Left Neck"),
+            ],
         ),
         InterventionGroup(
             interventionType: "pressure_dressing",
             label: "Pressure Dressing",
             sites: [
                 InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
-                InterventionSite(code: "LEFT_ARM",  label: "Left Arm"),
+                InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG",  label: "Left Leg"),
-            ]
+                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+            ],
         ),
         InterventionGroup(
             interventionType: "npa",
             label: "Nasopharyngeal Airway (NPA)",
             sites: [
                 InterventionSite(code: "RIGHT_NARE", label: "Right Nare"),
-                InterventionSite(code: "LEFT_NARE",  label: "Left Nare"),
-            ]
+                InterventionSite(code: "LEFT_NARE", label: "Left Nare"),
+            ],
         ),
         InterventionGroup(
             interventionType: "opa",
             label: "Oropharyngeal Airway (OPA)",
             sites: [
                 InterventionSite(code: "ORAL", label: "Oral"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "needle_decompression",
             label: "Needle Decompression (NCD)",
             sites: [
                 InterventionSite(code: "RIGHT_ANTERIOR_CHEST", label: "Right Anterior Chest"),
-                InterventionSite(code: "LEFT_ANTERIOR_CHEST",  label: "Left Anterior Chest"),
-                InterventionSite(code: "RIGHT_LATERAL_CHEST",  label: "Right Lateral Chest"),
-                InterventionSite(code: "LEFT_LATERAL_CHEST",   label: "Left Lateral Chest"),
-            ]
+                InterventionSite(code: "LEFT_ANTERIOR_CHEST", label: "Left Anterior Chest"),
+                InterventionSite(code: "RIGHT_LATERAL_CHEST", label: "Right Lateral Chest"),
+                InterventionSite(code: "LEFT_LATERAL_CHEST", label: "Left Lateral Chest"),
+            ],
         ),
         InterventionGroup(
             interventionType: "surgical_cric",
             label: "Surgical Cricothyrotomy",
             sites: [
                 InterventionSite(code: "ANTERIOR_NECK_MIDLINE", label: "Anterior Neck Midline"),
-            ]
+            ],
         ),
     ]
 
@@ -139,48 +137,48 @@ public enum InterventionDictionary {
             interventionType: "junctional_tourniquet",
             label: "Junctional Tourniquet",
             sites: [
-                InterventionSite(code: "JTQ-RIGHT-GROIN",  label: "Right Groin"),
-                InterventionSite(code: "JTQ-LEFT-GROIN",   label: "Left Groin"),
+                InterventionSite(code: "JTQ-RIGHT-GROIN", label: "Right Groin"),
+                InterventionSite(code: "JTQ-LEFT-GROIN", label: "Left Groin"),
                 InterventionSite(code: "JTQ-RIGHT-AXILLA", label: "Right Axilla"),
-                InterventionSite(code: "JTQ-LEFT-AXILLA",  label: "Left Axilla"),
-            ]
+                InterventionSite(code: "JTQ-LEFT-AXILLA", label: "Left Axilla"),
+            ],
         ),
         InterventionGroup(
             interventionType: "hemostatic_agent",
             label: "Hemostatic Agent",
             sites: [
                 InterventionSite(code: "HA-WOUND-SITE", label: "Wound Site"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "pelvic_binder",
             label: "Pelvic Binder",
             sites: [
                 InterventionSite(code: "PB-PELVIS", label: "Pelvis"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "iv_access",
             label: "IV Access",
             sites: [
-                InterventionSite(code: "IV-RIGHT-AC",  label: "Right Antecubital"),
-                InterventionSite(code: "IV-LEFT-AC",   label: "Left Antecubital"),
-                InterventionSite(code: "IV-RIGHT-EJ",  label: "Right External Jugular"),
-                InterventionSite(code: "IV-LEFT-EJ",   label: "Left External Jugular"),
+                InterventionSite(code: "IV-RIGHT-AC", label: "Right Antecubital"),
+                InterventionSite(code: "IV-LEFT-AC", label: "Left Antecubital"),
+                InterventionSite(code: "IV-RIGHT-EJ", label: "Right External Jugular"),
+                InterventionSite(code: "IV-LEFT-EJ", label: "Left External Jugular"),
                 InterventionSite(code: "IV-RIGHT-FEM", label: "Right Femoral"),
-                InterventionSite(code: "IV-LEFT-FEM",  label: "Left Femoral"),
-            ]
+                InterventionSite(code: "IV-LEFT-FEM", label: "Left Femoral"),
+            ],
         ),
         InterventionGroup(
             interventionType: "io_access",
             label: "IO Access",
             sites: [
                 InterventionSite(code: "IO-RIGHT-PROX-TIBIA", label: "Right Proximal Tibia"),
-                InterventionSite(code: "IO-LEFT-PROX-TIBIA",  label: "Left Proximal Tibia"),
-                InterventionSite(code: "IO-STERNUM",          label: "Sternum"),
-                InterventionSite(code: "IO-RIGHT-HUMERUS",    label: "Right Humerus"),
-                InterventionSite(code: "IO-LEFT-HUMERUS",     label: "Left Humerus"),
-            ]
+                InterventionSite(code: "IO-LEFT-PROX-TIBIA", label: "Left Proximal Tibia"),
+                InterventionSite(code: "IO-STERNUM", label: "Sternum"),
+                InterventionSite(code: "IO-RIGHT-HUMERUS", label: "Right Humerus"),
+                InterventionSite(code: "IO-LEFT-HUMERUS", label: "Left Humerus"),
+            ],
         ),
         InterventionGroup(
             interventionType: "fluid_resuscitation",
@@ -188,7 +186,7 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
                 InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "blood_transfusion",
@@ -196,25 +194,25 @@ public enum InterventionDictionary {
             sites: [
                 InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
                 InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "advanced_airway",
             label: "Advanced Airway (Intubation)",
             sites: [
-                InterventionSite(code: "AA-ORAL-TRACHEA",  label: "Oral/Tracheal"),
+                InterventionSite(code: "AA-ORAL-TRACHEA", label: "Oral/Tracheal"),
                 InterventionSite(code: "AA-NASAL-TRACHEA", label: "Nasotracheal"),
-            ]
+            ],
         ),
         InterventionGroup(
             interventionType: "chest_tube",
             label: "Chest Tube / Finger Thoracostomy",
             sites: [
                 InterventionSite(code: "CT-RIGHT-4TH-ICS", label: "Right 4th ICS"),
-                InterventionSite(code: "CT-LEFT-4TH-ICS",  label: "Left 4th ICS"),
+                InterventionSite(code: "CT-LEFT-4TH-ICS", label: "Left 4th ICS"),
                 InterventionSite(code: "CT-RIGHT-5TH-ICS", label: "Right 5th ICS"),
-                InterventionSite(code: "CT-LEFT-5TH-ICS",  label: "Left 5th ICS"),
-            ]
+                InterventionSite(code: "CT-LEFT-5TH-ICS", label: "Left 5th ICS"),
+            ],
         ),
     ]
 
@@ -304,7 +302,7 @@ public enum InterventionDictionary {
     /// Find a group by its intervention_type code, checking live cache first.
     public static func group(
         for interventionType: String,
-        in live: [InterventionGroup]
+        in live: [InterventionGroup],
     ) -> InterventionGroup? {
         (live.isEmpty ? bundled : live).first { $0.interventionType == interventionType }
     }

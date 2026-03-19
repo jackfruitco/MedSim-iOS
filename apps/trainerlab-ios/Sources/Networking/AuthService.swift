@@ -23,7 +23,7 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
             path: "/api/v1/auth/token/",
             method: .post,
             body: payload,
-            requiresAuth: false
+            requiresAuth: false,
         )
         let tokens: AuthTokens = try await apiClient.request(endpoint, as: AuthTokens.self)
         tokenProvider.saveTokens(tokens)

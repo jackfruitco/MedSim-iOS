@@ -1,5 +1,5 @@
-import SwiftUI
 @testable import ChatLabiOS
+import SwiftUI
 import XCTest
 
 final class ChatLayoutSupportTests: XCTestCase {

@@ -17,7 +17,7 @@ public struct RunSummaryView: View {
         GeometryReader { proxy in
             let layoutMode = RunSummaryLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             ScrollView {
@@ -88,7 +88,7 @@ public struct RunSummaryView: View {
 
         return LazyVGrid(
             columns: summaryMetricColumns(for: layoutMode),
-            spacing: 12
+            spacing: 12,
         ) {
             ForEach(items) { item in
                 VStack(alignment: .leading, spacing: 6) {
@@ -107,11 +107,11 @@ public struct RunSummaryView: View {
         }
     }
 
-    private func collapsibleSection<Content: View>(
+    private func collapsibleSection(
         _ section: RunSummarySection,
         title: String,
-        layoutMode: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> Content
+        layoutMode _: RunSummaryLayoutMode,
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -137,11 +137,11 @@ public struct RunSummaryView: View {
         .trainerCardStyle(background: TrainerLabTheme.setupSurface)
     }
 
-    private func sectionCard<Content: View>(
+    private func sectionCard(
         title: String,
         expanded: Bool,
         layoutMode: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -275,31 +275,31 @@ public struct RunSummaryView: View {
     private func summaryMetricColumns(for layoutMode: RunSummaryLayoutMode) -> [GridItem] {
         switch layoutMode {
         case .pad:
-            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+            Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
         case .phone:
-            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
+            Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
         case .narrowPhone:
-            return [GridItem(.flexible(), spacing: 12)]
+            [GridItem(.flexible(), spacing: 12)]
         }
     }
 
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":
-            return TrainerLabTheme.success
+            TrainerLabTheme.success
         case "failed":
-            return TrainerLabTheme.danger
+            TrainerLabTheme.danger
         case "paused":
-            return TrainerLabTheme.warning
+            TrainerLabTheme.warning
         default:
-            return TrainerLabTheme.accentBlue
+            TrainerLabTheme.accentBlue
         }
     }
 
     private func syncExpandedSections(for layoutMode: RunSummaryLayoutMode) {
         guard lastLayoutMode != layoutMode || expandedSections.isEmpty else { return }
         expandedSections = Set(
-            RunSummarySection.allCases.filter { $0.defaultExpanded(for: layoutMode) }
+            RunSummarySection.allCases.filter { $0.defaultExpanded(for: layoutMode) },
         )
         lastLayoutMode = layoutMode
     }
@@ -370,7 +370,7 @@ private extension RunSummaryView {
         return df.string(from: date)
     }
 
-    func humanizeEventType(_ eventType: String, payload: [String: JSONValue]) -> String {
+    func humanizeEventType(_ eventType: String, payload _: [String: JSONValue]) -> String {
         let canonical = eventType.hasPrefix("trainerlab.")
             ? String(eventType.dropFirst("trainerlab.".count))
             : eventType

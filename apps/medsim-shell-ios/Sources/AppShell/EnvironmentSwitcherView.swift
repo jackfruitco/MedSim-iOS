@@ -39,9 +39,9 @@ private extension View {
     @ViewBuilder
     func customURLFieldModifiers() -> some View {
         #if os(iOS)
-        self.textInputAutocapitalization(.never)
+            textInputAutocapitalization(.never)
         #else
-        self
+            self
         #endif
     }
 }

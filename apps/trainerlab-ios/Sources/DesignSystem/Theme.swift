@@ -1,5 +1,5 @@
 #if canImport(UIKit)
-import UIKit
+    import UIKit
 #endif
 import SwiftUI
 
@@ -27,11 +27,11 @@ public enum TrainerLabTheme {
     public static let tacticalSurfaceElevated = Color(red: 0.16, green: 0.19, blue: 0.25)
     public static let tacticalBorder = Color(red: 0.25, green: 0.30, blue: 0.38)
     #if canImport(UIKit)
-    public static let setupBackground = Color(uiColor: .systemGroupedBackground)
-    public static let setupSurface = Color(uiColor: .systemBackground)
+        public static let setupBackground = Color(uiColor: .systemGroupedBackground)
+        public static let setupSurface = Color(uiColor: .systemBackground)
     #else
-    public static let setupBackground = Color(red: 0.95, green: 0.96, blue: 0.97)
-    public static let setupSurface = Color.white
+        public static let setupBackground = Color(red: 0.95, green: 0.96, blue: 0.97)
+        public static let setupSurface = Color.white
     #endif
 
     public static let accentBlue = Color(red: 0.22, green: 0.56, blue: 0.94)
@@ -47,13 +47,12 @@ public enum TrainerLabTheme {
 
 public extension View {
     func trainerCardStyle(background: Color = TrainerLabTheme.tacticalSurface) -> some View {
-        self
-            .padding(12)
+        padding(12)
             .background(background)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
             )
     }
 }

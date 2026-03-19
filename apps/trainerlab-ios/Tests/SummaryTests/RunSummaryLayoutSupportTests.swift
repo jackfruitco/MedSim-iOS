@@ -1,5 +1,5 @@
-import SwiftUI
 @testable import Summary
+import SwiftUI
 import XCTest
 
 final class RunSummaryLayoutSupportTests: XCTestCase {

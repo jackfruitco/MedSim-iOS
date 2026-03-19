@@ -1,8 +1,8 @@
 import Foundation
 import Networking
 import Persistence
-import SQLite3
 import SharedModels
+import SQLite3
 import XCTest
 
 private enum RecordingError: Error {
@@ -12,7 +12,7 @@ private enum RecordingError: Error {
 private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
 
-    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type) async throws -> T {
+    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
         throw RecordingError.intercepted
     }
@@ -104,7 +104,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/run/start/"
+            "/api/v1/trainerlab/simulations/7/run/start/",
         )
 
         do {
@@ -118,9 +118,9 @@ final class TrainerLabContractTests: XCTestCase {
                     injuryRegion: nil,
                     avpuState: "alert",
                     interventionCode: nil,
-                    note: nil
+                    note: nil,
                 ),
-                idempotencyKey: "k2"
+                idempotencyKey: "k2",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -128,7 +128,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/adjust/"
+            "/api/v1/trainerlab/simulations/7/adjust/",
         )
 
         do {
@@ -139,7 +139,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/events/"
+            "/api/v1/trainerlab/simulations/7/events/",
         )
 
         do {
@@ -147,7 +147,7 @@ final class TrainerLabContractTests: XCTestCase {
                 simulationID: 7,
                 problemID: 3,
                 request: ProblemStatusUpdateRequest(isTreated: true, isResolved: false),
-                idempotencyKey: "k3"
+                idempotencyKey: "k3",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -155,7 +155,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/problems/3/"
+            "/api/v1/trainerlab/simulations/7/problems/3/",
         )
     }
 
@@ -182,7 +182,7 @@ final class TrainerLabContractTests: XCTestCase {
             learningObjective: "hemorrhage_control",
             outcome: "correct",
             linkedEventID: 99,
-            elapsedSecondsAt: 120
+            elapsedSecondsAt: 120,
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -236,7 +236,7 @@ final class TrainerLabContractTests: XCTestCase {
               ack_state TEXT NOT NULL
             );
             INSERT INTO grdb_migrations(identifier) VALUES ('create_pending_commands');
-            """
+            """,
         )
 
         try execSQL(
@@ -248,7 +248,7 @@ final class TrainerLabContractTests: XCTestCase {
               ('old-adjust', '/api/v1/simulations/77/adjust/', 'POST', NULL, 'h1', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-session-run', '/api/v1/trainerlab/sessions/55/run/start/', 'POST', NULL, 'h2', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-sessions-root', '/api/v1/trainerlab/sessions/', 'POST', NULL, 'h3', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending');
-            """
+            """,
         )
     }
 
@@ -261,7 +261,7 @@ final class TrainerLabContractTests: XCTestCase {
             throw NSError(
                 domain: "TrainerLabContractTests",
                 code: Int(result),
-                userInfo: [NSLocalizedDescriptionKey: message]
+                userInfo: [NSLocalizedDescriptionKey: message],
             )
         }
     }

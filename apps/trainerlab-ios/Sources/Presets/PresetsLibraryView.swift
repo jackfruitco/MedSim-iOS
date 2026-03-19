@@ -27,7 +27,7 @@ public struct PresetsLibraryView: View {
         GeometryReader { proxy in
             let layoutMode = PresetsLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             Group {
@@ -85,7 +85,7 @@ public struct PresetsLibraryView: View {
             VStack(alignment: .leading, spacing: 14) {
                 header(
                     titleFont: layoutMode == .narrowPhone ? .title2.bold() : .title.bold(),
-                    showRefreshCard: false
+                    showRefreshCard: false,
                 )
                 presetSearchField
                 presetEditorCard(layoutMode: layoutMode)
@@ -102,14 +102,14 @@ public struct PresetsLibraryView: View {
                     }
                 }
 
-                if viewModel.isLoading && viewModel.presets.isEmpty {
+                if viewModel.isLoading, viewModel.presets.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 180)
                 } else if filteredPresets.isEmpty {
                     ContentUnavailableView(
                         "No Presets",
                         systemImage: "shippingbox",
-                        description: Text("Create a preset to speed up scenario changes.")
+                        description: Text("Create a preset to speed up scenario changes."),
                     )
                     .frame(maxWidth: .infinity, minHeight: 220)
                 } else {
@@ -122,7 +122,7 @@ public struct PresetsLibraryView: View {
                     if viewModel.isLoadingMore {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 44)
-                    } else if viewModel.hasMore && presetSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    } else if viewModel.hasMore, presetSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button("Load More") {
                             Task { await viewModel.loadMorePresets() }
                         }
@@ -214,7 +214,7 @@ public struct PresetsLibraryView: View {
                         .background(selectedPresetID == preset.id ? TrainerLabTheme.setupSurface : TrainerLabTheme.setupSurface.opacity(0.55))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(selectedPresetID == preset.id ? TrainerLabTheme.accentBlue : Color.clear, lineWidth: 2)
+                                .stroke(selectedPresetID == preset.id ? TrainerLabTheme.accentBlue : Color.clear, lineWidth: 2),
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
@@ -398,7 +398,7 @@ public struct PresetsLibraryView: View {
         .trainerCardStyle(background: TrainerLabTheme.setupSurface)
     }
 
-    private func shareManager(preset: ScenarioInstruction, layoutMode: PresetsLayoutMode) -> some View {
+    private func shareManager(preset: ScenarioInstruction, layoutMode _: PresetsLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Share Preset")
                 .font(.headline)
@@ -476,8 +476,8 @@ public struct PresetsLibraryView: View {
         guard !query.isEmpty else { return viewModel.presets }
         return viewModel.presets.filter { preset in
             preset.title.lowercased().contains(query) ||
-            preset.instructionText.lowercased().contains(query) ||
-            preset.severity.lowercased().contains(query)
+                preset.instructionText.lowercased().contains(query) ||
+                preset.severity.lowercased().contains(query)
         }
     }
 
@@ -499,7 +499,7 @@ public struct PresetsLibraryView: View {
         selectedPresetID = PresetsWorkspaceSelection.resolvedSelectionID(
             currentSelectionID: selectedPresetID,
             presets: filteredPresets.isEmpty ? presets : filteredPresets,
-            layoutMode: layoutMode
+            layoutMode: layoutMode,
         )
 
         if let selectedPreset = presets.first(where: { $0.id == selectedPresetID }) {
@@ -540,14 +540,14 @@ public struct PresetsLibraryView: View {
                 description: description,
                 instruction: instruction,
                 severity: draftSeverity,
-                isActive: draftIsActive
+                isActive: draftIsActive,
             )
         } else {
             await viewModel.createPreset(
                 title: title,
                 description: description,
                 instruction: instruction,
-                severity: draftSeverity
+                severity: draftSeverity,
             )
             selectedPresetID = viewModel.presets.first?.id
             if let selectedPreset = viewModel.presets.first {

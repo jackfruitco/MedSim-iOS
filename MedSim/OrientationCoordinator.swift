@@ -3,8 +3,8 @@ import UIKit
 
 final class OrientationAppDelegate: NSObject, UIApplicationDelegate {
     func application(
-        _ application: UIApplication,
-        supportedInterfaceOrientationsFor window: UIWindow?
+        _: UIApplication,
+        supportedInterfaceOrientationsFor _: UIWindow?,
     ) -> UIInterfaceOrientationMask {
         OrientationCoordinator.shared.supportedOrientations
     }
@@ -35,16 +35,17 @@ final class OrientationCoordinator {
     static func mask(for lock: AppShellOrientationLock, idiom: UIUserInterfaceIdiom) -> UIInterfaceOrientationMask {
         switch lock {
         case .system:
-            return .allButUpsideDown
+            .allButUpsideDown
         case .iPadLandscape:
-            return idiom == .pad ? [.landscapeLeft, .landscapeRight] : .allButUpsideDown
+            idiom == .pad ? [.landscapeLeft, .landscapeRight] : .allButUpsideDown
         }
     }
 
     private func updateSystemOrientation() {
         guard let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) else {
+            .first(where: { $0.activationState == .foregroundActive })
+        else {
             return
         }
 
