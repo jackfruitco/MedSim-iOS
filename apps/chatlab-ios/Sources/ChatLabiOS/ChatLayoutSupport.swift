@@ -1,4 +1,15 @@
+#if canImport(UIKit)
+    import UIKit
+#endif
 import SwiftUI
+
+enum ChatLabTheme {
+    #if canImport(UIKit)
+        static let systemBackground = Color(uiColor: .systemBackground)
+    #else
+        static let systemBackground = Color.white
+    #endif
+}
 
 enum ChatLabSurfaceMode: Equatable {
     case narrowPhone

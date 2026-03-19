@@ -4,7 +4,7 @@ import UIKit
 final class OrientationAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _: UIApplication,
-        supportedInterfaceOrientationsFor _: UIWindow?
+        supportedInterfaceOrientationsFor _: UIWindow?,
     ) -> UIInterfaceOrientationMask {
         OrientationCoordinator.shared.supportedOrientations
     }

@@ -22,7 +22,7 @@ public struct ChatRunView: View {
     public init(
         store: ChatRunStore,
         toolsStore: ChatToolsStore,
-        onBack: @escaping () -> Void
+        onBack: @escaping () -> Void,
     ) {
         self.store = store
         self.toolsStore = toolsStore
@@ -33,7 +33,7 @@ public struct ChatRunView: View {
         GeometryReader { proxy in
             let layoutMode = ChatRunLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
             let chromeMode = ChatRunChromeMode.resolve(isKeyboardPresented: isKeyboardPresented)
 
@@ -203,7 +203,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.simulationRetryable,
                     retryAction: { store.retryInitialSimulation() },
-                    compact: false
+                    compact: false,
                 )
             }
 
@@ -213,7 +213,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.feedbackRetryable,
                     retryAction: { store.retryFeedback() },
-                    compact: false
+                    compact: false,
                 )
             }
         }
@@ -227,7 +227,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.simulationRetryable,
                     retryAction: { store.retryInitialSimulation() },
-                    compact: true
+                    compact: true,
                 )
             }
 
@@ -237,7 +237,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.feedbackRetryable,
                     retryAction: { store.retryFeedback() },
-                    compact: true
+                    compact: true,
                 )
             }
         }
@@ -298,7 +298,7 @@ public struct ChatRunView: View {
                         .background(
                             store.activeConversationID == conversation.id
                                 ? Color.blue.opacity(0.18)
-                                : Color.secondary.opacity(0.08)
+                                : Color.secondary.opacity(0.08),
                         )
                         .clipShape(Capsule())
                     }
@@ -405,7 +405,7 @@ public struct ChatRunView: View {
                 TextField(
                     store.activeConversationLocked ? "This conversation is read-only" : "Message",
                     text: $store.draftText,
-                    axis: .vertical
+                    axis: .vertical,
                 )
                 .lineLimit(1 ... 4)
                 .textFieldStyle(.roundedBorder)
@@ -422,7 +422,7 @@ public struct ChatRunView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     store.activeConversationLocked ||
-                        store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 )
                 .accessibilityLabel("Send message")
             }
@@ -439,7 +439,7 @@ public struct ChatRunView: View {
         text: String,
         retryable: Bool,
         retryAction: @escaping () -> Void,
-        compact: Bool
+        compact: Bool,
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -490,7 +490,7 @@ public struct ChatRunView: View {
         .padding(layoutMode == .padWorkspace ? 24 : 16)
         .background(
             RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 24 : 18, style: .continuous)
-                .fill(chatSystemBackgroundColor())
+                .fill(chatSystemBackgroundColor()),
         )
     }
 
@@ -641,7 +641,7 @@ public struct ChatRunView: View {
     private func toolSection(
         _ section: ChatToolsSection,
         layoutMode: ChatRunLayoutMode,
-        @ViewBuilder content: () -> some View
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         let isExpanded = expandedToolSections.contains(section)
 
@@ -690,7 +690,7 @@ public struct ChatRunView: View {
             return
         }
         expandedToolSections = Set(
-            ChatToolsSection.allCases.filter { $0.defaultExpanded(for: layoutMode) }
+            ChatToolsSection.allCases.filter { $0.defaultExpanded(for: layoutMode) },
         )
         lastToolLayoutMode = layoutMode
     }

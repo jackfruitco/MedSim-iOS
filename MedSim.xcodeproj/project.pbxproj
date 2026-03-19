@@ -44,6 +44,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		77B04BDB2F6C6A9200AF3818 /* scripts */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = scripts;
+			sourceTree = "<group>";
+		};
 		77CAB7192F38C27900D02877 /* MedSim */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -93,6 +98,7 @@
 		77CAB70E2F38C27900D02877 = {
 			isa = PBXGroup;
 			children = (
+				77B04BDB2F6C6A9200AF3818 /* scripts */,
 				77CAB7192F38C27900D02877 /* MedSim */,
 				77CAB72C2F38C27E00D02877 /* MedSimTests */,
 				77CAB7362F38C27E00D02877 /* MedSimUITests */,
@@ -117,6 +123,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 77CAB73D2F38C27E00D02877 /* Build configuration list for PBXNativeTarget "MedSim" */;
 			buildPhases = (
+				77B04BD62F6C696D00AF3818 /* SwiftLink */,
 				77CAB7132F38C27900D02877 /* Sources */,
 				77CAB7142F38C27900D02877 /* Frameworks */,
 				77CAB7152F38C27900D02877 /* Resources */,
@@ -126,6 +133,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				77B04BDB2F6C6A9200AF3818 /* scripts */,
 				77CAB7192F38C27900D02877 /* MedSim */,
 			);
 			name = MedSim;
@@ -255,6 +263,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		77B04BD62F6C696D00AF3818 /* SwiftLink */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.swiftlint.yml",
+			);
+			name = SwiftLink;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/swiftlint-lastrun",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if command -v swiftlint >/dev/null 2>&1; then\n    swiftlint --config \"$SRCROOT/.swiftlint.yml\"\n    touch \"$SCRIPT_OUTPUT_FILE_0\"\nelse\n    echo \"warning: SwiftLint not installed\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		77CAB7132F38C27900D02877 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -330,7 +361,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -394,7 +425,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

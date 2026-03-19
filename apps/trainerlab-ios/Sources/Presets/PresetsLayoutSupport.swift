@@ -8,7 +8,7 @@ enum PresetsWorkspaceSelection {
     static func resolvedSelectionID(
         currentSelectionID: Int?,
         presets: [ScenarioInstruction],
-        layoutMode: PresetsLayoutMode
+        layoutMode: PresetsLayoutMode,
     ) -> Int? {
         if let currentSelectionID, presets.contains(where: { $0.id == currentSelectionID }) {
             return currentSelectionID

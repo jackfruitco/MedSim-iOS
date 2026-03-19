@@ -11,7 +11,9 @@ excluded:
   - .swiftpm
   - DerivedData
   - build
+  - MedSim.xcodeproj
   - apps/chatlab-ios/.build
+  - apps/medsim-shell-ios/.build
   - apps/trainerlab-ios/.build
 
 disabled_rules:

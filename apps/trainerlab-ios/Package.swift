@@ -25,25 +25,25 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SharedModels"
+            name: "SharedModels",
         ),
         .target(
             name: "DesignSystem",
-            dependencies: []
+            dependencies: [],
         ),
         .target(
             name: "Persistence",
             dependencies: [
                 "SharedModels",
                 .product(name: "GRDB", package: "grdb.swift"),
-            ]
+            ],
         ),
         .target(
             name: "Networking",
             dependencies: [
                 "SharedModels",
                 "Persistence",
-            ]
+            ],
         ),
         .target(
             name: "Realtime",
@@ -51,7 +51,7 @@ let package = Package(
                 "SharedModels",
                 "Networking",
                 "Persistence",
-            ]
+            ],
         ),
         .target(
             name: "Auth",
@@ -59,7 +59,7 @@ let package = Package(
                 "Networking",
                 "Persistence",
                 "DesignSystem",
-            ]
+            ],
         ),
         .target(
             name: "Sessions",
@@ -69,7 +69,7 @@ let package = Package(
                 "Realtime",
                 "Persistence",
                 "DesignSystem",
-            ]
+            ],
         ),
         .target(
             name: "Presets",
@@ -77,7 +77,7 @@ let package = Package(
                 "SharedModels",
                 "Networking",
                 "DesignSystem",
-            ]
+            ],
         ),
         .target(
             name: "RunConsole",
@@ -85,7 +85,7 @@ let package = Package(
                 "SharedModels",
                 "Sessions",
                 "DesignSystem",
-            ]
+            ],
         ),
         .target(
             name: "Summary",
@@ -93,35 +93,35 @@ let package = Package(
                 "SharedModels",
                 "Networking",
                 "DesignSystem",
-            ]
+            ],
         ),
         .testTarget(
             name: "SessionsTests",
-            dependencies: ["Sessions", "SharedModels", "Networking", "Realtime", "Persistence"]
+            dependencies: ["Sessions", "SharedModels", "Networking", "Realtime", "Persistence"],
         ),
         .testTarget(
             name: "NetworkingTests",
-            dependencies: ["Networking", "SharedModels", "Persistence"]
+            dependencies: ["Networking", "SharedModels", "Persistence"],
         ),
         .testTarget(
             name: "RealtimeTests",
-            dependencies: ["Realtime", "SharedModels"]
+            dependencies: ["Realtime", "SharedModels"],
         ),
         .testTarget(
             name: "RunConsoleTests",
-            dependencies: ["RunConsole", "SharedModels"]
+            dependencies: ["RunConsole", "SharedModels"],
         ),
         .testTarget(
             name: "PresetsTests",
-            dependencies: ["Presets", "SharedModels"]
+            dependencies: ["Presets", "SharedModels"],
         ),
         .testTarget(
             name: "SummaryTests",
-            dependencies: ["Summary"]
+            dependencies: ["Summary"],
         ),
         .testTarget(
             name: "AuthTests",
-            dependencies: ["Auth", "Networking", "SharedModels", "Persistence"]
+            dependencies: ["Auth", "Networking", "SharedModels", "Persistence"],
         ),
-    ]
+    ],
 )

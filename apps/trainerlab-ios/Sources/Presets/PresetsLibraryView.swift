@@ -27,7 +27,7 @@ public struct PresetsLibraryView: View {
         GeometryReader { proxy in
             let layoutMode = PresetsLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             Group {
@@ -85,7 +85,7 @@ public struct PresetsLibraryView: View {
             VStack(alignment: .leading, spacing: 14) {
                 header(
                     titleFont: layoutMode == .narrowPhone ? .title2.bold() : .title.bold(),
-                    showRefreshCard: false
+                    showRefreshCard: false,
                 )
                 presetSearchField
                 presetEditorCard(layoutMode: layoutMode)
@@ -109,7 +109,7 @@ public struct PresetsLibraryView: View {
                     ContentUnavailableView(
                         "No Presets",
                         systemImage: "shippingbox",
-                        description: Text("Create a preset to speed up scenario changes.")
+                        description: Text("Create a preset to speed up scenario changes."),
                     )
                     .frame(maxWidth: .infinity, minHeight: 220)
                 } else {
@@ -214,7 +214,7 @@ public struct PresetsLibraryView: View {
                         .background(selectedPresetID == preset.id ? TrainerLabTheme.setupSurface : TrainerLabTheme.setupSurface.opacity(0.55))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(selectedPresetID == preset.id ? TrainerLabTheme.accentBlue : Color.clear, lineWidth: 2)
+                                .stroke(selectedPresetID == preset.id ? TrainerLabTheme.accentBlue : Color.clear, lineWidth: 2),
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
@@ -499,7 +499,7 @@ public struct PresetsLibraryView: View {
         selectedPresetID = PresetsWorkspaceSelection.resolvedSelectionID(
             currentSelectionID: selectedPresetID,
             presets: filteredPresets.isEmpty ? presets : filteredPresets,
-            layoutMode: layoutMode
+            layoutMode: layoutMode,
         )
 
         if let selectedPreset = presets.first(where: { $0.id == selectedPresetID }) {
@@ -534,20 +534,23 @@ public struct PresetsLibraryView: View {
         guard !title.isEmpty else { return }
 
         if let selectedPreset {
-            await viewModel.updatePreset(
-                id: selectedPreset.id,
+            let request = ScenarioInstructionUpdateRequest(
                 title: title,
                 description: description,
-                instruction: instruction,
+                instructionText: instruction,
                 severity: draftSeverity,
-                isActive: draftIsActive
+                isActive: draftIsActive,
+            )
+            await viewModel.updatePreset(
+                id: selectedPreset.id,
+                request: request,
             )
         } else {
             await viewModel.createPreset(
                 title: title,
                 description: description,
                 instruction: instruction,
-                severity: draftSeverity
+                severity: draftSeverity,
             )
             selectedPresetID = viewModel.presets.first?.id
             if let selectedPreset = viewModel.presets.first {
