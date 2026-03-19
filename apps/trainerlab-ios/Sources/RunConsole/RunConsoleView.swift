@@ -606,7 +606,7 @@ public struct RunConsoleView: View {
                 Text(label)
                     .font(.subheadline.weight(isActive ? .semibold : .regular))
                     .frame(maxWidth: .infinity)
-                if isLoadingRuntimeState && panel == .aiInstructor {
+                if isLoadingRuntimeState, panel == .aiInstructor {
                     ProgressView().controlSize(.mini)
                 }
             }
@@ -627,7 +627,7 @@ public struct RunConsoleView: View {
     }
 
     @ViewBuilder private var scenarioBriefContent: some View {
-        if isLoadingRuntimeState && store.runtimeState == nil {
+        if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
@@ -783,7 +783,7 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
-                if rs.aiPlan == nil && rs.aiRationaleNotes.isEmpty {
+                if rs.aiPlan == nil, rs.aiRationaleNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1007,14 +1007,12 @@ public struct RunConsoleView: View {
     }
 
     private func effectivenessBadge(_ value: String) -> some View {
-        let color: Color = {
-            switch value {
-            case "effective": return TrainerLabTheme.success
-            case "partially_effective": return TrainerLabTheme.warning
-            case "ineffective": return TrainerLabTheme.danger
-            default: return Color.secondary
-            }
-        }()
+        let color: Color = switch value {
+        case "effective": TrainerLabTheme.success
+        case "partially_effective": TrainerLabTheme.warning
+        case "ineffective": TrainerLabTheme.danger
+        default: Color.secondary
+        }
         let label = value.replacingOccurrences(of: "_", with: " ").capitalized
         return Text(label)
             .font(.caption2.bold())
@@ -1154,25 +1152,25 @@ public struct RunConsoleView: View {
 
     private func terminalCardTitle(_ status: TrainerSessionStatus) -> String {
         switch status {
-        case .completed: return "Session Complete"
-        case .failed: return "Session Failed"
-        default: return "Session Ended"
+        case .completed: "Session Complete"
+        case .failed: "Session Failed"
+        default: "Session Ended"
         }
     }
 
     private func terminalCardIcon(_ status: TrainerSessionStatus) -> String {
         switch status {
-        case .completed: return "checkmark.seal.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        default: return "stop.circle.fill"
+        case .completed: "checkmark.seal.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        default: "stop.circle.fill"
         }
     }
 
     private func terminalCardColor(_ status: TrainerSessionStatus) -> Color {
         switch status {
-        case .completed: return TrainerLabTheme.success
-        case .failed: return TrainerLabTheme.danger
-        default: return TrainerLabTheme.warning
+        case .completed: TrainerLabTheme.success
+        case .failed: TrainerLabTheme.danger
+        default: TrainerLabTheme.warning
         }
     }
 
@@ -1333,9 +1331,9 @@ public struct RunConsoleView: View {
 
     private var eventFormIsValid: Bool {
         switch eventMode {
-        case "injury": return !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
-        case "illness": return !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
-        default: return !vitalType.isEmpty
+        case "injury": !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
+        case "illness": !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
+        default: !vitalType.isEmpty
         }
     }
 
@@ -1567,7 +1565,7 @@ public struct RunConsoleView: View {
             DictionaryItem(code: "C", label: "Circulation"),
             DictionaryItem(code: "H1", label: "Hypothermia"),
             DictionaryItem(code: "H2", label: "Head / Brain"),
-            DictionaryItem(code: "PC", label: "Penetrating / Chest")
+            DictionaryItem(code: "PC", label: "Penetrating / Chest"),
         ]
     }
 
@@ -1580,7 +1578,7 @@ public struct RunConsoleView: View {
             DictionaryItem(code: "hypothermia", label: "Hypothermia"),
             DictionaryItem(code: "anaphylaxis", label: "Anaphylaxis"),
             DictionaryItem(code: "airway_obstruction", label: "Airway Obstruction"),
-            DictionaryItem(code: "other", label: "Other…")
+            DictionaryItem(code: "other", label: "Other…"),
         ]
     }
 
@@ -1616,9 +1614,9 @@ public struct RunConsoleView: View {
     private var filteredTimelineEntries: [ClinicalTimelineEntry] {
         switch selectedTimelineFilter {
         case .all:
-            return store.state.clinicalTimelineEntries
+            store.state.clinicalTimelineEntries
         case let .kind(kind):
-            return store.state.clinicalTimelineEntries.filter { $0.kind == kind }
+            store.state.clinicalTimelineEntries.filter { $0.kind == kind }
         }
     }
 
@@ -1633,11 +1631,11 @@ public struct RunConsoleView: View {
     private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
         switch outcome {
         case .correct:
-            return TrainerLabTheme.success
+            TrainerLabTheme.success
         case .incorrect, .missed:
-            return TrainerLabTheme.danger
+            TrainerLabTheme.danger
         case .improvised, .pending:
-            return TrainerLabTheme.warning
+            TrainerLabTheme.warning
         }
     }
 
@@ -1678,10 +1676,10 @@ public struct RunConsoleView: View {
 
     private func avpuColor(_ value: AVPUState) -> Color {
         switch value {
-        case .alert: return TrainerLabTheme.avpuAlert
-        case .verbal: return TrainerLabTheme.avpuVerbal
-        case .pain: return TrainerLabTheme.avpuPain
-        case .unalert: return TrainerLabTheme.avpuUnalert
+        case .alert: TrainerLabTheme.avpuAlert
+        case .verbal: TrainerLabTheme.avpuVerbal
+        case .pain: TrainerLabTheme.avpuPain
+        case .unalert: TrainerLabTheme.avpuUnalert
         }
     }
 
@@ -1719,11 +1717,11 @@ public struct RunConsoleView: View {
 
     private func recommendationPriorityRank(_ priority: String) -> Int {
         switch priority.lowercased() {
-        case "critical": return 0
-        case "high": return 1
-        case "medium", "moderate": return 2
-        case "low": return 3
-        default: return 4
+        case "critical": 0
+        case "high": 1
+        case "medium", "moderate": 2
+        case "low": 3
+        default: 4
         }
     }
 
@@ -1762,23 +1760,23 @@ public struct RunConsoleView: View {
 
     private func timelineColor(for kind: ClinicalTimelineKind) -> Color {
         switch kind {
-        case .lifecycle: return TrainerLabTheme.accentBlue
-        case .cause, .injury, .illness, .loc, .problem: return TrainerLabTheme.danger
-        case .recommendation: return TrainerLabTheme.warning
-        case .intervention: return TrainerLabTheme.success
-        case .note: return Color.cyan
-        case .vitals: return TrainerLabTheme.warning
+        case .lifecycle: TrainerLabTheme.accentBlue
+        case .cause, .injury, .illness, .loc, .problem: TrainerLabTheme.danger
+        case .recommendation: TrainerLabTheme.warning
+        case .intervention: TrainerLabTheme.success
+        case .note: Color.cyan
+        case .vitals: TrainerLabTheme.warning
         }
     }
 
     private func vitalDisplayName(_ key: String) -> String {
         switch key {
-        case "heart_rate": return "HR"
-        case "spo2": return "SpO2"
-        case "etco2": return "ETCO2"
-        case "blood_pressure": return "BP"
-        case "blood_glucose", "blood_glucose_level": return "Glucose"
-        default: return key.replacingOccurrences(of: "_", with: " ").capitalized
+        case "heart_rate": "HR"
+        case "spo2": "SpO2"
+        case "etco2": "ETCO2"
+        case "blood_pressure": "BP"
+        case "blood_glucose", "blood_glucose_level": "Glucose"
+        default: key.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 
@@ -1845,7 +1843,7 @@ public struct RunConsoleView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            if compact && controlPresentation == .iconOnly {
+            if compact, controlPresentation == .iconOnly {
                 Image(systemName: systemImage)
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -2329,24 +2327,24 @@ private enum TimelineFilter: Hashable, CaseIterable, Identifiable {
 
     var id: String {
         switch self {
-        case .all: return "all"
-        case let .kind(kind): return kind.rawValue
+        case .all: "all"
+        case let .kind(kind): kind.rawValue
         }
     }
 
     var title: String {
         switch self {
-        case .all: return "All Events"
-        case .kind(.lifecycle): return "Lifecycle"
-        case .kind(.cause): return "Causes"
-        case .kind(.problem): return "Problems"
-        case .kind(.recommendation): return "Recommendations"
-        case .kind(.intervention): return "Intervention"
-        case .kind(.loc): return "LOC"
-        case .kind(.note): return "Notes"
-        case .kind(.vitals): return "Vitals"
-        case .kind(.injury): return "Injury"
-        case .kind(.illness): return "Illness"
+        case .all: "All Events"
+        case .kind(.lifecycle): "Lifecycle"
+        case .kind(.cause): "Causes"
+        case .kind(.problem): "Problems"
+        case .kind(.recommendation): "Recommendations"
+        case .kind(.intervention): "Intervention"
+        case .kind(.loc): "LOC"
+        case .kind(.note): "Notes"
+        case .kind(.vitals): "Vitals"
+        case .kind(.injury): "Injury"
+        case .kind(.illness): "Illness"
         }
     }
 }
@@ -2447,17 +2445,17 @@ private struct VitalValueCell: View {
 
     private var trendIcon: String {
         switch vital.trend {
-        case .up: return "arrow.up"
-        case .down: return "arrow.down"
-        case .flat: return "minus"
+        case .up: "arrow.up"
+        case .down: "arrow.down"
+        case .flat: "minus"
         }
     }
 
     private var trendColor: Color {
         switch vital.trend {
-        case .up: return TrainerLabTheme.warning
-        case .down: return TrainerLabTheme.success
-        case .flat: return .secondary
+        case .up: TrainerLabTheme.warning
+        case .down: TrainerLabTheme.success
+        case .flat: .secondary
         }
     }
 

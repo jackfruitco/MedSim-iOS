@@ -32,7 +32,8 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
 
     public func signOut() async {
         if let tokens = tokenProvider.loadTokens(),
-           let payload = try? JSONEncoder().encode(["refresh_token": tokens.refreshToken]) {
+           let payload = try? JSONEncoder().encode(["refresh_token": tokens.refreshToken])
+        {
             let endpoint = Endpoint(
                 path: "/api/v1/auth/logout/",
                 method: .post,

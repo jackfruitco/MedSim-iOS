@@ -105,7 +105,10 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     public func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type = T.self) async throws -> T {
         let data = try await requestData(endpoint)
         if T.self == EmptyResponse.self, data.isEmpty {
-            return EmptyResponse() as! T
+            guard let emptyResponse = EmptyResponse() as? T else {
+                throw APIClientError.decoding("Unable to cast EmptyResponse to \(T.self)")
+            }
+            return emptyResponse
         }
 
         do {
@@ -159,11 +162,10 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             throw APIClientError.invalidURL
         }
 
-        let joinedPath: String
-        if endpoint.path.hasPrefix("/") {
-            joinedPath = endpoint.path
+        let joinedPath: String = if endpoint.path.hasPrefix("/") {
+            endpoint.path
         } else {
-            joinedPath = base.path + endpoint.path
+            base.path + endpoint.path
         }
         components.path = joinedPath
 

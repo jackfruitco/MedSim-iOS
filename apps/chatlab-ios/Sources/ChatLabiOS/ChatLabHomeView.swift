@@ -305,34 +305,34 @@ private struct ChatSimulationCard: View {
     private func statusText(_ status: SimulationTerminalState) -> String {
         switch status {
         case .inProgress:
-            return "In Progress"
+            "In Progress"
         case .completed:
-            return "Completed"
+            "Completed"
         case .timedOut:
-            return "Timed Out"
+            "Timed Out"
         case .failed:
-            return "Failed"
+            "Failed"
         case .canceled:
-            return "Canceled"
+            "Canceled"
         case .unknown:
-            return "Unknown"
+            "Unknown"
         }
     }
 
     private func statusColor(_ status: SimulationTerminalState) -> Color {
         switch status {
         case .inProgress:
-            return .blue
+            .blue
         case .completed:
-            return .green
+            .green
         case .timedOut:
-            return .orange
+            .orange
         case .failed:
-            return .red
+            .red
         case .canceled:
-            return .gray
+            .gray
         case .unknown:
-            return .secondary
+            .secondary
         }
     }
 }

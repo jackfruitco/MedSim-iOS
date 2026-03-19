@@ -69,9 +69,9 @@ public final class RunSessionStore: ObservableObject {
                     self.captureClinicalTimelineEntry(from: event)
                     self.syncStopwatchState(previousStatus: previousStatus)
                 }
-                if self.shouldRefreshRuntimeProjection(for: event) {
-                    await self.loadRuntimeState()
-                    await self.reconcileAnnotationsFromSnapshot()
+                if shouldRefreshRuntimeProjection(for: event) {
+                    await loadRuntimeState()
+                    await reconcileAnnotationsFromSnapshot()
                 }
             }
         }
@@ -298,7 +298,7 @@ public final class RunSessionStore: ObservableObject {
                     "intervention_type": interventionType,
                     "site_code": siteCode,
                     "effectiveness": effectiveness.rawValue,
-                    "intervention_status": status.rawValue
+                    "intervention_status": status.rawValue,
                 ]
             )
 
@@ -585,9 +585,9 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func executeQueuedAckCommand<T: Sendable>(
+    private func executeQueuedAckCommand(
         envelope: PendingCommandEnvelope,
-        run: @escaping @Sendable () async throws -> T
+        run: @escaping @Sendable () async throws -> some Sendable
     ) async {
         do {
             try await commandQueue.enqueue(envelope)
@@ -747,7 +747,7 @@ public final class RunSessionStore: ObservableObject {
                 "intervention_type": interventionType,
                 "site_code": siteCode,
                 "effectiveness": effectiveness,
-                "status": status
+                "status": status,
             ]
             if let supersedesID { meta["superseded_by"] = supersedesID }
 
@@ -768,7 +768,8 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."),
-           jsonString(event.payload["target"]) == "avpu" {
+           jsonString(event.payload["target"]) == "avpu"
+        {
             let stateText = jsonString(event.payload["avpu_state"]) ?? "unknown"
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
@@ -1025,7 +1026,8 @@ public final class RunSessionStore: ObservableObject {
                 state.stopwatchIsRunning = true
                 state.stopwatchRunningSince = Date()
                 if state.stopwatchElapsedSeconds == 0,
-                   let startedAt = state.session?.runStartedAt {
+                   let startedAt = state.session?.runStartedAt
+                {
                     state.stopwatchElapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
                 }
             }
@@ -1044,7 +1046,8 @@ public final class RunSessionStore: ObservableObject {
 
         if status == .completed,
            let startedAt = state.session?.runStartedAt,
-           let endedAt = state.session?.runCompletedAt {
+           let endedAt = state.session?.runCompletedAt
+        {
             state.stopwatchElapsedSeconds = max(0, Int(endedAt.timeIntervalSince(startedAt)))
         }
     }
@@ -1686,30 +1689,30 @@ public final class RunSessionStore: ObservableObject {
     private func lifecycleTitle(for eventType: String) -> String? {
         switch eventType {
         case "run.started":
-            return "Run Started"
+            "Run Started"
         case "run.paused":
-            return "Run Paused"
+            "Run Paused"
         case "run.resumed":
-            return "Run Resumed"
+            "Run Resumed"
         case "run.stopped", "run.completed":
-            return "Run Stopped"
+            "Run Stopped"
         default:
-            return nil
+            nil
         }
     }
 
     private func lifecycleMessage(for eventType: String) -> String {
         switch eventType {
         case "run.started":
-            return "Simulation active."
+            "Simulation active."
         case "run.paused":
-            return "Simulation paused."
+            "Simulation paused."
         case "run.resumed":
-            return "Simulation resumed."
+            "Simulation resumed."
         case "run.stopped", "run.completed":
-            return "Simulation completed."
+            "Simulation completed."
         default:
-            return "Lifecycle update."
+            "Lifecycle update."
         }
     }
 
@@ -1767,7 +1770,7 @@ public final class RunSessionStore: ObservableObject {
             payload["title"],
             payload["label"],
             payload["name"],
-            payload["code"]
+            payload["code"],
         ]
         for candidate in candidates {
             if let value = jsonString(candidate), !value.isEmpty {
@@ -1921,7 +1924,7 @@ private enum InjuryZoneMap {
         "JLI": (.front, 0.44, 0.51),
         "JRI": (.front, 0.56, 0.51),
         "JLN": (.front, 0.40, 0.18),
-        "JRN": (.front, 0.60, 0.18)
+        "JRN": (.front, 0.60, 0.18),
     ]
 }
 
@@ -1961,7 +1964,7 @@ private enum InterventionSiteMap {
         "LEFT_INGUINAL": (.front, 0.44, 0.51),
         "RIGHT_INGUINAL": (.front, 0.56, 0.51),
         "LEFT_NECK": (.front, 0.43, 0.16),
-        "RIGHT_NECK": (.front, 0.57, 0.16)
+        "RIGHT_NECK": (.front, 0.57, 0.16),
     ]
 }
 
@@ -1974,6 +1977,6 @@ private enum PulseZoneMap {
         "femoral_left": (.front, 0.44, 0.50),
         "femoral_right": (.front, 0.56, 0.50),
         "pedal_left": (.front, 0.40, 0.94),
-        "pedal_right": (.front, 0.60, 0.94)
+        "pedal_right": (.front, 0.60, 0.94),
     ]
 }

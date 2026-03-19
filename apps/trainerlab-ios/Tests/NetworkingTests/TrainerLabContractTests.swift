@@ -400,7 +400,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "communication",
                 "triage",
                 "intervention",
-                "other"
+                "other",
             ]
         )
         XCTAssertEqual(
@@ -410,7 +410,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "incorrect",
                 "missed",
                 "improvised",
-                "pending"
+                "pending",
             ]
         )
     }

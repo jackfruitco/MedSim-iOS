@@ -45,22 +45,22 @@ enum RunConsoleTimelinePresentation {
     static func chipText(for kind: ClinicalTimelineKind) -> String {
         switch kind {
         case .loc:
-            return "LOC"
+            "LOC"
         default:
-            return kind.rawValue.uppercased()
+            kind.rawValue.uppercased()
         }
     }
 
     static func title(for entry: ClinicalTimelineEntry) -> String {
         switch entry.kind {
         case .cause, .injury, .illness, .intervention, .loc, .problem, .recommendation:
-            return "Change"
+            "Change"
         case .lifecycle:
-            return entry.title
+            entry.title
         case .note:
-            return "Trainer Note"
+            "Trainer Note"
         case .vitals:
-            return entry.title
+            entry.title
         }
     }
 }
@@ -85,9 +85,9 @@ struct RunConsoleCompactMetrics {
     static func resolve(width: CGFloat, layoutMode: RunConsoleLayoutMode) -> Self {
         switch RunConsoleCompactDensity.resolve(width: width, layoutMode: layoutMode) {
         case .standard:
-            return .standard
+            .standard
         case .narrowPhone:
-            return .narrowPhone
+            .narrowPhone
         }
     }
 
@@ -139,13 +139,13 @@ enum InterventionMARCHGroup: String, CaseIterable {
     var interventionTypes: [String] {
         switch self {
         case .massiveHemorrhage:
-            return ["tourniquet", "junctional_tourniquet", "wound_packing", "pressure_dressing", "hemostatic_agent", "pelvic_binder"]
+            ["tourniquet", "junctional_tourniquet", "wound_packing", "pressure_dressing", "hemostatic_agent", "pelvic_binder"]
         case .airway:
-            return ["npa", "opa", "surgical_cric", "advanced_airway"]
+            ["npa", "opa", "surgical_cric", "advanced_airway"]
         case .respiration:
-            return ["needle_decompression", "chest_tube"]
+            ["needle_decompression", "chest_tube"]
         case .access:
-            return ["iv_access", "io_access", "fluid_resuscitation", "blood_transfusion"]
+            ["iv_access", "io_access", "fluid_resuscitation", "blood_transfusion"]
         }
     }
 
@@ -163,39 +163,39 @@ enum RunConsoleLifecycleAction: String, CaseIterable {
     var title: String {
         switch self {
         case .start:
-            return "Start"
+            "Start"
         case .pause:
-            return "Pause"
+            "Pause"
         case .resume:
-            return "Resume"
+            "Resume"
         case .stop:
-            return "Stop"
+            "Stop"
         }
     }
 
     var systemImage: String {
         switch self {
         case .start:
-            return "play.fill"
+            "play.fill"
         case .pause:
-            return "pause.fill"
+            "pause.fill"
         case .resume:
-            return "playpause.fill"
+            "playpause.fill"
         case .stop:
-            return "stop.fill"
+            "stop.fill"
         }
     }
 
     static func visibleActions(for status: TrainerSessionStatus?) -> [Self] {
         switch status {
         case .seeded:
-            return [.start]
+            [.start]
         case .running:
-            return [.pause, .stop]
+            [.pause, .stop]
         case .paused:
-            return [.resume, .stop]
+            [.resume, .stop]
         case .completed, .failed, .none:
-            return []
+            []
         }
     }
 }
@@ -219,17 +219,17 @@ struct TransportChip: View {
 
     private var chipColor: Color {
         switch banner.style {
-        case .healthy: return TrainerLabTheme.success
-        case .warning: return TrainerLabTheme.warning
-        case .error: return TrainerLabTheme.danger
+        case .healthy: TrainerLabTheme.success
+        case .warning: TrainerLabTheme.warning
+        case .error: TrainerLabTheme.danger
         }
     }
 
     private var iconName: String {
         switch banner.style {
-        case .healthy: return "antenna.radiowaves.left.and.right"
-        case .warning: return "exclamationmark.triangle.fill"
-        case .error: return "xmark.circle.fill"
+        case .healthy: "antenna.radiowaves.left.and.right"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.circle.fill"
         }
     }
 }
@@ -368,9 +368,9 @@ struct PatientDiagramPanel: View {
 
     private func injuryColor(for injury: InjuryAnnotation) -> Color {
         switch injury.status {
-        case .pending: return TrainerLabTheme.warning
-        case .active: return injury.kind.lowercased() == "illness" ? TrainerLabTheme.warning : TrainerLabTheme.danger
-        case .inactive: return .gray
+        case .pending: TrainerLabTheme.warning
+        case .active: injury.kind.lowercased() == "illness" ? TrainerLabTheme.warning : TrainerLabTheme.danger
+        case .inactive: .gray
         }
     }
 

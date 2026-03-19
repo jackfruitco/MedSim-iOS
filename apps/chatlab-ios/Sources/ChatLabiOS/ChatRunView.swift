@@ -638,10 +638,10 @@ public struct ChatRunView: View {
         .background(.ultraThinMaterial)
     }
 
-    private func toolSection<Content: View>(
+    private func toolSection(
         _ section: ChatToolsSection,
         layoutMode: ChatRunLayoutMode,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View
     ) -> some View {
         let isExpanded = expandedToolSections.contains(section)
 
@@ -707,33 +707,33 @@ public struct ChatRunView: View {
     private func tabFont(for layoutMode: ChatRunLayoutMode) -> Font {
         switch layoutMode {
         case .compactMessenger:
-            return .caption
+            .caption
         case .widePhoneMessenger:
-            return .subheadline
+            .subheadline
         case .padWorkspace:
-            return .subheadline
+            .subheadline
         }
     }
 
     private func horizontalInset(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 10
+            10
         case .widePhoneMessenger:
-            return 14
+            14
         case .padWorkspace:
-            return 0
+            0
         }
     }
 
     private func messageColumnWidth(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 560
+            560
         case .widePhoneMessenger:
-            return 620
+            620
         case .padWorkspace:
-            return 760
+            760
         }
     }
 
@@ -810,7 +810,7 @@ private struct ChatBubble: View {
                     Text(item.timestamp.formatted(date: .omitted, time: .shortened))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    if !item.isFromSelf && !item.isRead {
+                    if !item.isFromSelf, !item.isRead {
                         Text("Unread")
                             .font(.caption2.bold())
                             .foregroundStyle(.orange)
@@ -846,11 +846,11 @@ private struct ChatBubble: View {
     private func bubbleWidth(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 320
+            320
         case .widePhoneMessenger:
-            return 420
+            420
         case .padWorkspace:
-            return 620
+            620
         }
     }
 
@@ -884,13 +884,13 @@ private struct ChatBubble: View {
     private func statusColor(_ status: DeliveryStatus) -> Color {
         switch status {
         case .sending:
-            return .secondary
+            .secondary
         case .sent:
-            return .blue
+            .blue
         case .delivered:
-            return .green
+            .green
         case .failed:
-            return .red
+            .red
         }
     }
 }

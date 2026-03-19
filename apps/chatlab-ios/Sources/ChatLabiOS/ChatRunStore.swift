@@ -103,7 +103,8 @@ public final class ChatRunStore: ObservableObject {
         guard let activeConversationID else { return [] }
         var users = typingUsersByConversation[activeConversationID] ?? []
         if let awaiting = awaitingReplyByConversation[activeConversationID], awaiting.isStale == false,
-           users.contains(awaiting.participantName) == false {
+           users.contains(awaiting.participantName) == false
+        {
             users.append(awaiting.participantName)
         }
         return users
@@ -317,7 +318,8 @@ public final class ChatRunStore: ObservableObject {
                 )
                 reconcilePending(localID: localID, with: created)
                 if let conversation = conversations.first(where: { $0.id == activeConversationID }),
-                   supportsAwaitingReply(conversation) {
+                   supportsAwaitingReply(conversation)
+                {
                     startAwaitingReply(
                         for: activeConversationID,
                         participantName: conversation.displayName,
@@ -341,7 +343,8 @@ public final class ChatRunStore: ObservableObject {
                     upsertMessage(mapMessage(retried))
                     let conversationID = retried.conversationID ?? item.conversationID
                     if let conversation = conversations.first(where: { $0.id == conversationID }),
-                       supportsAwaitingReply(conversation) {
+                       supportsAwaitingReply(conversation)
+                    {
                         startAwaitingReply(
                             for: conversationID,
                             participantName: conversation.displayName,
@@ -550,7 +553,8 @@ public final class ChatRunStore: ObservableObject {
 
     private func handleSimulationStateChanged(_ payload: [String: JSONValue]) {
         if let raw = string(payload, keys: ["status"]),
-           let status = SimulationTerminalState(rawValue: raw) {
+           let status = SimulationTerminalState(rawValue: raw)
+        {
             let updated = ChatSimulation(
                 id: simulation.id,
                 userID: simulation.userID,
@@ -625,7 +629,8 @@ public final class ChatRunStore: ObservableObject {
     private func upsertMessage(_ item: ChatMessageItem) {
         var items = messagesByConversation[item.conversationID] ?? []
         if let serverID = item.serverID,
-           let index = items.firstIndex(where: { $0.serverID == serverID }) {
+           let index = items.firstIndex(where: { $0.serverID == serverID })
+        {
             items[index] = item
         } else {
             items.append(item)
@@ -807,7 +812,8 @@ public final class ChatRunStore: ObservableObject {
             return
         }
         if forceRestart == false,
-           case .initialGeneration? = awaitingReplyByConversation[patientConversation.id]?.reason {
+           case .initialGeneration? = awaitingReplyByConversation[patientConversation.id]?.reason
+        {
             return
         }
         startAwaitingReply(

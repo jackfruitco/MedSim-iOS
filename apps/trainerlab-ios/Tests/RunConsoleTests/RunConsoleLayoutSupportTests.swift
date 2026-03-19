@@ -160,7 +160,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 DebriefAnnotationOption(value: .incorrect, label: "Incorrect"),
                 DebriefAnnotationOption(value: .missed, label: "Missed"),
                 DebriefAnnotationOption(value: .improvised, label: "Improvised"),
-                DebriefAnnotationOption(value: .pending, label: "Pending")
+                DebriefAnnotationOption(value: .pending, label: "Pending"),
             ]
         )
     }

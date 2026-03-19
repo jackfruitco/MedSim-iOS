@@ -10,8 +10,8 @@ private enum MockError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .signInFailed: return "Sign in failed."
-        case .accessMeFailed: return "Access check failed."
+        case .signInFailed: "Sign in failed."
+        case .accessMeFailed: "Access check failed."
         }
     }
 }
@@ -38,7 +38,11 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
 
 private func makeLabAccess() -> LabAccess {
     let json = Data(#"{"lab_slug":"test-lab","access_level":"trainer"}"#.utf8)
-    return try! JSONDecoder().decode(LabAccess.self, from: json)
+    do {
+        return try JSONDecoder().decode(LabAccess.self, from: json)
+    } catch {
+        fatalError("Failed to decode mock LabAccess: \(error)")
+    }
 }
 
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {

@@ -70,7 +70,7 @@ public final class SessionHubViewModel: ObservableObject {
             scenarioSpec: [
                 "diagnosis": .string("Undifferentiated trauma"),
                 "chief_complaint": .string("Altered mental status"),
-                "tick_interval_seconds": .number(10)
+                "tick_interval_seconds": .number(10),
             ],
             directives: "Begin with unstable vitals and evolving airway compromise.",
             modifiers: ["night-ops", "limited-resources"]

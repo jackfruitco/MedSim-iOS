@@ -323,7 +323,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         )
     }
 
-    private func injectEvent<RequestBody: Encodable>(path: String, request: RequestBody, idempotencyKey: String) async throws -> TrainerCommandAck {
+    private func injectEvent(path: String, request: some Encodable, idempotencyKey: String) async throws -> TrainerCommandAck {
         let body = try encoder.encode(request)
         return try await apiClient.request(
             Endpoint(path: path, method: .post, body: body, idempotencyKey: idempotencyKey),
@@ -417,7 +417,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: String(limit))
+            URLQueryItem(name: "limit", value: String(limit)),
         ]
         if let cursor {
             queryItems.append(URLQueryItem(name: "cursor", value: cursor))

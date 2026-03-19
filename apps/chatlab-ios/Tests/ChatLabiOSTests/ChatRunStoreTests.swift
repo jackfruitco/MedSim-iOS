@@ -226,7 +226,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "is_from_ai": .bool(true),
                     "display_name": .string(patientConversation.displayName),
                     "timestamp": .string(isoTimestamp()),
-                    "delivery_status": .string("sent")
+                    "delivery_status": .string("sent"),
                 ]
             )
         )
@@ -276,7 +276,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "id": .number(10),
                     "status": .string("failed"),
                     "retryable": .bool(true),
-                    "error_text": .string("Message failed to deliver to the AI service. Try again.")
+                    "error_text": .string("Message failed to deliver to the AI service. Try again."),
                 ]
             )
         )
@@ -317,7 +317,7 @@ final class ChatRunStoreTests: XCTestCase {
                     "status": .string("failed"),
                     "terminal_reason_code": .string("provider_timeout"),
                     "terminal_reason_text": .string("Simulation failed."),
-                    "retryable": .bool(true)
+                    "retryable": .bool(true),
                 ]
             )
         )

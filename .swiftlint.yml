@@ -1,0 +1,29 @@
+included:
+  - MedSim
+  - MedSimTests
+  - MedSimUITests
+  - apps
+
+cache_path: /tmp/.swiftlint-cache-medsim
+
+excluded:
+  - .build
+  - .swiftpm
+  - DerivedData
+  - build
+  - apps/chatlab-ios/.build
+  - apps/trainerlab-ios/.build
+
+disabled_rules:
+  - cyclomatic_complexity
+  - file_length
+  - function_body_length
+  - identifier_name
+  - large_tuple
+  - line_length
+  - opening_brace
+  - static_over_final_class
+  - trailing_comma
+  - type_body_length
+
+reporter: "xcode"

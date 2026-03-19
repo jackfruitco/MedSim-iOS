@@ -253,13 +253,13 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
     public var controlState: String {
         switch status {
         case .active:
-            return "uncontrolled"
+            "uncontrolled"
         case .treated:
-            return "treated"
+            "treated"
         case .controlled:
-            return "controlled"
+            "controlled"
         case .resolved:
-            return "resolved"
+            "resolved"
         }
     }
 

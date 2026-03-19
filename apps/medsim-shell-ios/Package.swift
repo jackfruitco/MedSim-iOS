@@ -6,14 +6,14 @@ let package = Package(
     defaultLocalization: "en",
     platforms: [
         .iOS(.v26),
-        .macOS(.v14)
+        .macOS(.v14),
     ],
     products: [
-        .library(name: "AppShell", targets: ["AppShell"])
+        .library(name: "AppShell", targets: ["AppShell"]),
     ],
     dependencies: [
         .package(path: "../trainerlab-ios"),
-        .package(path: "../chatlab-ios")
+        .package(path: "../chatlab-ios"),
     ],
     targets: [
         .target(
@@ -28,8 +28,8 @@ let package = Package(
                 .product(name: "Realtime", package: "trainerlab-ios"),
                 .product(name: "Persistence", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
-                .product(name: "ChatLabiOS", package: "chatlab-ios")
+                .product(name: "ChatLabiOS", package: "chatlab-ios"),
             ]
-        )
+        ),
     ]
 )

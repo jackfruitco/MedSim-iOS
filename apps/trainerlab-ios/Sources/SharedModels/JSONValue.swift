@@ -58,17 +58,17 @@ public enum JSONValue: Codable, Equatable, Sendable {
     public var rawValue: Any {
         switch self {
         case let .string(value):
-            return value
+            value
         case let .number(value):
-            return value
+            value
         case let .bool(value):
-            return value
+            value
         case let .object(value):
-            return value.mapValues(\.rawValue)
+            value.mapValues(\.rawValue)
         case let .array(value):
-            return value.map(\.rawValue)
+            value.map(\.rawValue)
         case .null:
-            return NSNull()
+            NSNull()
         }
     }
 }

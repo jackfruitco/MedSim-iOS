@@ -1414,7 +1414,7 @@ public struct InterventionEventRequest: Codable, Sendable {
         self.notes = notes
         self.details = details ?? [
             "kind": .string(interventionType),
-            "version": .number(1)
+            "version": .number(1),
         ]
         self.initiatedByType = initiatedByType
         self.initiatedByID = initiatedByID
@@ -1494,13 +1494,13 @@ public enum AVPUState: String, CaseIterable, Codable, Sendable {
     public var colorToken: String {
         switch self {
         case .alert:
-            return "avpu.green"
+            "avpu.green"
         case .verbal:
-            return "avpu.amber"
+            "avpu.amber"
         case .pain:
-            return "avpu.red"
+            "avpu.red"
         case .unalert:
-            return "avpu.black"
+            "avpu.black"
         }
     }
 }
@@ -1735,25 +1735,25 @@ public enum AnnotationLearningObjective: String, Codable, Sendable, CaseIterable
     public var displayLabel: String {
         switch self {
         case .assessment:
-            return "Assessment"
+            "Assessment"
         case .hemorrhageControl:
-            return "Hemorrhage Control"
+            "Hemorrhage Control"
         case .airway:
-            return "Airway"
+            "Airway"
         case .breathing:
-            return "Breathing"
+            "Breathing"
         case .circulation:
-            return "Circulation"
+            "Circulation"
         case .hypothermia:
-            return "Hypothermia"
+            "Hypothermia"
         case .communication:
-            return "Communication"
+            "Communication"
         case .triage:
-            return "Triage"
+            "Triage"
         case .intervention:
-            return "Intervention"
+            "Intervention"
         case .other:
-            return "Other"
+            "Other"
         }
     }
 }
@@ -1768,15 +1768,15 @@ public enum AnnotationOutcome: String, Codable, Sendable, CaseIterable {
     public var displayLabel: String {
         switch self {
         case .correct:
-            return "Correct"
+            "Correct"
         case .incorrect:
-            return "Incorrect"
+            "Incorrect"
         case .missed:
-            return "Missed"
+            "Missed"
         case .improvised:
-            return "Improvised"
+            "Improvised"
         case .pending:
-            return "Pending"
+            "Pending"
         }
     }
 }
@@ -1935,14 +1935,14 @@ public enum PulseLocation: String, Codable, Sendable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .carotidLeft: return "Carotid (Left)"
-        case .carotidRight: return "Carotid (Right)"
-        case .radialLeft: return "Radial (Left)"
-        case .radialRight: return "Radial (Right)"
-        case .femoralLeft: return "Femoral (Left)"
-        case .femoralRight: return "Femoral (Right)"
-        case .pedalLeft: return "Pedal (Left)"
-        case .pedalRight: return "Pedal (Right)"
+        case .carotidLeft: "Carotid (Left)"
+        case .carotidRight: "Carotid (Right)"
+        case .radialLeft: "Radial (Left)"
+        case .radialRight: "Radial (Right)"
+        case .femoralLeft: "Femoral (Left)"
+        case .femoralRight: "Femoral (Right)"
+        case .pedalLeft: "Pedal (Left)"
+        case .pedalRight: "Pedal (Right)"
         }
     }
 }

@@ -102,7 +102,7 @@ public struct PresetsLibraryView: View {
                     }
                 }
 
-                if viewModel.isLoading && viewModel.presets.isEmpty {
+                if viewModel.isLoading, viewModel.presets.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 180)
                 } else if filteredPresets.isEmpty {
@@ -122,7 +122,7 @@ public struct PresetsLibraryView: View {
                     if viewModel.isLoadingMore {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 44)
-                    } else if viewModel.hasMore && presetSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    } else if viewModel.hasMore, presetSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button("Load More") {
                             Task { await viewModel.loadMorePresets() }
                         }

@@ -83,7 +83,7 @@ public struct RunSummaryView: View {
             SummaryMetric(title: "Status", value: summary.status.capitalized, tint: statusColor(summary.status)),
             SummaryMetric(title: "Started", value: formatRunTime(summary.runStartedAt, start: summary.runStartedAt, end: summary.runCompletedAt), tint: .secondary),
             SummaryMetric(title: "Completed", value: formatRunTime(summary.runCompletedAt, start: summary.runStartedAt, end: summary.runCompletedAt), tint: .secondary),
-            SummaryMetric(title: "Events", value: "\(summary.eventTypeCounts.values.reduce(0, +))", tint: TrainerLabTheme.warning)
+            SummaryMetric(title: "Events", value: "\(summary.eventTypeCounts.values.reduce(0, +))", tint: TrainerLabTheme.warning),
         ]
 
         return LazyVGrid(
@@ -107,11 +107,11 @@ public struct RunSummaryView: View {
         }
     }
 
-    private func collapsibleSection<Content: View>(
+    private func collapsibleSection(
         _ section: RunSummarySection,
         title: String,
         layoutMode _: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -137,11 +137,11 @@ public struct RunSummaryView: View {
         .trainerCardStyle(background: TrainerLabTheme.setupSurface)
     }
 
-    private func sectionCard<Content: View>(
+    private func sectionCard(
         title: String,
         expanded: Bool,
         layoutMode: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -275,24 +275,24 @@ public struct RunSummaryView: View {
     private func summaryMetricColumns(for layoutMode: RunSummaryLayoutMode) -> [GridItem] {
         switch layoutMode {
         case .pad:
-            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+            Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
         case .phone:
-            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
+            Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
         case .narrowPhone:
-            return [GridItem(.flexible(), spacing: 12)]
+            [GridItem(.flexible(), spacing: 12)]
         }
     }
 
     private func statusColor(_ status: String) -> Color {
         switch status.lowercased() {
         case "completed":
-            return TrainerLabTheme.success
+            TrainerLabTheme.success
         case "failed":
-            return TrainerLabTheme.danger
+            TrainerLabTheme.danger
         case "paused":
-            return TrainerLabTheme.warning
+            TrainerLabTheme.warning
         default:
-            return TrainerLabTheme.accentBlue
+            TrainerLabTheme.accentBlue
         }
     }
 

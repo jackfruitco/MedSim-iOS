@@ -147,7 +147,8 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
         try await dbQueue.write { db in
             if var existing = try PendingCommandEnvelope
                 .filter(Column("idempotency_key") == envelope.idempotencyKey)
-                .fetchOne(db) {
+                .fetchOne(db)
+            {
                 existing.endpoint = envelope.endpoint
                 existing.method = envelope.method
                 existing.bodyBase64 = envelope.bodyBase64
@@ -174,7 +175,8 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
         try await dbQueue.write { db in
             if var existing = try PendingCommandEnvelope
                 .filter(Column("idempotency_key") == idempotencyKey)
-                .fetchOne(db) {
+                .fetchOne(db)
+            {
                 existing.retryCount += 1
                 existing.lastError = error
                 existing.nextRetryAt = nextRetryAt

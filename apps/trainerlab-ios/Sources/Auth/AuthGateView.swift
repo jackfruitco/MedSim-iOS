@@ -204,7 +204,7 @@ private extension View {
             [
                 UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(handleTab)),
                 UIKeyCommand(input: "\t", modifierFlags: [.shift], action: #selector(handleShiftTab)),
-                UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(handleEnter))
+                UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(handleEnter)),
             ]
         }
 

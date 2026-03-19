@@ -71,7 +71,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
                 InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG", label: "Left Leg")
+                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
             ]
         ),
         InterventionGroup(
@@ -83,7 +83,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "RIGHT_INGUINAL", label: "Right Inguinal"),
                 InterventionSite(code: "LEFT_INGUINAL", label: "Left Inguinal"),
                 InterventionSite(code: "RIGHT_NECK", label: "Right Neck"),
-                InterventionSite(code: "LEFT_NECK", label: "Left Neck")
+                InterventionSite(code: "LEFT_NECK", label: "Left Neck"),
             ]
         ),
         InterventionGroup(
@@ -93,7 +93,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
                 InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
                 InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG", label: "Left Leg")
+                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
             ]
         ),
         InterventionGroup(
@@ -101,14 +101,14 @@ public enum InterventionDictionary {
             label: "Nasopharyngeal Airway (NPA)",
             sites: [
                 InterventionSite(code: "RIGHT_NARE", label: "Right Nare"),
-                InterventionSite(code: "LEFT_NARE", label: "Left Nare")
+                InterventionSite(code: "LEFT_NARE", label: "Left Nare"),
             ]
         ),
         InterventionGroup(
             interventionType: "opa",
             label: "Oropharyngeal Airway (OPA)",
             sites: [
-                InterventionSite(code: "ORAL", label: "Oral")
+                InterventionSite(code: "ORAL", label: "Oral"),
             ]
         ),
         InterventionGroup(
@@ -118,16 +118,16 @@ public enum InterventionDictionary {
                 InterventionSite(code: "RIGHT_ANTERIOR_CHEST", label: "Right Anterior Chest"),
                 InterventionSite(code: "LEFT_ANTERIOR_CHEST", label: "Left Anterior Chest"),
                 InterventionSite(code: "RIGHT_LATERAL_CHEST", label: "Right Lateral Chest"),
-                InterventionSite(code: "LEFT_LATERAL_CHEST", label: "Left Lateral Chest")
+                InterventionSite(code: "LEFT_LATERAL_CHEST", label: "Left Lateral Chest"),
             ]
         ),
         InterventionGroup(
             interventionType: "surgical_cric",
             label: "Surgical Cricothyrotomy",
             sites: [
-                InterventionSite(code: "ANTERIOR_NECK_MIDLINE", label: "Anterior Neck Midline")
+                InterventionSite(code: "ANTERIOR_NECK_MIDLINE", label: "Anterior Neck Midline"),
             ]
-        )
+        ),
     ]
 
     // MARK: - TCCC-CPP / Tier 4 (paramedic-level; flagged in backend as B4 gap)
@@ -140,21 +140,21 @@ public enum InterventionDictionary {
                 InterventionSite(code: "JTQ-RIGHT-GROIN", label: "Right Groin"),
                 InterventionSite(code: "JTQ-LEFT-GROIN", label: "Left Groin"),
                 InterventionSite(code: "JTQ-RIGHT-AXILLA", label: "Right Axilla"),
-                InterventionSite(code: "JTQ-LEFT-AXILLA", label: "Left Axilla")
+                InterventionSite(code: "JTQ-LEFT-AXILLA", label: "Left Axilla"),
             ]
         ),
         InterventionGroup(
             interventionType: "hemostatic_agent",
             label: "Hemostatic Agent",
             sites: [
-                InterventionSite(code: "HA-WOUND-SITE", label: "Wound Site")
+                InterventionSite(code: "HA-WOUND-SITE", label: "Wound Site"),
             ]
         ),
         InterventionGroup(
             interventionType: "pelvic_binder",
             label: "Pelvic Binder",
             sites: [
-                InterventionSite(code: "PB-PELVIS", label: "Pelvis")
+                InterventionSite(code: "PB-PELVIS", label: "Pelvis"),
             ]
         ),
         InterventionGroup(
@@ -166,7 +166,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "IV-RIGHT-EJ", label: "Right External Jugular"),
                 InterventionSite(code: "IV-LEFT-EJ", label: "Left External Jugular"),
                 InterventionSite(code: "IV-RIGHT-FEM", label: "Right Femoral"),
-                InterventionSite(code: "IV-LEFT-FEM", label: "Left Femoral")
+                InterventionSite(code: "IV-LEFT-FEM", label: "Left Femoral"),
             ]
         ),
         InterventionGroup(
@@ -177,7 +177,7 @@ public enum InterventionDictionary {
                 InterventionSite(code: "IO-LEFT-PROX-TIBIA", label: "Left Proximal Tibia"),
                 InterventionSite(code: "IO-STERNUM", label: "Sternum"),
                 InterventionSite(code: "IO-RIGHT-HUMERUS", label: "Right Humerus"),
-                InterventionSite(code: "IO-LEFT-HUMERUS", label: "Left Humerus")
+                InterventionSite(code: "IO-LEFT-HUMERUS", label: "Left Humerus"),
             ]
         ),
         InterventionGroup(
@@ -185,7 +185,7 @@ public enum InterventionDictionary {
             label: "Fluid Resuscitation",
             sites: [
                 InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
-                InterventionSite(code: "FR-IO-LINE", label: "IO Line")
+                InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
             ]
         ),
         InterventionGroup(
@@ -193,7 +193,7 @@ public enum InterventionDictionary {
             label: "Blood Transfusion / WBCT",
             sites: [
                 InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
-                InterventionSite(code: "BT-IO-LINE", label: "IO Line")
+                InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
             ]
         ),
         InterventionGroup(
@@ -201,7 +201,7 @@ public enum InterventionDictionary {
             label: "Advanced Airway (Intubation)",
             sites: [
                 InterventionSite(code: "AA-ORAL-TRACHEA", label: "Oral/Tracheal"),
-                InterventionSite(code: "AA-NASAL-TRACHEA", label: "Nasotracheal")
+                InterventionSite(code: "AA-NASAL-TRACHEA", label: "Nasotracheal"),
             ]
         ),
         InterventionGroup(
@@ -211,9 +211,9 @@ public enum InterventionDictionary {
                 InterventionSite(code: "CT-RIGHT-4TH-ICS", label: "Right 4th ICS"),
                 InterventionSite(code: "CT-LEFT-4TH-ICS", label: "Left 4th ICS"),
                 InterventionSite(code: "CT-RIGHT-5TH-ICS", label: "Right 5th ICS"),
-                InterventionSite(code: "CT-LEFT-5TH-ICS", label: "Left 5th ICS")
+                InterventionSite(code: "CT-LEFT-5TH-ICS", label: "Left 5th ICS"),
             ]
-        )
+        ),
     ]
 
     // MARK: - Injury → Intervention suggestions
@@ -229,39 +229,39 @@ public enum InterventionDictionary {
             if k.contains("arm") || k.contains("hand") || k.contains("forearm") {
                 return [
                     InterventionSuggestion(interventionType: "tourniquet", label: "Tourniquet"),
-                    InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing")
+                    InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing"),
                 ]
             }
             if k.contains("leg") || k.contains("thigh") || k.contains("calf") || k.contains("foot") {
                 return [
                     InterventionSuggestion(interventionType: "tourniquet", label: "Tourniquet"),
-                    InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing")
+                    InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing"),
                 ]
             }
             // Junctional (groin, axilla, neck, pelvis)
             if k.contains("groin") || k.contains("inguinal") {
                 return [
                     InterventionSuggestion(interventionType: "junctional_tourniquet", label: "Junctional Tourniquet"),
-                    InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing")
+                    InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing"),
                 ]
             }
             if k.contains("axilla") || k.contains("neck") {
                 return [
                     InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing"),
-                    InterventionSuggestion(interventionType: "hemostatic_agent", label: "Hemostatic Agent")
+                    InterventionSuggestion(interventionType: "hemostatic_agent", label: "Hemostatic Agent"),
                 ]
             }
             if k.contains("pelvi") {
                 return [
                     InterventionSuggestion(interventionType: "pelvic_binder", label: "Pelvic Binder"),
-                    InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing")
+                    InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing"),
                 ]
             }
             // Generic hemorrhage
             return [
                 InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing"),
                 InterventionSuggestion(interventionType: "hemostatic_agent", label: "Hemostatic Agent"),
-                InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing")
+                InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing"),
             ]
         }
 
@@ -270,19 +270,19 @@ public enum InterventionDictionary {
             if k.contains("tension") || k.contains("pneumothorax") {
                 return [
                     InterventionSuggestion(interventionType: "needle_decompression", label: "Needle Decompression"),
-                    InterventionSuggestion(interventionType: "chest_tube", label: "Chest Tube")
+                    InterventionSuggestion(interventionType: "chest_tube", label: "Chest Tube"),
                 ]
             }
             if k.contains("obstruction") || k.contains("obstructed") {
                 return [
                     InterventionSuggestion(interventionType: "npa", label: "NPA"),
                     InterventionSuggestion(interventionType: "opa", label: "OPA"),
-                    InterventionSuggestion(interventionType: "surgical_cric", label: "Surgical Cric")
+                    InterventionSuggestion(interventionType: "surgical_cric", label: "Surgical Cric"),
                 ]
             }
             return [
                 InterventionSuggestion(interventionType: "npa", label: "NPA"),
-                InterventionSuggestion(interventionType: "opa", label: "OPA")
+                InterventionSuggestion(interventionType: "opa", label: "OPA"),
             ]
         }
 
@@ -290,7 +290,7 @@ public enum InterventionDictionary {
         if cat.contains("burn") || cat.contains("wound") || cat.contains("laceration") {
             return [
                 InterventionSuggestion(interventionType: "wound_packing", label: "Wound Packing"),
-                InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing")
+                InterventionSuggestion(interventionType: "pressure_dressing", label: "Pressure Dressing"),
             ]
         }
 

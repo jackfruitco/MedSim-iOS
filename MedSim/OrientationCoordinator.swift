@@ -35,9 +35,9 @@ final class OrientationCoordinator {
     static func mask(for lock: AppShellOrientationLock, idiom: UIUserInterfaceIdiom) -> UIInterfaceOrientationMask {
         switch lock {
         case .system:
-            return .allButUpsideDown
+            .allButUpsideDown
         case .iPadLandscape:
-            return idiom == .pad ? [.landscapeLeft, .landscapeRight] : .allButUpsideDown
+            idiom == .pad ? [.landscapeLeft, .landscapeRight] : .allButUpsideDown
         }
     }
 

@@ -252,15 +252,15 @@ private struct SessionCard: View {
     private var statusColor: Color {
         switch session.status {
         case .seeded:
-            return TrainerLabTheme.accentBlue
+            TrainerLabTheme.accentBlue
         case .running:
-            return TrainerLabTheme.success
+            TrainerLabTheme.success
         case .paused:
-            return TrainerLabTheme.warning
+            TrainerLabTheme.warning
         case .completed:
-            return TrainerLabTheme.success
+            TrainerLabTheme.success
         case .failed:
-            return TrainerLabTheme.danger
+            TrainerLabTheme.danger
         }
     }
 }

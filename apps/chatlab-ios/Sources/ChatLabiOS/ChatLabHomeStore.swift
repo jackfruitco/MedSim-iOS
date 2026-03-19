@@ -131,7 +131,7 @@ public final class ChatLabHomeStore: ObservableObject {
             while let self, !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 if Task.isCancelled { break }
-                await self.refresh()
+                await refresh()
             }
         }
     }

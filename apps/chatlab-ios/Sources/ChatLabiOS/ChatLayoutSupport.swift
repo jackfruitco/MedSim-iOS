@@ -51,26 +51,26 @@ enum ChatToolsSection: String, CaseIterable {
     var title: String {
         switch self {
         case .patientHistory:
-            return "Patient History"
+            "Patient History"
         case .patientResults:
-            return "Patient Results"
+            "Patient Results"
         case .simulationFeedback:
-            return "Simulation Feedback"
+            "Simulation Feedback"
         case .simulationMetadata:
-            return "Simulation Metadata"
+            "Simulation Metadata"
         case .requestLabs:
-            return "Request Labs"
+            "Request Labs"
         }
     }
 
     func defaultExpanded(for mode: ChatRunLayoutMode) -> Bool {
         switch mode {
         case .padWorkspace:
-            return true
+            true
         case .widePhoneMessenger:
-            return self == .patientResults || self == .requestLabs
+            self == .patientResults || self == .requestLabs
         case .compactMessenger:
-            return self == .requestLabs
+            self == .requestLabs
         }
     }
 }

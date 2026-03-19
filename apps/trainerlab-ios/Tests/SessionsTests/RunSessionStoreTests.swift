@@ -264,7 +264,7 @@ final class RunSessionStoreTests: XCTestCase {
             payload: [
                 "vital_type": .string("heart_rate"),
                 "min_value": .number(80),
-                "max_value": .number(140)
+                "max_value": .number(140),
             ]
         ))
 
