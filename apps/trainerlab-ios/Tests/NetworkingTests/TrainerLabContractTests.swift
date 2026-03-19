@@ -139,6 +139,20 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(details?["kind"] as? String, "tourniquet")
     }
 
+    func testSimulationNoteCreateRequestEncodesCurrentBackendKeys() throws {
+        let request = SimulationNoteCreateRequest(
+            content: "Observe airway",
+            sendToAI: true,
+            performedByRole: "instructor"
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["content"] as? String, "Observe airway")
+        XCTAssertEqual(object?["send_to_ai"] as? Bool, true)
+        XCTAssertEqual(object?["performed_by_role"] as? String, "instructor")
+    }
+
     func testAuthServiceLogoutPostsRefreshTokenAndClearsLocalTokens() async {
         let api = RecordingAPIClient()
         let tokenProvider = RecordingTokenProvider()
@@ -289,11 +303,117 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
+    func testTrainerRuntimeStateDecodesRuntimeAdditions() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "state_revision": 12,
+          "active_elapsed_seconds": 90,
+          "tick_interval_seconds": 30,
+          "next_tick_at": "2026-03-12T12:01:30Z",
+          "scenario_brief": null,
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "vitals": [],
+            "annotations": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "recommended_interventions": []
+          },
+          "ai_plan": {
+            "summary": "Monitor airway",
+            "rationale": "",
+            "trigger": "",
+            "eta_seconds": null,
+            "confidence": 0.5,
+            "upcoming_changes": [],
+            "monitoring_focus": []
+          },
+          "ai_rationale_notes": ["watching trend"],
+          "pending_runtime_reasons": [{"kind": "trend"}],
+          "pending_reasons": [{"kind": "manual"}],
+          "currently_processing_reasons": [{"kind": "tick"}],
+          "last_runtime_error": "none",
+          "last_ai_tick_at": "2026-03-12T12:01:00Z"
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let state = try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.aiPlan?.summary, "Monitor airway")
+        XCTAssertEqual(state.pendingRuntimeReasons.count, 1)
+        XCTAssertEqual(state.currentlyProcessingReasons.count, 1)
+        XCTAssertEqual(state.lastRuntimeError, "none")
+        XCTAssertNotNil(state.nextTickAt)
+        XCTAssertNotNil(state.lastAITickAt)
+    }
+
+    func testControlPlaneDebugDecodesCurrentBackendShape() throws {
+        let json = """
+        {
+          "execution_plan": ["assess", "stabilize"],
+          "current_step_index": 1,
+          "queued_reasons": [{"reason": "manual"}],
+          "currently_processing_reasons": [{"reason": "tick"}],
+          "last_processed_reasons": [{"reason": "done"}],
+          "last_failed_step": "",
+          "last_failed_error": "",
+          "last_patch_evaluation_summary": {"accepted": 1},
+          "last_rejected_or_normalized_summary": {"normalized": true},
+          "status_flags": {"paused": false}
+        }
+        """
+
+        let debug = try JSONDecoder().decode(ControlPlaneDebugOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(debug.executionPlan, ["assess", "stabilize"])
+        XCTAssertEqual(debug.currentStepIndex, 1)
+        XCTAssertEqual(debug.queuedReasons.count, 1)
+        XCTAssertEqual(debug.lastPatchEvaluationSummary["accepted"], .number(1))
+        XCTAssertEqual(debug.statusFlags["paused"], .bool(false))
+    }
+
+    func testAnnotationEnumsMatchBackendContract() {
+        XCTAssertEqual(
+            AnnotationLearningObjective.allCases.map(\.rawValue),
+            [
+                "assessment",
+                "hemorrhage_control",
+                "airway",
+                "breathing",
+                "circulation",
+                "hypothermia",
+                "communication",
+                "triage",
+                "intervention",
+                "other",
+            ]
+        )
+        XCTAssertEqual(
+            AnnotationOutcome.allCases.map(\.rawValue),
+            [
+                "correct",
+                "incorrect",
+                "missed",
+                "improvised",
+                "pending",
+            ]
+        )
+    }
+
     func testAnnotationCreateRequestEncodesCurrentBackendKeys() throws {
         let request = AnnotationCreateRequest(
             observationText: "Applied tourniquet.",
-            learningObjective: "hemorrhage_control",
-            outcome: "correct",
+            learningObjective: .hemorrhageControl,
+            outcome: .correct,
             linkedEventID: 99,
             elapsedSecondsAt: 120
         )

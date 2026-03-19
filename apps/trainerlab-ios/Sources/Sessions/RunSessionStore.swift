@@ -430,8 +430,8 @@ public final class RunSessionStore: ObservableObject {
 
     public func createDebriefAnnotation(
         observationText: String,
-        learningObjective: String,
-        outcome: String,
+        learningObjective: AnnotationLearningObjective,
+        outcome: AnnotationOutcome,
         linkedEventID: Int? = nil
     ) {
         let trimmed = observationText.trimmingCharacters(in: .whitespacesAndNewlines)

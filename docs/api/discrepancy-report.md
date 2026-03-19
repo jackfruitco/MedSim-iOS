@@ -46,6 +46,16 @@ This report reflects the frontend after the fixes in this branch. Items already 
 - whether frontend-only fix is sufficient: yes
 - whether backend change is optional or required: not required
 
+### A5. Debrief annotation creation used invalid backend enum values
+- severity: blocking
+- exact affected files: `apps/trainerlab-ios/Sources/SharedModels/Contracts.swift`, `apps/trainerlab-ios/Sources/Sessions/RunSessionStore.swift`, `apps/trainerlab-ios/Sources/RunConsole/RunConsoleView.swift`, `apps/trainerlab-ios/Tests/NetworkingTests/TrainerLabContractTests.swift`, `apps/trainerlab-ios/Tests/RunConsoleTests/RunConsoleLayoutSupportTests.swift`
+- endpoint(s): `/api/v1/trainerlab/simulations/{simulation_id}/annotations/`
+- current behavior: frontend now uses typed enums for `learning_objective` and `outcome`, and the debrief sheet maps human-friendly labels onto backend-valid raw values only
+- desired behavior: annotation requests must submit only backend-authoritative enum values
+- recommended fix: frontend-only fix, completed in this branch
+- whether frontend-only fix is sufficient: yes
+- whether backend change is optional or required: not required
+
 ## B. Confirmed missing frontend features
 
 ### B1. Generic ChatLab lab-orders endpoint is modeled but not surfaced as a dedicated workflow
@@ -139,5 +149,5 @@ This report reflects the frontend after the fixes in this branch. Items already 
 - `swift test` in `apps/chatlab-ios`: passed after fixing the package compile issue and adding contract coverage.
 - `swift test` in `apps/trainerlab-ios`: passed.
 - `xcodebuild -list -project MedSim.xcodeproj`: passed after running unrestricted, confirming `MedSim`, `MedSimTests`, and `MedSimUITests`.
-- `xcodebuild test -project MedSim.xcodeproj -scheme MedSim -destination 'platform=iOS Simulator,name=iPhone 16' -derivedDataPath /tmp/medsim-derived`: failed because that simulator does not exist on this machine.
-- `xcodebuild test -project MedSim.xcodeproj -scheme MedSim -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.3.1' -derivedDataPath /tmp/medsim-derived`: build and test-host packaging progressed successfully, but the non-interactive run did not return a final pass/fail result before this audit had to conclude; treat app-level execution as partially validated, not fully green.
+- `xcodebuild test -project MedSim.xcodeproj -scheme MedSim -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.3.1' -derivedDataPath /tmp/medsim-derived -only-testing:MedSimTests`: passed.
+- `xcodebuild test -project MedSim.xcodeproj -scheme MedSim -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.3.1' -derivedDataPath /tmp/medsim-derived -only-testing:MedSimUITests`: passed; `MedSimUITests.testLaunchPerformance()` is now an explicit skip because launch-performance measurement proved unstable as a merge-gating simulator test, while the remaining UI launch smoke tests passed.

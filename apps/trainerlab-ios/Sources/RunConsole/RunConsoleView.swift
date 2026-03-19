@@ -1634,13 +1634,13 @@ public struct RunConsoleView: View {
         selectedTimelineFilter = .all
     }
 
-    private func annotationOutcomeColor(_ outcome: String) -> Color {
-        switch outcome.lowercased() {
-        case "correct", "effective", "strong":
+    private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
+        switch outcome {
+        case .correct:
             return TrainerLabTheme.success
-        case "incorrect", "missed":
+        case .incorrect, .missed:
             return TrainerLabTheme.danger
-        default:
+        case .improvised, .pending:
             return TrainerLabTheme.warning
         }
     }
@@ -2552,29 +2552,28 @@ private struct NoteComposerSheet: View {
     }
 }
 
+struct DebriefAnnotationOption<Value: Hashable & Sendable>: Equatable {
+    let value: Value
+    let label: String
+}
+
+enum DebriefAnnotationCatalog {
+    static let learningObjectiveOptions = AnnotationLearningObjective.allCases.map {
+        DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+    }
+
+    static let outcomeOptions = AnnotationOutcome.allCases.map {
+        DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+    }
+}
+
 private struct DebriefAnnotationSheet: View {
-    let onSubmit: (String, String, String) -> Void
+    let onSubmit: (String, AnnotationLearningObjective, AnnotationOutcome) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var observationText = ""
-    @State private var learningObjective = "other"
-    @State private var outcome = "pending"
-
-    private let learningObjectiveOptions = [
-        ("other", "General"),
-        ("hemorrhage_control", "Hemorrhage Control"),
-        ("airway_management", "Airway"),
-        ("breathing", "Breathing"),
-        ("circulation", "Circulation"),
-        ("team_communication", "Communication"),
-    ]
-
-    private let outcomeOptions = [
-        ("pending", "Pending"),
-        ("correct", "Correct"),
-        ("partially_correct", "Partially Correct"),
-        ("incorrect", "Incorrect"),
-    ]
+    @State private var learningObjective: AnnotationLearningObjective = .other
+    @State private var outcome: AnnotationOutcome = .pending
 
     var body: some View {
         NavigationStack {
@@ -2586,19 +2585,19 @@ private struct DebriefAnnotationSheet: View {
 
                 Section("Learning Objective") {
                     Picker("Learning Objective", selection: $learningObjective) {
-                        ForEach(learningObjectiveOptions, id: \.0) { option in
-                            Text(option.1).tag(option.0)
+                        ForEach(DebriefAnnotationCatalog.learningObjectiveOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
                         }
                     }
                 }
 
                 Section("Outcome") {
                     Picker("Outcome", selection: $outcome) {
-                        ForEach(outcomeOptions, id: \.0) { option in
-                            Text(option.1).tag(option.0)
+                        ForEach(DebriefAnnotationCatalog.outcomeOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                 }
             }
             .navigationTitle("Add Annotation")

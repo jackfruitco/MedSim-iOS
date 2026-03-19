@@ -1710,17 +1710,78 @@ public struct SimulationNoteCreateRequest: Codable, Sendable {
 
 // MARK: - Annotations
 
+public enum AnnotationLearningObjective: String, Codable, Sendable, CaseIterable {
+    case assessment
+    case hemorrhageControl = "hemorrhage_control"
+    case airway
+    case breathing
+    case circulation
+    case hypothermia
+    case communication
+    case triage
+    case intervention
+    case other
+
+    public var displayLabel: String {
+        switch self {
+        case .assessment:
+            return "Assessment"
+        case .hemorrhageControl:
+            return "Hemorrhage Control"
+        case .airway:
+            return "Airway"
+        case .breathing:
+            return "Breathing"
+        case .circulation:
+            return "Circulation"
+        case .hypothermia:
+            return "Hypothermia"
+        case .communication:
+            return "Communication"
+        case .triage:
+            return "Triage"
+        case .intervention:
+            return "Intervention"
+        case .other:
+            return "Other"
+        }
+    }
+}
+
+public enum AnnotationOutcome: String, Codable, Sendable, CaseIterable {
+    case correct
+    case incorrect
+    case missed
+    case improvised
+    case pending
+
+    public var displayLabel: String {
+        switch self {
+        case .correct:
+            return "Correct"
+        case .incorrect:
+            return "Incorrect"
+        case .missed:
+            return "Missed"
+        case .improvised:
+            return "Improvised"
+        case .pending:
+            return "Pending"
+        }
+    }
+}
+
 public struct AnnotationCreateRequest: Codable, Sendable {
-    public let learningObjective: String
+    public let learningObjective: AnnotationLearningObjective
     public let observationText: String
-    public let outcome: String
+    public let outcome: AnnotationOutcome
     public let linkedEventID: Int?
     public let elapsedSecondsAt: Int?
 
     public init(
         observationText: String,
-        learningObjective: String = "other",
-        outcome: String = "pending",
+        learningObjective: AnnotationLearningObjective = .other,
+        outcome: AnnotationOutcome = .pending,
         linkedEventID: Int? = nil,
         elapsedSecondsAt: Int? = nil
     ) {
@@ -1745,10 +1806,10 @@ public struct AnnotationOut: Codable, Identifiable, Sendable {
     public let sessionID: Int
     public let simulationID: Int
     public let createdByID: Int?
-    public let learningObjective: String
+    public let learningObjective: AnnotationLearningObjective
     public let learningObjectiveLabel: String
     public let observationText: String
-    public let outcome: String
+    public let outcome: AnnotationOutcome
     public let outcomeLabel: String
     public let linkedEventID: Int?
     public let elapsedSecondsAt: Int?

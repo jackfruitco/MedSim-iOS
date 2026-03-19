@@ -135,4 +135,33 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .failed), [])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: nil), [])
     }
+
+    func testDebriefAnnotationOptionsUseBackendValuesAndHumanLabels() {
+        XCTAssertEqual(
+            DebriefAnnotationCatalog.learningObjectiveOptions,
+            AnnotationLearningObjective.allCases.map {
+                DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+            }
+        )
+        XCTAssertEqual(
+            DebriefAnnotationCatalog.outcomeOptions,
+            AnnotationOutcome.allCases.map {
+                DebriefAnnotationOption(value: $0, label: $0.displayLabel)
+            }
+        )
+        XCTAssertEqual(
+            DebriefAnnotationCatalog.learningObjectiveOptions.first,
+            DebriefAnnotationOption(value: .assessment, label: "Assessment")
+        )
+        XCTAssertEqual(
+            DebriefAnnotationCatalog.outcomeOptions,
+            [
+                DebriefAnnotationOption(value: .correct, label: "Correct"),
+                DebriefAnnotationOption(value: .incorrect, label: "Incorrect"),
+                DebriefAnnotationOption(value: .missed, label: "Missed"),
+                DebriefAnnotationOption(value: .improvised, label: "Improvised"),
+                DebriefAnnotationOption(value: .pending, label: "Pending"),
+            ]
+        )
+    }
 }
