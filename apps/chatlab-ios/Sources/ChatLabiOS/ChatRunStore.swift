@@ -2,12 +2,12 @@ import Foundation
 import Networking
 import SharedModels
 
-private enum AwaitingReplyReason: Sendable, Equatable {
+private enum AwaitingReplyReason: Equatable {
     case initialGeneration
     case conversationReply(messageID: Int)
 }
 
-private struct AwaitingReplyState: Sendable, Equatable {
+private struct AwaitingReplyState: Equatable {
     let participantName: String
     let reason: AwaitingReplyReason
     var isStale: Bool
@@ -69,7 +69,7 @@ public final class ChatRunStore: ObservableObject {
     public init(
         service: ChatLabServiceProtocol,
         realtimeClient: ChatRealtimeClientProtocol,
-        simulation: ChatSimulation
+        simulation: ChatSimulation,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
@@ -100,7 +100,8 @@ public final class ChatRunStore: ObservableObject {
         guard let activeConversationID else { return [] }
         var users = typingUsersByConversation[activeConversationID] ?? []
         if let awaiting = awaitingReplyByConversation[activeConversationID], awaiting.isStale == false,
-           users.contains(awaiting.participantName) == false {
+           users.contains(awaiting.participantName) == false
+        {
             users.append(awaiting.participantName)
         }
         return users
@@ -114,7 +115,8 @@ public final class ChatRunStore: ObservableObject {
     public var activeAwaitingReplyWarningText: String? {
         guard let activeConversationID,
               let awaiting = awaitingReplyByConversation[activeConversationID],
-              awaiting.isStale else {
+              awaiting.isStale
+        else {
             return nil
         }
         return "Still waiting for \(awaiting.participantName). Refresh status or reconnect if nothing changes."
@@ -203,7 +205,7 @@ public final class ChatRunStore: ObservableObject {
             do {
                 let created = try await service.createConversation(
                     simulationID: simulation.id,
-                    request: ChatCreateConversationRequest(conversationType: "simulated_feedback")
+                    request: ChatCreateConversationRequest(conversationType: "simulated_feedback"),
                 )
                 if !conversations.contains(where: { $0.id == created.id }) {
                     conversations.append(created)
@@ -225,7 +227,7 @@ public final class ChatRunStore: ObservableObject {
                 conversationID: conversationID,
                 cursor: nil,
                 order: "desc",
-                limit: 40
+                limit: 40,
             )
             let ordered = page.items.reversed().map { self.mapMessage($0) }
             messagesByConversation[conversationID] = ordered
@@ -253,7 +255,7 @@ public final class ChatRunStore: ObservableObject {
                 conversationID: activeConversationID,
                 cursor: olderCursorByConversation[activeConversationID] ?? nil,
                 order: "desc",
-                limit: 30
+                limit: 30,
             )
             let older = page.items.reversed().map { mapMessage($0) }
             var current = messagesByConversation[activeConversationID] ?? []
@@ -291,7 +293,7 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: .sending,
             retryable: true,
             errorText: nil,
-            retryDraft: content
+            retryDraft: content,
         )
         appendMessage(optimistic)
 
@@ -302,16 +304,17 @@ public final class ChatRunStore: ObservableObject {
                     request: ChatCreateMessageRequest(
                         content: content,
                         messageType: "text",
-                        conversationID: activeConversationID
-                    )
+                        conversationID: activeConversationID,
+                    ),
                 )
                 reconcilePending(localID: localID, with: created)
                 if let conversation = conversations.first(where: { $0.id == activeConversationID }),
-                   supportsAwaitingReply(conversation) {
+                   supportsAwaitingReply(conversation)
+                {
                     startAwaitingReply(
                         for: activeConversationID,
                         participantName: conversation.displayName,
-                        reason: .conversationReply(messageID: created.id)
+                        reason: .conversationReply(messageID: created.id),
                     )
                 }
             } catch {
@@ -326,16 +329,17 @@ public final class ChatRunStore: ObservableObject {
                 do {
                     let retried = try await service.retryMessage(
                         simulationID: simulation.id,
-                        messageID: serverID
+                        messageID: serverID,
                     )
                     upsertMessage(mapMessage(retried))
                     let conversationID = retried.conversationID ?? item.conversationID
                     if let conversation = conversations.first(where: { $0.id == conversationID }),
-                       supportsAwaitingReply(conversation) {
+                       supportsAwaitingReply(conversation)
+                    {
                         startAwaitingReply(
                             for: conversationID,
                             participantName: conversation.displayName,
-                            reason: .conversationReply(messageID: retried.id)
+                            reason: .conversationReply(messageID: retried.id),
                         )
                     }
                 } catch {
@@ -357,7 +361,7 @@ public final class ChatRunStore: ObservableObject {
         Task {
             await realtimeClient.send(
                 eventType: "typing",
-                payload: ["conversation_id": .number(Double(activeConversationID))]
+                payload: ["conversation_id": .number(Double(activeConversationID))],
             )
         }
 
@@ -365,9 +369,9 @@ public final class ChatRunStore: ObservableObject {
         typingStopTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard let self, let conversationID = self.activeConversationID else { return }
-            await self.realtimeClient.send(
+            await realtimeClient.send(
                 eventType: "stopped_typing",
-                payload: ["conversation_id": .number(Double(conversationID))]
+                payload: ["conversation_id": .number(Double(conversationID))],
             )
         }
     }
@@ -487,7 +491,7 @@ public final class ChatRunStore: ObservableObject {
                 conversationID: conversationID,
                 serverID: serverID,
                 content: content,
-                status: status
+                status: status,
             ) {
                 if conversationID == activeConversationID {
                     return
@@ -506,7 +510,7 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: status,
             retryable: bool(payload, key: "delivery_retryable") ?? true,
             errorText: string(payload, keys: ["delivery_error_text", "error_text"]),
-            retryDraft: nil
+            retryDraft: nil,
         )
 
         if conversationID != activeConversationID {
@@ -552,7 +556,8 @@ public final class ChatRunStore: ObservableObject {
 
     private func handleSimulationStateChanged(_ payload: [String: JSONValue]) {
         if let raw = string(payload, keys: ["status"]),
-           let status = SimulationTerminalState(rawValue: raw) {
+           let status = SimulationTerminalState(rawValue: raw)
+        {
             let updated = ChatSimulation(
                 id: simulation.id,
                 userID: simulation.userID,
@@ -567,7 +572,7 @@ public final class ChatRunStore: ObservableObject {
                 terminalReasonCode: string(payload, keys: ["terminal_reason_code"]) ?? simulation.terminalReasonCode,
                 terminalReasonText: string(payload, keys: ["terminal_reason_text"]) ?? simulation.terminalReasonText,
                 terminalAt: date(payload, keys: ["terminal_at"]) ?? simulation.terminalAt,
-                retryable: bool(payload, key: "retryable") ?? simulation.retryable
+                retryable: bool(payload, key: "retryable") ?? simulation.retryable,
             )
             applySimulation(updated)
         }
@@ -589,7 +594,7 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: message.deliveryStatus,
             retryable: message.deliveryRetryable,
             errorText: message.deliveryErrorText.isEmpty ? nil : message.deliveryErrorText,
-            retryDraft: nil
+            retryDraft: nil,
         )
     }
 
@@ -625,7 +630,8 @@ public final class ChatRunStore: ObservableObject {
     private func upsertMessage(_ item: ChatMessageItem) {
         var items = messagesByConversation[item.conversationID] ?? []
         if let serverID = item.serverID,
-           let index = items.firstIndex(where: { $0.serverID == serverID }) {
+           let index = items.firstIndex(where: { $0.serverID == serverID })
+        {
             items[index] = item
         } else {
             items.append(item)
@@ -675,7 +681,7 @@ public final class ChatRunStore: ObservableObject {
         conversationID: Int,
         serverID: Int,
         content: String,
-        status: DeliveryStatus
+        status: DeliveryStatus,
     ) -> Bool {
         var items = messagesByConversation[conversationID] ?? []
         guard let index = items.firstIndex(where: {
@@ -719,12 +725,12 @@ public final class ChatRunStore: ObservableObject {
     private func startAwaitingReply(
         for conversationID: Int,
         participantName: String,
-        reason: AwaitingReplyReason
+        reason: AwaitingReplyReason,
     ) {
         awaitingReplyByConversation[conversationID] = AwaitingReplyState(
             participantName: participantName,
             reason: reason,
-            isStale: false
+            isStale: false,
         )
         armAwaitingReplyTimeout(for: conversationID)
     }
@@ -802,17 +808,19 @@ public final class ChatRunStore: ObservableObject {
               let patientConversation,
               isConversationLocked(patientConversation) == false,
               (messagesByConversation[patientConversation.id] ?? []).isEmpty,
-              conversationHasAIMessage(conversationID: patientConversation.id) == false else {
+              conversationHasAIMessage(conversationID: patientConversation.id) == false
+        else {
             return
         }
         if forceRestart == false,
-           case .initialGeneration? = awaitingReplyByConversation[patientConversation.id]?.reason {
+           case .initialGeneration? = awaitingReplyByConversation[patientConversation.id]?.reason
+        {
             return
         }
         startAwaitingReply(
             for: patientConversation.id,
             participantName: patientConversation.displayName,
-            reason: .initialGeneration
+            reason: .initialGeneration,
         )
     }
 

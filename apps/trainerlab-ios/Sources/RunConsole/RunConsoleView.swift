@@ -15,10 +15,10 @@ public struct RunConsoleView: View {
     @State private var showSteerSheet = false
     @State private var showNoteSheet = false
 
-    // Injury detail
+    /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
 
-    // Timeline filter
+    /// Timeline filter
     @State private var selectedTimelineFilter: TimelineFilter = .all
 
     // Collapsible panels
@@ -36,7 +36,7 @@ public struct RunConsoleView: View {
     @State private var interventionNotes = ""
     @State private var interventionTargetProblemID: Int? = nil
 
-    // Steer sheet state
+    /// Steer sheet state
     @State private var steerDraft = ""
 
     // Event sheet state
@@ -54,19 +54,19 @@ public struct RunConsoleView: View {
     @State private var vitalMax = "100"
     @State private var eventMode = "injury"
 
-    // Note composer
+    /// Note composer
     @State private var trainerNoteDraft = ""
 
-    // AVPU
+    /// AVPU
     @State private var selectedAVPU: AVPUState = .alert
 
-    // Terminal card dismissed
+    /// Terminal card dismissed
     @State private var terminalCardDismissed = false
 
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void
+        onOpenSummary: @escaping () -> Void,
     ) {
         self.store = store
         self.onBack = onBack
@@ -77,11 +77,11 @@ public struct RunConsoleView: View {
         GeometryReader { proxy in
             let layoutMode = RunConsoleLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
             let compactMetrics = RunConsoleCompactMetrics.resolve(
                 width: proxy.size.width,
-                layoutMode: layoutMode
+                layoutMode: layoutMode,
             )
 
             ZStack {
@@ -124,7 +124,7 @@ public struct RunConsoleView: View {
                 onSubmit: {
                     addTrainerNote()
                     showNoteSheet = false
-                }
+                },
             )
             .presentationDetents([.height(180)])
             .presentationDragIndicator(.visible)
@@ -199,7 +199,7 @@ public struct RunConsoleView: View {
 
     private func topVitalsTable(
         layoutMode: RunConsoleLayoutMode,
-        compactMetrics: RunConsoleCompactMetrics
+        compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
             Text("Patient Vitals")
@@ -225,7 +225,7 @@ public struct RunConsoleView: View {
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     ForEach(orderedVitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
@@ -236,8 +236,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8
-            )
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
+            ),
         )
     }
 
@@ -285,7 +285,7 @@ public struct RunConsoleView: View {
     private func compactCommandPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
         let controlPresentation = RunConsoleCompactControlPresentation.resolve(
             layoutMode: .compact,
-            horizontalSizeClass: horizontalSizeClass
+            horizontalSizeClass: horizontalSizeClass,
         )
 
         return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
@@ -297,7 +297,7 @@ public struct RunConsoleView: View {
 
                     LazyVGrid(
                         columns: compactControlColumns(for: compactMetrics),
-                        spacing: compactMetrics.gridSpacing
+                        spacing: compactMetrics.gridSpacing,
                     ) {
                         compactBackAction(compactMetrics: compactMetrics, controlPresentation: controlPresentation)
                             .frame(maxWidth: .infinity)
@@ -306,7 +306,7 @@ public struct RunConsoleView: View {
                                 action,
                                 compact: true,
                                 compactMetrics: compactMetrics,
-                                controlPresentation: controlPresentation
+                                controlPresentation: controlPresentation,
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -321,7 +321,7 @@ public struct RunConsoleView: View {
 
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     compactScenarioAction(
                         "Add Intervention", systemImage: "cross.vial.fill",
@@ -330,25 +330,25 @@ public struct RunConsoleView: View {
                             interventionTargetProblemID = nil
                             showInterventionSheet = true
                         },
-                        controlPresentation: controlPresentation
+                        controlPresentation: controlPresentation,
                     )
                     compactScenarioAction(
                         "Add Event", systemImage: "bolt.heart.fill",
                         compactMetrics: compactMetrics,
                         action: { showEventSheet = true },
-                        controlPresentation: controlPresentation
+                        controlPresentation: controlPresentation,
                     )
                     compactScenarioAction(
                         "Steer AI", systemImage: "wand.and.sparkles",
                         compactMetrics: compactMetrics,
                         action: { showSteerSheet = true },
-                        controlPresentation: controlPresentation
+                        controlPresentation: controlPresentation,
                     )
                     compactScenarioAction(
                         "Add Note", systemImage: "note.text.badge.plus",
                         compactMetrics: compactMetrics,
                         action: { showNoteSheet = true },
-                        controlPresentation: controlPresentation
+                        controlPresentation: controlPresentation,
                     )
                 }
             }
@@ -381,8 +381,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: compactMetrics.cardPadding
-            )
+                padding: compactMetrics.cardPadding,
+            ),
         )
     }
 
@@ -420,7 +420,7 @@ public struct RunConsoleView: View {
                     if let problemID = problem.problemID {
                         store.updateProblemStatus(problemID: problemID, status: status)
                     }
-                }
+                },
             )
             .frame(minHeight: 380, maxHeight: .infinity)
 
@@ -555,7 +555,7 @@ public struct RunConsoleView: View {
             withAnimation(.spring(duration: 0.25)) {
                 activeInfoPanel = isActive ? nil : panel
             }
-            if !isActive && store.runtimeState == nil {
+            if !isActive, store.runtimeState == nil {
                 Task { await fetchRuntimeState() }
             }
         } label: {
@@ -563,7 +563,7 @@ public struct RunConsoleView: View {
                 Text(label)
                     .font(.subheadline.weight(isActive ? .semibold : .regular))
                     .frame(maxWidth: .infinity)
-                if isLoadingRuntimeState && panel == .aiInstructor {
+                if isLoadingRuntimeState, panel == .aiInstructor {
                     ProgressView().controlSize(.mini)
                 }
             }
@@ -584,7 +584,7 @@ public struct RunConsoleView: View {
     }
 
     @ViewBuilder private var scenarioBriefContent: some View {
-        if isLoadingRuntimeState && store.runtimeState == nil {
+        if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
@@ -686,7 +686,7 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
-                if rs.aiPlan == nil && rs.aiRationaleNotes.isEmpty {
+                if rs.aiPlan == nil, rs.aiRationaleNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -761,7 +761,6 @@ public struct RunConsoleView: View {
         .trainerCardStyle()
     }
 
-    @ViewBuilder
     private var timelineEntries: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(filteredTimelineEntries.prefix(160)) { item in
@@ -814,7 +813,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1)
+                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
                 )
                 .opacity(isSuperseded ? 0.65 : 1.0)
             }
@@ -822,14 +821,12 @@ public struct RunConsoleView: View {
     }
 
     private func effectivenessBadge(_ value: String) -> some View {
-        let color: Color = {
-            switch value {
-            case "effective": return TrainerLabTheme.success
-            case "partially_effective": return TrainerLabTheme.warning
-            case "ineffective": return TrainerLabTheme.danger
-            default: return Color.secondary
-            }
-        }()
+        let color: Color = switch value {
+        case "effective": TrainerLabTheme.success
+        case "partially_effective": TrainerLabTheme.warning
+        case "ineffective": TrainerLabTheme.danger
+        default: Color.secondary
+        }
         let label = value.replacingOccurrences(of: "_", with: " ").capitalized
         return Text(label)
             .font(.caption2.bold())
@@ -852,7 +849,7 @@ public struct RunConsoleView: View {
 
     // MARK: - Operational log
 
-    private func bottomLogPane(layoutMode: RunConsoleLayoutMode) -> some View {
+    private func bottomLogPane(layoutMode _: RunConsoleLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button {
@@ -896,7 +893,6 @@ public struct RunConsoleView: View {
         .trainerCardStyle(background: TrainerLabTheme.tacticalSurfaceElevated)
     }
 
-    @ViewBuilder
     private var operationalLogEntries: some View {
         LazyVStack(alignment: .leading, spacing: 6) {
             if operationalItems.isEmpty {
@@ -961,7 +957,7 @@ public struct RunConsoleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1)
+                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
             )
             .padding(16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -970,25 +966,25 @@ public struct RunConsoleView: View {
 
     private func terminalCardTitle(_ status: TrainerSessionStatus) -> String {
         switch status {
-        case .completed: return "Session Complete"
-        case .failed: return "Session Failed"
-        default: return "Session Ended"
+        case .completed: "Session Complete"
+        case .failed: "Session Failed"
+        default: "Session Ended"
         }
     }
 
     private func terminalCardIcon(_ status: TrainerSessionStatus) -> String {
         switch status {
-        case .completed: return "checkmark.seal.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        default: return "stop.circle.fill"
+        case .completed: "checkmark.seal.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        default: "stop.circle.fill"
         }
     }
 
     private func terminalCardColor(_ status: TrainerSessionStatus) -> Color {
         switch status {
-        case .completed: return TrainerLabTheme.success
-        case .failed: return TrainerLabTheme.danger
-        default: return TrainerLabTheme.warning
+        case .completed: TrainerLabTheme.success
+        case .failed: TrainerLabTheme.danger
+        default: TrainerLabTheme.warning
         }
     }
 
@@ -999,7 +995,7 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canMutate
+            canMutate: canMutate,
         ) { type, siteCode, targetProblemID, status, effectiveness, notes in
             store.addIntervention(
                 interventionType: type,
@@ -1007,7 +1003,7 @@ public struct RunConsoleView: View {
                 targetProblemID: targetProblemID,
                 status: status,
                 effectiveness: effectiveness,
-                notes: notes
+                notes: notes,
             )
             showInterventionSheet = false
         }
@@ -1017,14 +1013,14 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canMutate
+            canMutate: canMutate,
         ) { type, siteCode, status, effectiveness in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
-                effectiveness: effectiveness
+                effectiveness: effectiveness,
             )
         }
     }
@@ -1049,7 +1045,7 @@ public struct RunConsoleView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 TextField("e.g. Patient is deteriorating rapidly...", text: $steerDraft, axis: .vertical)
-                    .lineLimit(3...6)
+                    .lineLimit(3 ... 6)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.send)
 
@@ -1149,9 +1145,9 @@ public struct RunConsoleView: View {
 
     private var eventFormIsValid: Bool {
         switch eventMode {
-        case "injury": return !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
-        case "illness": return !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
-        default: return !vitalType.isEmpty
+        case "injury": !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
+        case "illness": !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
+        default: !vitalType.isEmpty
         }
     }
 
@@ -1241,11 +1237,10 @@ public struct RunConsoleView: View {
             }
 
             TextField("Description (optional)", text: $injuryDescription, axis: .vertical)
-                .lineLimit(1...3)
+                .lineLimit(1 ... 3)
         }
     }
 
-    @ViewBuilder
     private var eventIllnessSection: some View {
         Section("Illness Details") {
             VStack(alignment: .leading, spacing: 6) {
@@ -1272,7 +1267,7 @@ public struct RunConsoleView: View {
             .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
 
             TextField("Description (optional)", text: $illnessDescription, axis: .vertical)
-                .lineLimit(1...3)
+                .lineLimit(1 ... 3)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("MARCH Category")
@@ -1307,7 +1302,6 @@ public struct RunConsoleView: View {
         }
     }
 
-    @ViewBuilder
     private var eventVitalsSection: some View {
         Section("Vital Override") {
             VStack(alignment: .leading, spacing: 4) {
@@ -1434,9 +1428,9 @@ public struct RunConsoleView: View {
     private var filteredTimelineEntries: [ClinicalTimelineEntry] {
         switch selectedTimelineFilter {
         case .all:
-            return store.state.clinicalTimelineEntries
+            store.state.clinicalTimelineEntries
         case let .kind(kind):
-            return store.state.clinicalTimelineEntries.filter { $0.kind == kind }
+            store.state.clinicalTimelineEntries.filter { $0.kind == kind }
         }
     }
 
@@ -1462,7 +1456,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2)
+                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2),
                 )
         }
         .buttonStyle(.plain)
@@ -1472,16 +1466,20 @@ public struct RunConsoleView: View {
 
     private func avpuColor(_ value: AVPUState) -> Color {
         switch value {
-        case .alert: return TrainerLabTheme.avpuAlert
-        case .verbal: return TrainerLabTheme.avpuVerbal
-        case .pain: return TrainerLabTheme.avpuPain
-        case .unalert: return TrainerLabTheme.avpuUnalert
+        case .alert: TrainerLabTheme.avpuAlert
+        case .verbal: TrainerLabTheme.avpuVerbal
+        case .pain: TrainerLabTheme.avpuPain
+        case .unalert: TrainerLabTheme.avpuUnalert
         }
     }
 
-    private var canMutate: Bool { store.state.commandChannelAvailable }
+    private var canMutate: Bool {
+        store.state.commandChannelAvailable
+    }
 
-    private var sessionStatus: TrainerSessionStatus? { store.state.session?.status }
+    private var sessionStatus: TrainerSessionStatus? {
+        store.state.session?.status
+    }
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
         RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
@@ -1509,11 +1507,11 @@ public struct RunConsoleView: View {
 
     private func recommendationPriorityRank(_ priority: String) -> Int {
         switch priority.lowercased() {
-        case "critical": return 0
-        case "high": return 1
-        case "medium", "moderate": return 2
-        case "low": return 3
-        default: return 4
+        case "critical": 0
+        case "high": 1
+        case "medium", "moderate": 2
+        case "low": 3
+        default: 4
         }
     }
 
@@ -1552,23 +1550,23 @@ public struct RunConsoleView: View {
 
     private func timelineColor(for kind: ClinicalTimelineKind) -> Color {
         switch kind {
-        case .lifecycle: return TrainerLabTheme.accentBlue
-        case .cause, .injury, .illness, .loc, .problem: return TrainerLabTheme.danger
-        case .recommendation: return TrainerLabTheme.warning
-        case .intervention: return TrainerLabTheme.success
-        case .note: return Color.cyan
-        case .vitals: return TrainerLabTheme.warning
+        case .lifecycle: TrainerLabTheme.accentBlue
+        case .cause, .injury, .illness, .loc, .problem: TrainerLabTheme.danger
+        case .recommendation: TrainerLabTheme.warning
+        case .intervention: TrainerLabTheme.success
+        case .note: Color.cyan
+        case .vitals: TrainerLabTheme.warning
         }
     }
 
     private func vitalDisplayName(_ key: String) -> String {
         switch key {
-        case "heart_rate": return "HR"
-        case "spo2": return "SpO2"
-        case "etco2": return "ETCO2"
-        case "blood_pressure": return "BP"
-        case "blood_glucose", "blood_glucose_level": return "Glucose"
-        default: return key.replacingOccurrences(of: "_", with: " ").capitalized
+        case "heart_rate": "HR"
+        case "spo2": "SpO2"
+        case "etco2": "ETCO2"
+        case "blood_pressure": "BP"
+        case "blood_glucose", "blood_glucose_level": "Glucose"
+        default: key.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 
@@ -1599,7 +1597,7 @@ public struct RunConsoleView: View {
         _ action: RunConsoleLifecycleAction,
         compact: Bool,
         compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled
+        controlPresentation: RunConsoleCompactControlPresentation = .labeled,
     ) -> some View {
         quickAction(action.title, systemImage: action.systemImage, enabled: canMutate, compact: compact, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
             switch action {
@@ -1621,7 +1619,7 @@ public struct RunConsoleView: View {
         _ title: String, systemImage: String,
         compactMetrics: RunConsoleCompactMetrics,
         action: @escaping () -> Void,
-        controlPresentation: RunConsoleCompactControlPresentation
+        controlPresentation: RunConsoleCompactControlPresentation,
     ) -> some View {
         quickAction(title, systemImage: systemImage, enabled: canMutate, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation, action: action)
             .frame(maxWidth: .infinity)
@@ -1632,10 +1630,10 @@ public struct RunConsoleView: View {
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
         controlPresentation: RunConsoleCompactControlPresentation = .labeled,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
     ) -> some View {
         Button(action: action) {
-            if compact && controlPresentation == .iconOnly {
+            if compact, controlPresentation == .iconOnly {
                 Image(systemName: systemImage)
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -1770,7 +1768,7 @@ private struct InterventionPickerSheet: View {
                                         .foregroundStyle(.secondary)
                                     LazyVGrid(
                                         columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8
+                                        spacing: 8,
                                     ) {
                                         ForEach(types) { group in
                                             typeChip(group)
@@ -1809,7 +1807,7 @@ private struct InterventionPickerSheet: View {
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8
+                                spacing: 8,
                             ) {
                                 ForEach(locationGroups, id: \.location) { entry in
                                     locationChip(entry.location)
@@ -1847,7 +1845,7 @@ private struct InterventionPickerSheet: View {
 
                     Section("Notes (optional)") {
                         TextField("Additional notes...", text: $notes, axis: .vertical)
-                            .lineLimit(1...3)
+                            .lineLimit(1 ... 3)
                     }
                 }
             }
@@ -1996,7 +1994,7 @@ private struct InjuryQuickActionSheet: View {
         }
     }
 
-    @ViewBuilder private var injurySummarySection: some View {
+    private var injurySummarySection: some View {
         Section("Cause") {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(injury.kind.uppercased())\(injury.category.map { " (\($0.uppercased()))" } ?? "")")
@@ -2111,24 +2109,24 @@ private enum TimelineFilter: Hashable, CaseIterable, Identifiable {
 
     var id: String {
         switch self {
-        case .all: return "all"
-        case let .kind(kind): return kind.rawValue
+        case .all: "all"
+        case let .kind(kind): kind.rawValue
         }
     }
 
     var title: String {
         switch self {
-        case .all: return "All Events"
-        case .kind(.lifecycle): return "Lifecycle"
-        case .kind(.cause): return "Causes"
-        case .kind(.problem): return "Problems"
-        case .kind(.recommendation): return "Recommendations"
-        case .kind(.intervention): return "Intervention"
-        case .kind(.loc): return "LOC"
-        case .kind(.note): return "Notes"
-        case .kind(.vitals): return "Vitals"
-        case .kind(.injury): return "Injury"
-        case .kind(.illness): return "Illness"
+        case .all: "All Events"
+        case .kind(.lifecycle): "Lifecycle"
+        case .kind(.cause): "Causes"
+        case .kind(.problem): "Problems"
+        case .kind(.recommendation): "Recommendations"
+        case .kind(.intervention): "Intervention"
+        case .kind(.loc): "LOC"
+        case .kind(.note): "Notes"
+        case .kind(.vitals): "Vitals"
+        case .kind(.injury): "Injury"
+        case .kind(.illness): "Illness"
         }
     }
 }
@@ -2146,7 +2144,7 @@ private struct RunConsoleCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
             )
     }
 }
@@ -2171,7 +2169,7 @@ private struct VitalValueCell: View {
         vital: VitalStatusSnapshot,
         valueText: String,
         font: Font = .subheadline.monospacedDigit(),
-        verticalPadding: CGFloat = 6
+        verticalPadding: CGFloat = 6,
     ) {
         self.vital = vital
         self.valueText = valueText
@@ -2207,8 +2205,8 @@ private struct VitalValueCell: View {
                             LinearGradient(
                                 colors: [.clear, Color.white.opacity(0.12), Color.white.opacity(0.35), Color.white.opacity(0.12), .clear],
                                 startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                                endPoint: .trailing,
+                            ),
                         )
                         .frame(width: width)
                         .offset(x: shimmerOffset * proxy.size.width)
@@ -2229,17 +2227,17 @@ private struct VitalValueCell: View {
 
     private var trendIcon: String {
         switch vital.trend {
-        case .up: return "arrow.up"
-        case .down: return "arrow.down"
-        case .flat: return "minus"
+        case .up: "arrow.up"
+        case .down: "arrow.down"
+        case .flat: "minus"
         }
     }
 
     private var trendColor: Color {
         switch vital.trend {
-        case .up: return TrainerLabTheme.warning
-        case .down: return TrainerLabTheme.success
-        case .flat: return .secondary
+        case .up: TrainerLabTheme.warning
+        case .down: TrainerLabTheme.success
+        case .flat: .secondary
         }
     }
 
@@ -2270,19 +2268,19 @@ private struct VitalValueCell: View {
 
 private extension View {
     @ViewBuilder func inlineNavBarTitle() -> some View {
-#if os(iOS)
-        self.navigationBarTitleDisplayMode(.inline)
-#else
-        self
-#endif
+        #if os(iOS)
+            navigationBarTitleDisplayMode(.inline)
+        #else
+            self
+        #endif
     }
 
     @ViewBuilder func numericKeyboard() -> some View {
-#if os(iOS)
-        self.keyboardType(.numberPad)
-#else
-        self
-#endif
+        #if os(iOS)
+            keyboardType(.numberPad)
+        #else
+            self
+        #endif
     }
 }
 
@@ -2303,7 +2301,7 @@ private struct NoteComposerSheet: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Add a trainer note to the timeline…", text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
+                    .lineLimit(1 ... 4)
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white)
                     .tint(.white)
@@ -2366,7 +2364,7 @@ private struct ScenarioBriefEditSheet: View {
             Form {
                 Section("Read-Aloud Brief") {
                     TextField("Brief", text: $readAloudBrief, axis: .vertical)
-                        .lineLimit(3...6)
+                        .lineLimit(3 ... 6)
                 }
                 Section("Environment") {
                     TextField("Environment", text: $environment)
@@ -2379,12 +2377,12 @@ private struct ScenarioBriefEditSheet: View {
                 }
                 Section("Evacuation") {
                     TextField("Options (comma or newline separated)", text: $evacuationOptions, axis: .vertical)
-                        .lineLimit(2...4)
+                        .lineLimit(2 ... 4)
                     TextField("ETA", text: $evacuationTime)
                 }
                 Section("Special Considerations") {
                     TextField("Special considerations (comma or newline separated)", text: $specialConsiderations, axis: .vertical)
-                        .lineLimit(2...4)
+                        .lineLimit(2 ... 4)
                 }
             }
             .navigationTitle("Edit Scenario Brief")
@@ -2402,7 +2400,7 @@ private struct ScenarioBriefEditSheet: View {
                             threatContext: threatContext.isEmpty ? nil : threatContext,
                             evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: parseList(from: specialConsiderations)
+                            specialConsiderations: parseList(from: specialConsiderations),
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

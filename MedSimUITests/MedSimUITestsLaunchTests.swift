@@ -8,7 +8,6 @@
 import XCTest
 
 final class MedSimUITestsLaunchTests: XCTestCase {
-
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
     }
@@ -18,7 +17,7 @@ final class MedSimUITestsLaunchTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunch() throws {
+    func testLaunch() {
         let app = XCUIApplication()
         app.launchArguments.append("-uiTesting-reset-auth")
         app.launch()

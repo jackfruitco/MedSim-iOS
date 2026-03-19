@@ -8,13 +8,12 @@
 import XCTest
 
 final class MedSimUITests: XCTestCase {
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
-    func testLaunchShowsMedSimBrandingOnAuthGate() throws {
+    func testLaunchShowsMedSimBrandingOnAuthGate() {
         let app = XCUIApplication()
         app.launchArguments.append("-uiTesting-reset-auth")
         app.launch()
@@ -25,7 +24,7 @@ final class MedSimUITests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
+    func testLaunchPerformance() {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             let app = XCUIApplication()
             app.launchArguments.append("-uiTesting-reset-auth")

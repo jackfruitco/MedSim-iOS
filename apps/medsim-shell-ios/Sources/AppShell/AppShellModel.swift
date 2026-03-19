@@ -42,7 +42,7 @@ public final class AppShellModel: ObservableObject {
 
         let trainerService = TrainerLabService(apiClient: apiClient)
         self.trainerService = trainerService
-        self.chatService = ChatLabService(apiClient: apiClient)
+        chatService = ChatLabService(apiClient: apiClient)
 
         let commandQueue: CommandQueueStoreProtocol
         do {
@@ -50,7 +50,7 @@ public final class AppShellModel: ObservableObject {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask,
                 appropriateFor: nil,
-                create: true
+                create: true,
             )
             let dbURL = support.appendingPathComponent("trainerlab-command-queue.sqlite")
             commandQueue = try GRDBCommandQueueStore(fileURL: dbURL)
@@ -60,9 +60,9 @@ public final class AppShellModel: ObservableObject {
         self.commandQueue = commandQueue
 
         let authService = AuthService(apiClient: apiClient, tokenProvider: tokenStore)
-        self.authViewModel = AuthViewModel(authService: authService, trainerService: trainerService)
-        self.sessionHubViewModel = SessionHubViewModel(service: trainerService)
-        self.presetsViewModel = PresetsViewModel(service: trainerService)
+        authViewModel = AuthViewModel(authService: authService, trainerService: trainerService)
+        sessionHubViewModel = SessionHubViewModel(service: trainerService)
+        presetsViewModel = PresetsViewModel(service: trainerService)
         bindChildPublishers()
     }
 
@@ -87,12 +87,12 @@ public final class AppShellModel: ObservableObject {
         let realtime = ChatRealtimeClient(
             baseURLProvider: { self.mutableBaseURLProvider.currentURL() },
             tokenProvider: tokenStore,
-            service: chatService
+            service: chatService,
         )
         return ChatRunStore(
             service: chatService,
             realtimeClient: realtime,
-            simulation: simulation
+            simulation: simulation,
         )
     }
 

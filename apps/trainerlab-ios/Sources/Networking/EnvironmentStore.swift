@@ -18,8 +18,8 @@ public final class APIEnvironmentStore: ObservableObject {
 
     public init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
-        self.selection = APIEnvironmentSelection(rawValue: userDefaults.string(forKey: selectionKey) ?? "production") ?? .production
-        self.customURLString = userDefaults.string(forKey: customURLKey) ?? "https://medsim.jackfruitco.com"
+        selection = APIEnvironmentSelection(rawValue: userDefaults.string(forKey: selectionKey) ?? "production") ?? .production
+        customURLString = userDefaults.string(forKey: customURLKey) ?? "https://medsim.jackfruitco.com"
     }
 
     public var baseURL: URL {

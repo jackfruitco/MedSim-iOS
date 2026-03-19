@@ -59,7 +59,7 @@ public final class PresetsViewModel: ObservableObject {
             description: description,
             instructionText: instruction,
             injuries: [],
-            severity: severity
+            severity: severity,
         )
 
         do {
@@ -85,7 +85,7 @@ public final class PresetsViewModel: ObservableObject {
         description: String,
         instruction: String,
         severity: String,
-        isActive: Bool
+        isActive: Bool,
     ) async {
         do {
             let updated = try await service.updatePreset(
@@ -95,8 +95,8 @@ public final class PresetsViewModel: ObservableObject {
                     description: description,
                     instructionText: instruction,
                     severity: severity,
-                    isActive: isActive
-                )
+                    isActive: isActive,
+                ),
             )
             if let index = presets.firstIndex(where: { $0.id == id }) {
                 presets[index] = updated

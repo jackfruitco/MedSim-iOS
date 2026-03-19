@@ -1,5 +1,5 @@
-import SwiftUI
 @testable import Sessions
+import SwiftUI
 import XCTest
 
 final class SessionHubLayoutSupportTests: XCTestCase {

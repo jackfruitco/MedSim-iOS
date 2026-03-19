@@ -31,7 +31,7 @@ public struct Endpoint: Sendable {
         headers: [String: String] = [:],
         requiresAuth: Bool = true,
         idempotencyKey: String? = nil,
-        correlationID: String? = nil
+        correlationID: String? = nil,
     ) {
         self.path = path
         self.method = method
@@ -75,7 +75,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
-        session: URLSession = .shared
+        session: URLSession = .shared,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -102,7 +102,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         baseURLProvider()
     }
 
-    public func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type = T.self) async throws -> T {
+    public func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type = T.self) async throws -> T {
         let data = try await requestData(endpoint)
         if T.self == EmptyResponse.self, data.isEmpty {
             return EmptyResponse() as! T
@@ -134,13 +134,13 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         }
 
         if http.statusCode == 503, retryCount < 3 {
-            let delay = pow(2.0, Double(retryCount)) + Double.random(in: 0...0.5)
+            let delay = pow(2.0, Double(retryCount)) + Double.random(in: 0 ... 0.5)
             logger.warning("503 on \(endpoint.path) — retrying in \(delay)s (attempt \(retryCount + 1)/3)")
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             return try await execute(endpoint: endpoint, allowRefreshRetry: allowRefreshRetry, retryCount: retryCount + 1)
         }
 
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<binary>"
             logger.error("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path): \(body)")
             if http.statusCode == 503 {
@@ -159,11 +159,10 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             throw APIClientError.invalidURL
         }
 
-        let joinedPath: String
-        if endpoint.path.hasPrefix("/") {
-            joinedPath = endpoint.path
+        let joinedPath: String = if endpoint.path.hasPrefix("/") {
+            endpoint.path
         } else {
-            joinedPath = base.path + endpoint.path
+            base.path + endpoint.path
         }
         components.path = joinedPath
 
@@ -228,7 +227,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
                 path: "/api/v1/auth/token/refresh/",
                 method: .post,
                 body: payload,
-                requiresAuth: false
+                requiresAuth: false,
             )
 
             let data = try await execute(endpoint: endpoint, allowRefreshRetry: false)
@@ -237,14 +236,14 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
                 accessToken: refresh.accessToken,
                 refreshToken: refresh.refreshToken ?? current.refreshToken,
                 expiresIn: refresh.expiresIn,
-                tokenType: refresh.tokenType
+                tokenType: refresh.tokenType,
             )
             tokenProvider.saveTokens(nextTokens)
             return nextTokens
         }
     }
 
-    nonisolated private static func parseISO8601(_ value: String) -> Date? {
+    private nonisolated static func parseISO8601(_ value: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = fractional.date(from: value) {

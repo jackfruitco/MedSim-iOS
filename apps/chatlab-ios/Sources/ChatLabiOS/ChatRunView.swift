@@ -1,7 +1,7 @@
 import SharedModels
 import SwiftUI
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 public struct ChatRunView: View {
@@ -20,7 +20,7 @@ public struct ChatRunView: View {
     public init(
         store: ChatRunStore,
         toolsStore: ChatToolsStore,
-        onBack: @escaping () -> Void
+        onBack: @escaping () -> Void,
     ) {
         self.store = store
         self.toolsStore = toolsStore
@@ -31,7 +31,7 @@ public struct ChatRunView: View {
         GeometryReader { proxy in
             let layoutMode = ChatRunLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
             let chromeMode = ChatRunChromeMode.resolve(isKeyboardPresented: isKeyboardPresented)
 
@@ -201,7 +201,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.simulationRetryable,
                     retryAction: { store.retryInitialSimulation() },
-                    compact: false
+                    compact: false,
                 )
             }
 
@@ -211,7 +211,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.feedbackRetryable,
                     retryAction: { store.retryFeedback() },
-                    compact: false
+                    compact: false,
                 )
             }
         }
@@ -225,7 +225,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.simulationRetryable,
                     retryAction: { store.retryInitialSimulation() },
-                    compact: true
+                    compact: true,
                 )
             }
 
@@ -235,7 +235,7 @@ public struct ChatRunView: View {
                     text: failure,
                     retryable: store.feedbackRetryable,
                     retryAction: { store.retryFeedback() },
-                    compact: true
+                    compact: true,
                 )
             }
         }
@@ -296,7 +296,7 @@ public struct ChatRunView: View {
                         .background(
                             store.activeConversationID == conversation.id
                                 ? Color.blue.opacity(0.18)
-                                : Color.secondary.opacity(0.08)
+                                : Color.secondary.opacity(0.08),
                         )
                         .clipShape(Capsule())
                     }
@@ -352,7 +352,7 @@ public struct ChatRunView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(layoutMode == .padWorkspace ? (chromeMode == .keyboardCollapsed ? 8 : 12) : 0)
-        .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+        .background(layoutMode == .padWorkspace ? ChatLabTheme.systemBackground : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 18 : 0, style: .continuous))
         .accessibilityIdentifier("chat-message-timeline")
     }
@@ -403,7 +403,7 @@ public struct ChatRunView: View {
                 TextField(
                     store.activeConversationLocked ? "This conversation is read-only" : "Message",
                     text: $store.draftText,
-                    axis: .vertical
+                    axis: .vertical,
                 )
                 .lineLimit(1 ... 4)
                 .textFieldStyle(.roundedBorder)
@@ -420,12 +420,12 @@ public struct ChatRunView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     store.activeConversationLocked ||
-                    store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 )
                 .accessibilityLabel("Send message")
             }
             .padding(layoutMode == .padWorkspace ? 14 : 0)
-            .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+            .background(layoutMode == .padWorkspace ? ChatLabTheme.systemBackground : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
@@ -437,7 +437,7 @@ public struct ChatRunView: View {
         text: String,
         retryable: Bool,
         retryAction: @escaping () -> Void,
-        compact: Bool
+        compact: Bool,
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -488,7 +488,7 @@ public struct ChatRunView: View {
         .padding(layoutMode == .padWorkspace ? 24 : 16)
         .background(
             RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 24 : 18, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+                .fill(ChatLabTheme.systemBackground),
         )
     }
 
@@ -636,10 +636,10 @@ public struct ChatRunView: View {
         .background(.ultraThinMaterial)
     }
 
-    private func toolSection<Content: View>(
+    private func toolSection(
         _ section: ChatToolsSection,
         layoutMode: ChatRunLayoutMode,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         let isExpanded = expandedToolSections.contains(section)
 
@@ -670,7 +670,7 @@ public struct ChatRunView: View {
             }
         }
         .padding(layoutMode == .padWorkspace ? 12 : 11)
-        .background(Color(uiColor: .systemBackground))
+        .background(ChatLabTheme.systemBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }
@@ -688,7 +688,7 @@ public struct ChatRunView: View {
             return
         }
         expandedToolSections = Set(
-            ChatToolsSection.allCases.filter { $0.defaultExpanded(for: layoutMode) }
+            ChatToolsSection.allCases.filter { $0.defaultExpanded(for: layoutMode) },
         )
         lastToolLayoutMode = layoutMode
     }
@@ -705,33 +705,33 @@ public struct ChatRunView: View {
     private func tabFont(for layoutMode: ChatRunLayoutMode) -> Font {
         switch layoutMode {
         case .compactMessenger:
-            return .caption
+            .caption
         case .widePhoneMessenger:
-            return .subheadline
+            .subheadline
         case .padWorkspace:
-            return .subheadline
+            .subheadline
         }
     }
 
     private func horizontalInset(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 10
+            10
         case .widePhoneMessenger:
-            return 14
+            14
         case .padWorkspace:
-            return 0
+            0
         }
     }
 
     private func messageColumnWidth(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 560
+            560
         case .widePhoneMessenger:
-            return 620
+            620
         case .padWorkspace:
-            return 760
+            760
         }
     }
 
@@ -745,15 +745,15 @@ private struct ChatKeyboardStateModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        content
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                isKeyboardPresented = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                isKeyboardPresented = false
-            }
+            content
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                    isKeyboardPresented = true
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    isKeyboardPresented = false
+                }
         #else
-        content
+            content
         #endif
     }
 }
@@ -761,9 +761,9 @@ private struct ChatKeyboardStateModifier: ViewModifier {
 private struct ChatInlineNavigationTitleModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
-        content.navigationBarTitleDisplayMode(.inline)
+            content.navigationBarTitleDisplayMode(.inline)
         #else
-        content
+            content
         #endif
     }
 }
@@ -773,9 +773,9 @@ private struct ChatKeyboardNavigationBarModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        content.toolbar(isKeyboardPresented ? .hidden : .visible, for: .navigationBar)
+            content.toolbar(isKeyboardPresented ? .hidden : .visible, for: .navigationBar)
         #else
-        content
+            content
         #endif
     }
 }
@@ -829,24 +829,24 @@ private struct ChatBubble: View {
     private func bubbleWidth(for layoutMode: ChatRunLayoutMode) -> CGFloat {
         switch layoutMode {
         case .compactMessenger:
-            return 320
+            320
         case .widePhoneMessenger:
-            return 420
+            420
         case .padWorkspace:
-            return 620
+            620
         }
     }
 
     private func statusColor(_ status: DeliveryStatus) -> Color {
         switch status {
         case .sending:
-            return .secondary
+            .secondary
         case .sent:
-            return .blue
+            .blue
         case .delivered:
-            return .green
+            .green
         case .failed:
-            return .red
+            .red
         }
     }
 }

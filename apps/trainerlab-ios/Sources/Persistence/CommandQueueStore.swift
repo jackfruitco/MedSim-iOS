@@ -23,7 +23,9 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
     public var nextRetryAt: Date
     public var ackState: PendingAckState
 
-    public var id: String { idempotencyKey }
+    public var id: String {
+        idempotencyKey
+    }
 
     public init(
         localID: Int64? = nil,
@@ -37,7 +39,7 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
         maxRetries: Int = 10,
         lastError: String? = nil,
         nextRetryAt: Date,
-        ackState: PendingAckState = .pending
+        ackState: PendingAckState = .pending,
     ) {
         self.localID = localID
         self.idempotencyKey = idempotencyKey
@@ -189,7 +191,7 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
             try PendingCommandEnvelope
                 .filter(
                     (Column("ack_state") != PendingAckState.pending.rawValue || Column("next_retry_at") <= now)
-                    && Column("retry_count") < Column("max_retries")
+                        && Column("retry_count") < Column("max_retries"),
                 )
                 .order(Column("next_retry_at").asc)
                 .limit(limit)
@@ -216,7 +218,7 @@ public enum CommandEnvelopeBuilder {
     public static func make(
         endpoint: String,
         method: String,
-        body: Data?
+        body: Data?,
     ) -> PendingCommandEnvelope {
         let now = Date()
         let key = "ios.\(UUID().uuidString.lowercased())"
@@ -230,7 +232,7 @@ public enum CommandEnvelopeBuilder {
             retryCount: 0,
             lastError: nil,
             nextRetryAt: now,
-            ackState: .pending
+            ackState: .pending,
         )
     }
 

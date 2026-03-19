@@ -108,7 +108,9 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
     /// Non-nil when the terminal state can be retried.
     public let retryable: Bool?
 
-    public var id: Int { simulationID }
+    public var id: Int {
+        simulationID
+    }
 
     public init(
         simulationID: Int,
@@ -125,7 +127,7 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
         modifiedAt: Date,
         terminalReasonCode: String? = nil,
         terminalReasonText: String? = nil,
-        retryable: Bool? = nil
+        retryable: Bool? = nil,
     ) {
         self.simulationID = simulationID
         self.status = status
@@ -170,14 +172,16 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let correlationID: String?
     public let payload: [String: JSONValue]
 
-    public var id: String { eventID }
+    public var id: String {
+        eventID
+    }
 
     public init(
         eventID: String,
         eventType: String,
         createdAt: Date,
         correlationID: String?,
-        payload: [String: JSONValue]
+        payload: [String: JSONValue],
     ) {
         self.eventID = eventID
         self.eventType = eventType
@@ -235,7 +239,7 @@ public struct RunSummary: Codable, Sendable {
         timelineHighlights: [SummaryTimelineEntry],
         commandLog: [SummaryCommandLog],
         aiRationaleNotes: [JSONValue],
-        aiDebrief: RunDebriefOutput? = nil
+        aiDebrief: RunDebriefOutput? = nil,
     ) {
         self.simulationID = simulationID
         self.status = status
@@ -326,7 +330,7 @@ public struct SimulationAdjustRequest: Codable, Sendable {
         avpuState: String?,
         interventionCode: String?,
         note: String?,
-        metadata: [String: JSONValue] = [:]
+        metadata: [String: JSONValue] = [:],
     ) {
         self.target = target
         self.direction = direction
@@ -432,7 +436,7 @@ public struct ScenarioInstructionCreateRequest: Codable, Sendable {
         instructionText: String,
         injuries: [String],
         severity: String,
-        metadata: [String: JSONValue] = [:]
+        metadata: [String: JSONValue] = [:],
     ) {
         self.title = title
         self.description = description
@@ -468,7 +472,7 @@ public struct ScenarioInstructionUpdateRequest: Codable, Sendable {
         injuries: [String]? = nil,
         severity: String? = nil,
         metadata: [String: JSONValue]? = nil,
-        isActive: Bool? = nil
+        isActive: Bool? = nil,
     ) {
         self.title = title
         self.description = description
@@ -504,7 +508,7 @@ public struct ScenarioInstructionShareRequest: Codable, Sendable {
         canEdit: Bool = false,
         canDelete: Bool = false,
         canShare: Bool = false,
-        canDuplicate: Bool = true
+        canDuplicate: Bool = true,
     ) {
         self.userID = userID
         self.canRead = canRead
@@ -552,7 +556,9 @@ public struct DictionaryItem: Codable, Identifiable, Sendable {
     public let code: String
     public let label: String
 
-    public var id: String { code }
+    public var id: String {
+        code
+    }
 
     public init(code: String, label: String) {
         self.code = code
@@ -570,7 +576,9 @@ public struct InterventionSite: Codable, Identifiable, Sendable {
     public let code: String
     public let label: String
 
-    public var id: String { code }
+    public var id: String {
+        code
+    }
 
     public init(code: String, label: String) {
         self.code = code
@@ -583,7 +591,9 @@ public struct InterventionGroup: Codable, Identifiable, Sendable {
     public let label: String
     public let sites: [InterventionSite]
 
-    public var id: String { interventionType }
+    public var id: String {
+        interventionType
+    }
 
     public init(interventionType: String, label: String, sites: [InterventionSite]) {
         self.interventionType = interventionType
@@ -628,7 +638,7 @@ public struct ScenarioBriefOut: Codable, Sendable {
         threatContext: String? = nil,
         evacuationOptions: [String] = [],
         evacuationTime: String? = nil,
-        specialConsiderations: [String] = []
+        specialConsiderations: [String] = [],
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment
@@ -689,7 +699,7 @@ public struct RuntimePatientStatus: Codable, Sendable {
         impendingPneumothorax: Bool = false,
         tensionPneumothorax: Bool = false,
         narrative: String = "",
-        teachingFlags: [String] = []
+        teachingFlags: [String] = [],
     ) {
         self.avpu = avpu
         self.respiratoryDistress = respiratoryDistress
@@ -1169,7 +1179,7 @@ public struct TrainerRuntimeSnapshot: Codable, Sendable {
         disposition: RuntimeDispositionState? = nil,
         vitals: [RuntimeVitalState] = [],
         pulses: [RuntimePulseState] = [],
-        patientStatus: RuntimePatientStatus = .init()
+        patientStatus: RuntimePatientStatus = .init(),
     ) {
         self.causes = causes
         self.problems = problems
@@ -1288,7 +1298,7 @@ public struct InjuryEventRequest: Codable, Sendable {
         injuryDescription: String,
         description: String = "",
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.injuryLocation = injuryLocation
         self.injuryKind = injuryKind
@@ -1322,7 +1332,7 @@ public struct IllnessEventRequest: Codable, Sendable {
         anatomicalLocation: String = "",
         laterality: String = "",
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.name = name
         self.description = description
@@ -1362,7 +1372,7 @@ public struct InterventionEventRequest: Codable, Sendable {
         notes: String = "",
         details: [String: JSONValue]? = nil,
         performedByRole: String = "instructor",
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.interventionType = interventionType
         self.siteCode = siteCode
@@ -1404,7 +1414,7 @@ public struct VitalEventRequest: Codable, Sendable {
         lockValue: Bool,
         minValueDiastolic: Int?,
         maxValueDiastolic: Int?,
-        supersedesEventID: Int?
+        supersedesEventID: Int?,
     ) {
         self.vitalType = vitalType
         self.minValue = minValue
@@ -1447,13 +1457,13 @@ public enum AVPUState: String, CaseIterable, Codable, Sendable {
     public var colorToken: String {
         switch self {
         case .alert:
-            return "avpu.green"
+            "avpu.green"
         case .verbal:
-            return "avpu.amber"
+            "avpu.amber"
         case .pain:
-            return "avpu.red"
+            "avpu.red"
         case .unalert:
-            return "avpu.black"
+            "avpu.black"
         }
     }
 }
@@ -1527,7 +1537,7 @@ public struct ProblemCreateRequest: Codable, Sendable {
         laterality: String = "",
         status: ProblemLifecycleState = .active,
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.causeKind = causeKind
         self.causeID = causeID
@@ -1667,7 +1677,7 @@ public struct AnnotationCreateRequest: Codable, Sendable {
         learningObjective: String = "other",
         outcome: String = "pending",
         linkedEventID: Int? = nil,
-        elapsedSecondsAt: Int? = nil
+        elapsedSecondsAt: Int? = nil,
     ) {
         self.learningObjective = learningObjective
         self.observationText = observationText
@@ -1733,7 +1743,7 @@ public struct ScenarioBriefUpdateRequest: Codable, Sendable {
         threatContext: String? = nil,
         evacuationOptions: [String]? = nil,
         evacuationTime: String? = nil,
-        specialConsiderations: [String]? = nil
+        specialConsiderations: [String]? = nil,
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment
@@ -1769,14 +1779,14 @@ public enum PulseLocation: String, Codable, Sendable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .carotidLeft: return "Carotid (Left)"
-        case .carotidRight: return "Carotid (Right)"
-        case .radialLeft: return "Radial (Left)"
-        case .radialRight: return "Radial (Right)"
-        case .femoralLeft: return "Femoral (Left)"
-        case .femoralRight: return "Femoral (Right)"
-        case .pedalLeft: return "Pedal (Left)"
-        case .pedalRight: return "Pedal (Right)"
+        case .carotidLeft: "Carotid (Left)"
+        case .carotidRight: "Carotid (Right)"
+        case .radialLeft: "Radial (Left)"
+        case .radialRight: "Radial (Right)"
+        case .femoralLeft: "Femoral (Left)"
+        case .femoralRight: "Femoral (Right)"
+        case .pedalLeft: "Pedal (Left)"
+        case .pedalRight: "Pedal (Right)"
         }
     }
 }

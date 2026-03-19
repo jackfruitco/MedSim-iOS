@@ -12,16 +12,16 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var retriedSimulation: ChatSimulation?
 
     func listSimulations(
-        limit: Int,
-        cursor: String?,
-        status: String?,
-        query: String?,
-        searchMessages: Bool
+        limit _: Int,
+        cursor _: String?,
+        status _: String?,
+        query _: String?,
+        searchMessages _: Bool,
     ) async throws -> PaginatedResponse<ChatSimulation> {
         PaginatedResponse(items: Array(simulations.values), nextCursor: nil, hasMore: false)
     }
 
-    func quickCreateSimulation(request: ChatQuickCreateRequest) async throws -> ChatSimulation {
+    func quickCreateSimulation(request _: ChatQuickCreateRequest) async throws -> ChatSimulation {
         throw NSError(domain: "unused", code: 1)
     }
 
@@ -54,48 +54,48 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         return simulation
     }
 
-    func listConversations(simulationID: Int) async throws -> ChatConversationListResponse {
+    func listConversations(simulationID _: Int) async throws -> ChatConversationListResponse {
         conversations
     }
 
-    func createConversation(simulationID: Int, request: ChatCreateConversationRequest) async throws -> ChatConversation {
+    func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
         throw NSError(domain: "unused", code: 1)
     }
 
-    func getConversation(simulationID: Int, conversationUUID: String) async throws -> ChatConversation {
+    func getConversation(simulationID _: Int, conversationUUID _: String) async throws -> ChatConversation {
         throw NSError(domain: "unused", code: 1)
     }
 
     func listMessages(
-        simulationID: Int,
+        simulationID _: Int,
         conversationID: Int?,
-        cursor: String?,
-        order: String,
-        limit: Int
+        cursor _: String?,
+        order _: String,
+        limit _: Int,
     ) async throws -> PaginatedResponse<ChatMessage> {
         let conversationKey = conversationID ?? -1
         return PaginatedResponse(
             items: messagesByConversation[conversationKey] ?? [],
             nextCursor: nil,
-            hasMore: false
+            hasMore: false,
         )
     }
 
-    func createMessage(simulationID: Int, request: ChatCreateMessageRequest) async throws -> ChatMessage {
+    func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
         guard let createdMessage else {
             throw NSError(domain: "missing-created-message", code: 404)
         }
         return createdMessage
     }
 
-    func retryMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+    func retryMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
         guard let retriedMessage else {
             throw NSError(domain: "missing-retried-message", code: 404)
         }
         return retriedMessage
     }
 
-    func getMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+    func getMessage(simulationID _: Int, messageID: Int) async throws -> ChatMessage {
         for messages in messagesByConversation.values {
             if let message = messages.first(where: { $0.id == messageID }) {
                 return message
@@ -104,23 +104,23 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         throw NSError(domain: "missing-message", code: 404)
     }
 
-    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
+    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
         PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
     }
 
-    func listTools(simulationID: Int, names: [String]?) async throws -> ChatToolListResponse {
+    func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
         ChatToolListResponse(items: [])
     }
 
-    func getTool(simulationID: Int, toolName: String) async throws -> ChatToolState {
+    func getTool(simulationID _: Int, toolName: String) async throws -> ChatToolState {
         ChatToolState(name: toolName, displayName: toolName, data: [], isGeneric: false, checksum: "")
     }
 
-    func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
+    func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         ChatSignOrdersResponse(status: "ok", orders: [])
     }
 
-    func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup] {
+    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
         []
     }
 }
@@ -147,7 +147,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation = stateCont
     }
 
-    func connect(simulationID: Int, cursor: String?) async {
+    func connect(simulationID _: Int, cursor _: String?) async {
         stateContinuation.yield(.connected)
     }
 
@@ -155,7 +155,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation.yield(.disconnected)
     }
 
-    func send(eventType: String, payload: [String: JSONValue]) async {}
+    func send(eventType _: String, payload _: [String: JSONValue]) async {}
 
     func pushEvent(_ event: ChatEventEnvelope) {
         eventContinuation.yield(event)
@@ -190,8 +190,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "display_name": .string(patientConversation.displayName),
                     "timestamp": .string(isoTimestamp()),
                     "delivery_status": .string("sent"),
-                ]
-            )
+                ],
+            ),
         )
 
         try await waitUntil { store.activeTypingUsers.isEmpty }
@@ -205,7 +205,7 @@ final class ChatRunStoreTests: XCTestCase {
             id: 1,
             conversationID: patientConversation.id,
             isFromAI: true,
-            content: "How can I help?"
+            content: "How can I help?",
         )
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -217,7 +217,7 @@ final class ChatRunStoreTests: XCTestCase {
             isFromAI: false,
             role: "user",
             content: "Need help",
-            displayName: "Student"
+            displayName: "Student",
         )
 
         let realtime = TestRealtimeClient()
@@ -240,8 +240,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "status": .string("failed"),
                     "retryable": .bool(true),
                     "error_text": .string("Message failed to deliver to the AI service. Try again."),
-                ]
-            )
+                ],
+            ),
         )
 
         try await waitUntil {
@@ -260,7 +260,7 @@ final class ChatRunStoreTests: XCTestCase {
             id: 1,
             conversationID: patientConversation.id,
             isFromAI: true,
-            content: "Opening line"
+            content: "Opening line",
         )
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -281,8 +281,8 @@ final class ChatRunStoreTests: XCTestCase {
                     "terminal_reason_code": .string("provider_timeout"),
                     "terminal_reason_text": .string("Simulation failed."),
                     "retryable": .bool(true),
-                ]
-            )
+                ],
+            ),
         )
 
         try await waitUntil {
@@ -296,7 +296,7 @@ final class ChatRunStoreTests: XCTestCase {
             status: .failed,
             terminalReasonCode: "initial_generation_enqueue_failed",
             terminalReasonText: "We could not start this simulation. Please try again.",
-            retryable: true
+            retryable: true,
         )
         let retriedSimulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
@@ -324,7 +324,7 @@ final class ChatRunStoreTests: XCTestCase {
 
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
-        condition: @escaping @MainActor () -> Bool
+        condition: @escaping @MainActor () -> Bool,
     ) async throws {
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
         while DispatchTime.now().uptimeNanoseconds < deadline {
@@ -341,7 +341,7 @@ final class ChatRunStoreTests: XCTestCase {
         status: SimulationTerminalState,
         terminalReasonCode: String = "",
         terminalReasonText: String = "",
-        retryable: Bool?
+        retryable: Bool?,
     ) -> ChatSimulation {
         ChatSimulation(
             id: id,
@@ -357,14 +357,14 @@ final class ChatRunStoreTests: XCTestCase {
             terminalReasonCode: terminalReasonCode,
             terminalReasonText: terminalReasonText,
             terminalAt: status == .inProgress ? nil : Date(),
-            retryable: retryable
+            retryable: retryable,
         )
     }
 
     private func makeConversation(
         id: Int = 1,
         type: String = "simulated_patient",
-        name: String = "Jordan Lee"
+        name: String = "Jordan Lee",
     ) -> ChatConversation {
         ChatConversation(
             id: id,
@@ -376,7 +376,7 @@ final class ChatRunStoreTests: XCTestCase {
             displayName: name,
             displayInitials: "JL",
             isLocked: false,
-            createdAt: Date()
+            createdAt: Date(),
         )
     }
 
@@ -387,7 +387,7 @@ final class ChatRunStoreTests: XCTestCase {
         role: String = "assistant",
         content: String,
         displayName: String = "Jordan Lee",
-        deliveryStatus: DeliveryStatus = .sent
+        deliveryStatus: DeliveryStatus = .sent,
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -405,7 +405,7 @@ final class ChatRunStoreTests: XCTestCase {
             deliveryErrorCode: "",
             deliveryErrorText: "",
             deliveryRetryable: true,
-            deliveryRetryCount: 0
+            deliveryRetryCount: 0,
         )
     }
 
@@ -415,7 +415,7 @@ final class ChatRunStoreTests: XCTestCase {
             eventType: type,
             createdAt: Date(),
             correlationID: nil,
-            payload: payload
+            payload: payload,
         )
     }
 

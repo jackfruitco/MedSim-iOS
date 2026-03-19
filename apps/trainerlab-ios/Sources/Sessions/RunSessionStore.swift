@@ -29,7 +29,7 @@ public final class RunSessionStore: ObservableObject {
     public init(
         service: TrainerLabServiceProtocol,
         realtimeClient: RealtimeClientProtocol,
-        commandQueue: CommandQueueStoreProtocol
+        commandQueue: CommandQueueStoreProtocol,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
@@ -67,9 +67,9 @@ public final class RunSessionStore: ObservableObject {
                     self.captureClinicalTimelineEntry(from: event)
                     self.syncStopwatchState(previousStatus: previousStatus)
                 }
-                if self.shouldRefreshRuntimeProjection(for: event) {
-                    await self.loadRuntimeState()
-                    await self.reconcileAnnotationsFromSnapshot()
+                if shouldRefreshRuntimeProjection(for: event) {
+                    await loadRuntimeState()
+                    await reconcileAnnotationsFromSnapshot()
                 }
             }
         }
@@ -213,7 +213,7 @@ public final class RunSessionStore: ObservableObject {
                 avpuState: avpu.rawValue,
                 interventionCode: nil,
                 note: "Set AVPU to \(avpu.rawValue)",
-                metadata: [:]
+                metadata: [:],
             )
             let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/adjust/"
             let body = try? JSONEncoder().encode(request)
@@ -233,7 +233,7 @@ public final class RunSessionStore: ObservableObject {
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",
         details: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         guard canMutateCommands else { return }
 
@@ -247,7 +247,7 @@ public final class RunSessionStore: ObservableObject {
                 effectiveness: effectiveness,
                 notes: notes,
                 details: details,
-                supersedesEventID: supersedesEventID
+                supersedesEventID: supersedesEventID,
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/"
             let body = try? JSONEncoder().encode(request)
@@ -273,7 +273,7 @@ public final class RunSessionStore: ObservableObject {
                     "site_code": siteCode,
                     "effectiveness": effectiveness.rawValue,
                     "intervention_status": status.rawValue,
-                ]
+                ],
             )
 
             await executeQueuedAckCommand(envelope: envelope) {
@@ -291,7 +291,7 @@ public final class RunSessionStore: ObservableObject {
                 injuryLocation: location,
                 injuryKind: kind,
                 injuryDescription: description,
-                description: description
+                description: description,
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/"
             let body = try? JSONEncoder().encode(request)
@@ -302,7 +302,7 @@ public final class RunSessionStore: ObservableObject {
                 locationCode: location,
                 category: category,
                 kind: kind,
-                summary: description
+                summary: description,
             )
 
             await executeQueuedAckCommand(envelope: envelope) {
@@ -311,7 +311,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func addIllnessEvent(name: String, description: String, marchCategory: String, severity: String) {
+    public func addIllnessEvent(name: String, description: String, marchCategory _: String, severity _: String) {
         guard canMutateCommands else { return }
 
         Task {
@@ -336,7 +336,7 @@ public final class RunSessionStore: ObservableObject {
                 minValue: min,
                 maxValue: max,
                 minDiastolic: nil,
-                maxDiastolic: nil
+                maxDiastolic: nil,
             )
             upsertVital(
                 VitalStatusSnapshot(
@@ -347,8 +347,8 @@ public final class RunSessionStore: ObservableObject {
                     maxValueDiastolic: nil,
                     lockValue: false,
                     currentValue: seeded.primary,
-                    currentDiastolicValue: seeded.secondary
-                )
+                    currentDiastolicValue: seeded.secondary,
+                ),
             )
 
             let request = VitalEventRequest(
@@ -358,7 +358,7 @@ public final class RunSessionStore: ObservableObject {
                 lockValue: false,
                 minValueDiastolic: nil,
                 maxValueDiastolic: nil,
-                supersedesEventID: nil
+                supersedesEventID: nil,
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/"
             let body = try? JSONEncoder().encode(request)
@@ -381,7 +381,7 @@ public final class RunSessionStore: ObservableObject {
             kind: .note,
             title: "Trainer Note",
             message: trimmed,
-            createdAt: Date()
+            createdAt: Date(),
         )
 
         guard canMutateCommands else { return }
@@ -394,7 +394,7 @@ public final class RunSessionStore: ObservableObject {
                 _ = try await service.createAnnotation(
                     simulationID: simulationID,
                     request: request,
-                    idempotencyKey: key
+                    idempotencyKey: key,
                 )
             } catch {
                 state.conflictBanner = error.localizedDescription
@@ -413,7 +413,7 @@ public final class RunSessionStore: ObservableObject {
             _ = try? await service.steerPrompt(
                 simulationID: simulationID,
                 request: request,
-                idempotencyKey: key
+                idempotencyKey: key,
             )
         }
     }
@@ -437,7 +437,7 @@ public final class RunSessionStore: ObservableObject {
                         endpoint: envelope.endpoint,
                         method: envelope.method,
                         body: data,
-                        idempotencyKey: envelope.idempotencyKey
+                        idempotencyKey: envelope.idempotencyKey,
                     )
                     try await commandQueue.markAcked(idempotencyKey: envelope.idempotencyKey)
                 } catch {
@@ -445,7 +445,7 @@ public final class RunSessionStore: ObservableObject {
                     try await commandQueue.markFailed(
                         idempotencyKey: envelope.idempotencyKey,
                         error: error.localizedDescription,
-                        nextRetryAt: nextRetryAt
+                        nextRetryAt: nextRetryAt,
                     )
                 }
             }
@@ -475,7 +475,7 @@ public final class RunSessionStore: ObservableObject {
 
     private func executeQueuedSessionCommand(
         envelope: PendingCommandEnvelope,
-        run: @escaping @Sendable () async throws -> TrainerSessionDTO
+        run: @escaping @Sendable () async throws -> TrainerSessionDTO,
     ) async {
         do {
             try await commandQueue.enqueue(envelope)
@@ -492,9 +492,9 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func executeQueuedAckCommand<T: Sendable>(
+    private func executeQueuedAckCommand(
         envelope: PendingCommandEnvelope,
-        run: @escaping @Sendable () async throws -> T
+        run: @escaping @Sendable () async throws -> some Sendable,
     ) async {
         do {
             try await commandQueue.enqueue(envelope)
@@ -518,7 +518,7 @@ public final class RunSessionStore: ObservableObject {
             try await commandQueue.markFailed(
                 idempotencyKey: envelope.idempotencyKey,
                 error: error.localizedDescription,
-                nextRetryAt: nextRetryAt
+                nextRetryAt: nextRetryAt,
             )
             await refreshPendingCount()
         } catch {
@@ -564,7 +564,7 @@ public final class RunSessionStore: ObservableObject {
                 kind: .lifecycle,
                 title: lifecycleTitle,
                 message: lifecycleMessage(for: eventType),
-                createdAt: event.createdAt
+                createdAt: event.createdAt,
             )
             return
         }
@@ -579,7 +579,7 @@ public final class RunSessionStore: ObservableObject {
                 kind: .cause,
                 title: kindTitle,
                 message: location.map { "\($0): \(summary)" } ?? summary,
-                createdAt: event.createdAt
+                createdAt: event.createdAt,
             )
             return
         }
@@ -596,7 +596,7 @@ public final class RunSessionStore: ObservableObject {
                 title: "Problem",
                 message: message,
                 createdAt: event.createdAt,
-                metadata: ["status": status]
+                metadata: ["status": status],
             )
             return
         }
@@ -613,7 +613,7 @@ public final class RunSessionStore: ObservableObject {
                 title: "Recommendation",
                 message: label,
                 createdAt: event.createdAt,
-                metadata: metadata
+                metadata: metadata,
             )
             return
         }
@@ -627,7 +627,7 @@ public final class RunSessionStore: ObservableObject {
                 kind: .note,
                 title: "Trainer Note",
                 message: content,
-                createdAt: event.createdAt
+                createdAt: event.createdAt,
             )
             return
         }
@@ -669,13 +669,13 @@ public final class RunSessionStore: ObservableObject {
                 title: "Intervention",
                 message: message,
                 createdAt: event.createdAt,
-                metadata: meta
+                metadata: meta,
             )
             return
         }
 
         if eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."),
-            jsonString(event.payload["target"]) == "avpu"
+           jsonString(event.payload["target"]) == "avpu"
         {
             let stateText = jsonString(event.payload["avpu_state"]) ?? "unknown"
             addClinicalTimelineEntry(
@@ -683,7 +683,7 @@ public final class RunSessionStore: ObservableObject {
                 kind: .loc,
                 title: "LOC Change",
                 message: "AVPU set to \(stateText.capitalized)",
-                createdAt: event.createdAt
+                createdAt: event.createdAt,
             )
             return
         }
@@ -698,7 +698,7 @@ public final class RunSessionStore: ObservableObject {
                     threatContext: jsonString(event.payload["threat_context"]),
                     evacuationOptions: jsonStringArray(event.payload["evacuation_options"]),
                     evacuationTime: jsonString(event.payload["evacuation_time"]),
-                    specialConsiderations: jsonStringArray(event.payload["special_considerations"])
+                    specialConsiderations: jsonStringArray(event.payload["special_considerations"]),
                 )
                 scenarioBrief = brief
             }
@@ -711,7 +711,7 @@ public final class RunSessionStore: ObservableObject {
         title: String,
         message: String,
         createdAt: Date,
-        metadata: [String: String] = [:]
+        metadata: [String: String] = [:],
     ) {
         if state.clinicalTimelineEntries.contains(where: { $0.dedupeKey == dedupeKey }) {
             return
@@ -724,9 +724,9 @@ public final class RunSessionStore: ObservableObject {
                 title: title,
                 message: message,
                 createdAt: createdAt,
-                metadata: metadata
+                metadata: metadata,
             ),
-            at: 0
+            at: 0,
         )
 
         if state.clinicalTimelineEntries.count > 400 {
@@ -749,7 +749,7 @@ public final class RunSessionStore: ObservableObject {
             title: entry.title,
             message: entry.message,
             createdAt: entry.createdAt,
-            metadata: meta
+            metadata: meta,
         )
     }
 
@@ -780,7 +780,7 @@ public final class RunSessionStore: ObservableObject {
             minValue: minValue,
             maxValue: maxValue,
             minDiastolic: minDiastolic,
-            maxDiastolic: maxDiastolic
+            maxDiastolic: maxDiastolic,
         )
 
         let existing = state.vitals.first(where: { $0.key == vitalType })
@@ -797,7 +797,7 @@ public final class RunSessionStore: ObservableObject {
             currentDiastolicValue: sampled.secondary,
             trend: .flat,
             changeToken: existing?.changeToken ?? 0,
-            lastUpdatedAt: event.createdAt
+            lastUpdatedAt: event.createdAt,
         )
         upsertVital(snapshot)
     }
@@ -832,7 +832,7 @@ public final class RunSessionStore: ObservableObject {
                 minDiastolic: state.vitals[index].minValueDiastolic,
                 maxDiastolic: state.vitals[index].maxValueDiastolic,
                 currentPrimary: oldPrimary,
-                currentSecondary: oldSecondary
+                currentSecondary: oldSecondary,
             )
 
             state.vitals[index].previousValue = oldPrimary
@@ -843,7 +843,7 @@ public final class RunSessionStore: ObservableObject {
                 oldPrimary: oldPrimary,
                 oldSecondary: oldSecondary,
                 newPrimary: sampled.primary,
-                newSecondary: sampled.secondary
+                newSecondary: sampled.secondary,
             )
             if sampled.primary != oldPrimary || sampled.secondary != oldSecondary {
                 state.vitals[index].changeToken += 1
@@ -859,19 +859,19 @@ public final class RunSessionStore: ObservableObject {
         minDiastolic: Int?,
         maxDiastolic: Int?,
         currentPrimary: Int? = nil,
-        currentSecondary: Int? = nil
+        currentSecondary: Int? = nil,
     ) -> (primary: Int, secondary: Int?) {
         let primary = constrainedRandom(
             low: min(minValue, maxValue),
             high: max(minValue, maxValue),
-            current: currentPrimary
+            current: currentPrimary,
         )
 
         if key == "blood_pressure", let minDiastolic, let maxDiastolic {
             let secondary = constrainedRandom(
                 low: min(minDiastolic, maxDiastolic),
                 high: max(minDiastolic, maxDiastolic),
-                current: currentSecondary
+                current: currentSecondary,
             )
             return (primary, secondary)
         }
@@ -884,19 +884,19 @@ public final class RunSessionStore: ObservableObject {
     private func constrainedRandom(low: Int, high: Int, current: Int?) -> Int {
         guard low < high else { return low }
         guard let current else {
-            return Int.random(in: low...high)
+            return Int.random(in: low ... high)
         }
         let maxStep = max(2, Int(Double(high - low) * 0.08))
         let stepLow = max(low, current - maxStep)
         let stepHigh = min(high, current + maxStep)
-        return Int.random(in: stepLow...stepHigh)
+        return Int.random(in: stepLow ... stepHigh)
     }
 
     private func trendDirection(
         oldPrimary: Int,
         oldSecondary: Int?,
         newPrimary: Int,
-        newSecondary: Int?
+        newSecondary: Int?,
     ) -> VitalTrendDirection {
         if newPrimary > oldPrimary {
             return .up
@@ -920,7 +920,7 @@ public final class RunSessionStore: ObservableObject {
             state.terminalCard = TerminalCard(
                 status: status!,
                 reasonText: state.session?.terminalReasonText,
-                completedAt: state.session?.runCompletedAt
+                completedAt: state.session?.runCompletedAt,
             )
         } else if !isTerminal {
             state.terminalCard = nil
@@ -933,7 +933,7 @@ public final class RunSessionStore: ObservableObject {
                 state.stopwatchIsRunning = true
                 state.stopwatchRunningSince = Date()
                 if state.stopwatchElapsedSeconds == 0,
-                    let startedAt = state.session?.runStartedAt
+                   let startedAt = state.session?.runStartedAt
                 {
                     state.stopwatchElapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
                 }
@@ -952,8 +952,8 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if status == .completed,
-            let startedAt = state.session?.runStartedAt,
-            let endedAt = state.session?.runCompletedAt
+           let startedAt = state.session?.runStartedAt,
+           let endedAt = state.session?.runCompletedAt
         {
             state.stopwatchElapsedSeconds = max(0, Int(endedAt.timeIntervalSince(startedAt)))
         }
@@ -980,7 +980,7 @@ public final class RunSessionStore: ObservableObject {
         guard
             let locationCode = resolvedAnatomicLocationCode(
                 primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
-                fallback: nil
+                fallback: nil,
             ),
             let zone = injuryZone(for: locationCode)
         else {
@@ -1027,7 +1027,7 @@ public final class RunSessionStore: ObservableObject {
             source: jsonString(event.payload["source"]) ?? jsonString(event.payload["origin"]),
             supersedesEventID: supersedes,
             hiddenAfter: nil,
-            updatedAt: event.createdAt
+            updatedAt: event.createdAt,
         )
 
         upsertInjury(annotation)
@@ -1038,7 +1038,7 @@ public final class RunSessionStore: ObservableObject {
         locationCode: String,
         category: String,
         kind: String,
-        summary: String
+        summary: String,
     ) {
         guard let zone = injuryZone(for: locationCode) else {
             return
@@ -1054,7 +1054,7 @@ public final class RunSessionStore: ObservableObject {
             kind: kind,
             summary: summary,
             status: .pending,
-            updatedAt: Date()
+            updatedAt: Date(),
         )
         upsertInjury(annotation)
     }
@@ -1130,7 +1130,7 @@ public final class RunSessionStore: ObservableObject {
             y: zone.y,
             effectiveness: effectiveness,
             status: status,
-            updatedAt: event.createdAt
+            updatedAt: event.createdAt,
         )
 
         if let idx = state.interventionAnnotations.firstIndex(where: { $0.id == annotation.id }) {
@@ -1166,7 +1166,7 @@ public final class RunSessionStore: ObservableObject {
             primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
             fallback: jsonInt(event.payload["cause_id"]).flatMap { causeID in
                 state.causeAnnotations.first(where: { $0.causeID == causeID })?.locationCode
-            }
+            },
         )
 
         let zone = locationCode.flatMap { injuryZone(for: $0) }
@@ -1190,7 +1190,7 @@ public final class RunSessionStore: ObservableObject {
             causeKind: jsonString(event.payload["cause_kind"]),
             recommendedInterventionIDs: jsonIntArray(event.payload["recommended_interventions"]),
             adjudicationReason: jsonString(event.payload["adjudication_reason"]),
-            updatedAt: event.createdAt
+            updatedAt: event.createdAt,
         )
 
         if let idx = state.problemAnnotations.firstIndex(where: { $0.id == annotation.id }) {
@@ -1222,7 +1222,7 @@ public final class RunSessionStore: ObservableObject {
             siteCode: jsonString(event.payload["site_code"]),
             siteLabel: jsonString(event.payload["site_label"]),
             warnings: jsonStringArray(event.payload["warnings"]),
-            contraindications: jsonStringArray(event.payload["contraindications"])
+            contraindications: jsonStringArray(event.payload["contraindications"]),
         )
 
         if let idx = state.recommendedInterventions.firstIndex(where: { $0.recommendationID == recommendationID }) {
@@ -1271,7 +1271,7 @@ public final class RunSessionStore: ObservableObject {
             conditionDescription: jsonString(event.payload["condition_description"]) ?? "dry",
             temperatureNormal: jsonBool(event.payload["temperature_normal"]) ?? true,
             temperatureDescription: jsonString(event.payload["temperature_description"]) ?? "warm",
-            updatedAt: event.createdAt
+            updatedAt: event.createdAt,
         )
 
         if let idx = state.pulseAnnotations.firstIndex(where: { $0.location == location }) {
@@ -1290,7 +1290,7 @@ public final class RunSessionStore: ObservableObject {
             guard let simulationID = state.session?.simulationID else { return }
             let request = ProblemStatusUpdateRequest(
                 isTreated: status == .active ? false : true,
-                isResolved: status == .resolved
+                isResolved: status == .resolved,
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/"
             let body = try? JSONEncoder().encode(request)
@@ -1300,7 +1300,7 @@ public final class RunSessionStore: ObservableObject {
                     simulationID: simulationID,
                     problemID: problemID,
                     request: request,
-                    idempotencyKey: envelope.idempotencyKey
+                    idempotencyKey: envelope.idempotencyKey,
                 )
             }
         }
@@ -1318,7 +1318,7 @@ public final class RunSessionStore: ObservableObject {
                 let updated = try await service.updateScenarioBrief(
                     simulationID: simulationID,
                     request: request,
-                    idempotencyKey: key
+                    idempotencyKey: key,
                 )
                 scenarioBrief = updated
             } catch {
@@ -1362,7 +1362,7 @@ public final class RunSessionStore: ObservableObject {
                 minValue: vitalState.minValue,
                 maxValue: vitalState.maxValue,
                 minDiastolic: vitalState.minValueDiastolic,
-                maxDiastolic: vitalState.maxValueDiastolic
+                maxDiastolic: vitalState.maxValueDiastolic,
             )
             upsertVital(VitalStatusSnapshot(
                 key: vitalState.vitalType,
@@ -1372,7 +1372,7 @@ public final class RunSessionStore: ObservableObject {
                 maxValueDiastolic: vitalState.maxValueDiastolic,
                 lockValue: vitalState.lockValue,
                 currentValue: sampled.primary,
-                currentDiastolicValue: sampled.secondary
+                currentDiastolicValue: sampled.secondary,
             ))
         }
 
@@ -1389,11 +1389,11 @@ public final class RunSessionStore: ObservableObject {
 
     private func makeCauseAnnotation(
         from cause: RuntimeCauseState,
-        fallbackProblem: RuntimeProblemState?
+        fallbackProblem: RuntimeProblemState?,
     ) -> CauseAnnotation? {
         let locationCode = resolvedAnatomicLocationCode(
             primary: cause.anatomicalLocation ?? cause.injuryLocation,
-            fallback: fallbackProblem?.anatomicalLocation
+            fallback: fallbackProblem?.anatomicalLocation,
         )
         guard let locationCode, let zone = injuryZone(for: locationCode) else {
             return nil
@@ -1421,18 +1421,18 @@ public final class RunSessionStore: ObservableObject {
             source: cause.source,
             supersedesEventID: nil,
             hiddenAfter: nil,
-            updatedAt: parseISODate(cause.timestamp) ?? Date()
+            updatedAt: parseISODate(cause.timestamp) ?? Date(),
         )
     }
 
     private func makeProblemAnnotation(
         from problem: RuntimeProblemState,
-        causesByID: [Int: RuntimeCauseState]
+        causesByID: [Int: RuntimeCauseState],
     ) -> ProblemAnnotation {
         let linkedCause = problem.causeID.flatMap { causesByID[$0] }
         let locationCode = resolvedAnatomicLocationCode(
             primary: problem.anatomicalLocation,
-            fallback: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation
+            fallback: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
         )
         let zone = locationCode.flatMap(injuryZone(for:))
         let id = problem.problemID.map(String.init) ?? problem.primaryLabel
@@ -1455,20 +1455,20 @@ public final class RunSessionStore: ObservableObject {
             causeKind: problem.causeKind,
             recommendedInterventionIDs: problem.recommendedInterventionIDs,
             adjudicationReason: problem.adjudicationReason,
-            updatedAt: problem.resolvedAt ?? problem.controlledAt ?? problem.treatedAt ?? Date()
+            updatedAt: problem.resolvedAt ?? problem.controlledAt ?? problem.treatedAt ?? Date(),
         )
     }
 
     private func makeRecommendedInterventionItem(
         from recommendation: RuntimeRecommendedInterventionState,
-        problemsByID: [Int: RuntimeProblemState]
+        problemsByID: [Int: RuntimeProblemState],
     ) -> RecommendedInterventionItem {
         let fallbackTitle = recommendation.primaryLabel
         let linkedProblemTitle = recommendation.targetProblemID
             .flatMap { problemsByID[$0]?.primaryLabel }
 
         return RecommendedInterventionItem(
-            recommendationID: recommendation.recommendationID ?? Int.random(in: 1_000_000...9_999_999),
+            recommendationID: recommendation.recommendationID ?? Int.random(in: 1_000_000 ... 9_999_999),
             title: fallbackTitle,
             code: recommendation.code,
             kind: recommendation.kind,
@@ -1484,7 +1484,7 @@ public final class RunSessionStore: ObservableObject {
             siteCode: recommendation.siteCode,
             siteLabel: recommendation.siteLabel,
             warnings: recommendation.warnings,
-            contraindications: recommendation.contraindications
+            contraindications: recommendation.contraindications,
         )
     }
 
@@ -1515,7 +1515,7 @@ public final class RunSessionStore: ObservableObject {
             y: zone.y,
             effectiveness: intervention.effectiveness ?? "unknown",
             status: intervention.status ?? "applied",
-            updatedAt: parseISODate(intervention.timestamp) ?? Date()
+            updatedAt: parseISODate(intervention.timestamp) ?? Date(),
         )
     }
 
@@ -1541,7 +1541,7 @@ public final class RunSessionStore: ObservableObject {
             conditionDescription: pulse.conditionDescription ?? "dry",
             temperatureNormal: pulse.temperatureNormal ?? true,
             temperatureDescription: pulse.temperatureDescription ?? "warm",
-            updatedAt: parseISODate(pulse.timestamp) ?? Date()
+            updatedAt: parseISODate(pulse.timestamp) ?? Date(),
         )
     }
 
@@ -1551,8 +1551,8 @@ public final class RunSessionStore: ObservableObject {
         let eventKind = jsonString(event.payload["event_kind"])?.lowercased()
         guard
             eventType.hasPrefix("pulse.")
-                || domainEventType == "pulseassessment"
-                || eventKind == "pulse_assessment"
+            || domainEventType == "pulseassessment"
+            || eventKind == "pulse_assessment"
         else {
             return nil
         }
@@ -1584,7 +1584,7 @@ public final class RunSessionStore: ObservableObject {
             conditionDescription: jsonString(event.payload["condition_description"]) ?? "dry",
             temperatureNormal: jsonBool(event.payload["temperature_normal"]) ?? true,
             temperatureDescription: jsonString(event.payload["temperature_description"]) ?? "warm",
-            updatedAt: event.createdAt
+            updatedAt: event.createdAt,
         )
     }
 
@@ -1596,30 +1596,30 @@ public final class RunSessionStore: ObservableObject {
     private func lifecycleTitle(for eventType: String) -> String? {
         switch eventType {
         case "run.started":
-            return "Run Started"
+            "Run Started"
         case "run.paused":
-            return "Run Paused"
+            "Run Paused"
         case "run.resumed":
-            return "Run Resumed"
+            "Run Resumed"
         case "run.stopped", "run.completed":
-            return "Run Stopped"
+            "Run Stopped"
         default:
-            return nil
+            nil
         }
     }
 
     private func lifecycleMessage(for eventType: String) -> String {
         switch eventType {
         case "run.started":
-            return "Simulation active."
+            "Simulation active."
         case "run.paused":
-            return "Simulation paused."
+            "Simulation paused."
         case "run.resumed":
-            return "Simulation resumed."
+            "Simulation resumed."
         case "run.stopped", "run.completed":
-            return "Simulation completed."
+            "Simulation completed."
         default:
-            return "Lifecycle update."
+            "Lifecycle update."
         }
     }
 

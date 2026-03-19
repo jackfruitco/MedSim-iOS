@@ -1,0 +1,2 @@
+--swift-version 6.2
+--exclude .build,.git,MedSim.xcodeproj

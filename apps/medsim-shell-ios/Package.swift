@@ -29,7 +29,7 @@ let package = Package(
                 .product(name: "Persistence", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
                 .product(name: "ChatLabiOS", package: "chatlab-ios"),
-            ]
+            ],
         ),
-    ]
+    ],
 )

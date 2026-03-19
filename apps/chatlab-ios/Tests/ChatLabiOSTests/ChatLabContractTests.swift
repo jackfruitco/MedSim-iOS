@@ -1,5 +1,5 @@
-import Foundation
 import ChatLabiOS
+import Foundation
 import Networking
 import SharedModels
 import XCTest
@@ -11,7 +11,7 @@ private enum ChatRecordingError: Error {
 private final class ChatRecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
 
-    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type) async throws -> T {
+    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
         throw ChatRecordingError.intercepted
     }
@@ -75,7 +75,7 @@ final class ChatLabContractTests: XCTestCase {
                 conversationID: 3,
                 cursor: "22",
                 order: "desc",
-                limit: 10
+                limit: 10,
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -95,7 +95,7 @@ final class ChatLabContractTests: XCTestCase {
         do {
             _ = try await service.signOrders(
                 simulationID: 7,
-                request: ChatSignOrdersRequest(submittedOrders: ["CBC"])
+                request: ChatSignOrdersRequest(submittedOrders: ["CBC"]),
             )
             XCTFail("Expected intercepted error")
         } catch {

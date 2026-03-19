@@ -1,6 +1,6 @@
+@testable import Presets
 import SharedModels
 import SwiftUI
-@testable import Presets
 import XCTest
 
 final class PresetsLayoutSupportTests: XCTestCase {
@@ -14,10 +14,10 @@ final class PresetsLayoutSupportTests: XCTestCase {
         XCTAssertEqual(PresetsLayoutMode.resolve(width: 430, horizontalSizeClass: .compact), .phone)
     }
 
-    func testSelectionDefaultsToFirstPresetOnPadOnly() {
+    func testSelectionDefaultsToFirstPresetOnPadOnly() throws {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let presets = try! decoder.decode(
+        let presets = try decoder.decode(
             [ScenarioInstruction].self,
             from: Data(
                 """
@@ -51,20 +51,20 @@ final class PresetsLayoutSupportTests: XCTestCase {
                     "modified_at": "2026-03-12T12:00:00Z"
                   }
                 ]
-                """.utf8
-            )
+                """.utf8,
+            ),
         )
 
         XCTAssertEqual(
             PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .pad),
-            9
+            9,
         )
         XCTAssertNil(
-            PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .phone)
+            PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: nil, presets: presets, layoutMode: .phone),
         )
         XCTAssertEqual(
             PresetsWorkspaceSelection.resolvedSelectionID(currentSelectionID: 11, presets: presets, layoutMode: .pad),
-            11
+            11,
         )
     }
 }
