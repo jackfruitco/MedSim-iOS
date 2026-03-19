@@ -141,6 +141,56 @@ final class TrainerLabContractTests: XCTestCase {
             api.capturedEndpoints.last?.path,
             "/api/v1/trainerlab/simulations/7/events/"
         )
+
+        do {
+            _ = try await service.updateProblemStatus(
+                simulationID: 7,
+                problemID: 3,
+                request: ProblemStatusUpdateRequest(isTreated: true, isResolved: false),
+                idempotencyKey: "k3"
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(
+            api.capturedEndpoints.last?.path,
+            "/api/v1/trainerlab/simulations/7/problems/3/"
+        )
+    }
+
+    func testScenarioBriefDecodesArrayFields() throws {
+        let json = """
+        {
+          "read_aloud_brief": "Move now.",
+          "environment": "Urban",
+          "location_overview": "Street",
+          "threat_context": "Active threat",
+          "evacuation_options": ["ground", "air"],
+          "evacuation_time": "15 min",
+          "special_considerations": ["night", "rain"]
+        }
+        """
+        let brief = try JSONDecoder().decode(ScenarioBriefOut.self, from: Data(json.utf8))
+        XCTAssertEqual(brief.evacuationOptions, ["ground", "air"])
+        XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
+    }
+
+    func testAnnotationCreateRequestEncodesCurrentBackendKeys() throws {
+        let request = AnnotationCreateRequest(
+            observationText: "Applied tourniquet.",
+            learningObjective: "hemorrhage_control",
+            outcome: "correct",
+            linkedEventID: 99,
+            elapsedSecondsAt: 120
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        XCTAssertEqual(object?["observation_text"] as? String, "Applied tourniquet.")
+        XCTAssertEqual(object?["learning_objective"] as? String, "hemorrhage_control")
+        XCTAssertEqual(object?["outcome"] as? String, "correct")
+        XCTAssertEqual(object?["linked_event_id"] as? Int, 99)
+        XCTAssertEqual(object?["elapsed_seconds_at"] as? Int, 120)
     }
 
     func testCommandQueueMigrationRewritesAndPurgesLegacyEndpoints() async throws {

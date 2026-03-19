@@ -611,14 +611,14 @@ public struct RunConsoleView: View {
                 if let threat = brief.threatContext {
                     briefRow(label: "Threat", value: threat)
                 }
-                if let evac = brief.evacuationOptions {
-                    briefRow(label: "Evacuation", value: evac)
+                if !brief.evacuationOptions.isEmpty {
+                    briefListRow(label: "Evacuation", values: brief.evacuationOptions)
                 }
                 if let evacTime = brief.evacuationTime {
                     briefRow(label: "EVAC ETA", value: evacTime)
                 }
-                if let special = brief.specialConsiderations {
-                    briefRow(label: "Special", value: special)
+                if !brief.specialConsiderations.isEmpty {
+                    briefListRow(label: "Special", values: brief.specialConsiderations)
                 }
             }
         } else {
@@ -717,6 +717,23 @@ public struct RunConsoleView: View {
             Text(value)
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func briefListRow(label: String, values: [String]) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label + ":")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(values, id: \.self) { value in
+                    Text("• \(value)")
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -2339,9 +2356,9 @@ private struct ScenarioBriefEditSheet: View {
         _environment = State(initialValue: brief.environment)
         _locationOverview = State(initialValue: brief.locationOverview ?? "")
         _threatContext = State(initialValue: brief.threatContext ?? "")
-        _evacuationOptions = State(initialValue: brief.evacuationOptions ?? "")
+        _evacuationOptions = State(initialValue: brief.evacuationOptions.joined(separator: ", "))
         _evacuationTime = State(initialValue: brief.evacuationTime ?? "")
-        _specialConsiderations = State(initialValue: brief.specialConsiderations ?? "")
+        _specialConsiderations = State(initialValue: brief.specialConsiderations.joined(separator: ", "))
     }
 
     var body: some View {
@@ -2361,11 +2378,13 @@ private struct ScenarioBriefEditSheet: View {
                     TextField("Threat context", text: $threatContext)
                 }
                 Section("Evacuation") {
-                    TextField("Options", text: $evacuationOptions)
+                    TextField("Options (comma or newline separated)", text: $evacuationOptions, axis: .vertical)
+                        .lineLimit(2...4)
                     TextField("ETA", text: $evacuationTime)
                 }
                 Section("Special Considerations") {
-                    TextField("Special considerations", text: $specialConsiderations)
+                    TextField("Special considerations (comma or newline separated)", text: $specialConsiderations, axis: .vertical)
+                        .lineLimit(2...4)
                 }
             }
             .navigationTitle("Edit Scenario Brief")
@@ -2381,14 +2400,23 @@ private struct ScenarioBriefEditSheet: View {
                             environment: environment,
                             locationOverview: locationOverview.isEmpty ? nil : locationOverview,
                             threatContext: threatContext.isEmpty ? nil : threatContext,
-                            evacuationOptions: evacuationOptions.isEmpty ? nil : evacuationOptions,
+                            evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: specialConsiderations.isEmpty ? nil : specialConsiderations
+                            specialConsiderations: parseList(from: specialConsiderations)
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
+    }
+
+    private func parseList(from input: String) -> [String]? {
+        let normalized = input.replacingOccurrences(of: "\n", with: ",")
+        let values = normalized
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return values.isEmpty ? nil : values
     }
 }

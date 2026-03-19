@@ -388,7 +388,7 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let request = AnnotationCreateRequest(content: String(trimmed.prefix(2000)))
+            let request = AnnotationCreateRequest(observationText: String(trimmed.prefix(2000)))
 
             do {
                 _ = try await service.createAnnotation(
@@ -696,9 +696,9 @@ public final class RunSessionStore: ObservableObject {
                     environment: jsonString(event.payload["environment"]) ?? "",
                     locationOverview: jsonString(event.payload["location_overview"]),
                     threatContext: jsonString(event.payload["threat_context"]),
-                    evacuationOptions: jsonString(event.payload["evacuation_options"]),
+                    evacuationOptions: jsonStringArray(event.payload["evacuation_options"]),
                     evacuationTime: jsonString(event.payload["evacuation_time"]),
-                    specialConsiderations: jsonString(event.payload["special_considerations"])
+                    specialConsiderations: jsonStringArray(event.payload["special_considerations"])
                 )
                 scenarioBrief = brief
             }
@@ -1288,8 +1288,11 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let request = ProblemStatusUpdateRequest(status: status)
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/status/"
+            let request = ProblemStatusUpdateRequest(
+                isTreated: status == .active ? false : true,
+                isResolved: status == .resolved
+            )
+            let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/"
             let body = try? JSONEncoder().encode(request)
             let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.patch.rawValue, body: body)
             await executeQueuedAckCommand(envelope: envelope) {
