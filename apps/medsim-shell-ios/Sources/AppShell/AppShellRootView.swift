@@ -202,7 +202,7 @@ private struct MainMenuView: View {
                 Spacer()
             }
             .padding(24)
-            .navigationBarHidden(true)
+            .appShellMenuNavigationChromeHidden()
         }
     }
 
@@ -235,5 +235,16 @@ private struct MainMenuView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func appShellMenuNavigationChromeHidden() -> some View {
+        #if os(iOS) || os(tvOS) || os(visionOS)
+            toolbar(.hidden, for: .navigationBar)
+        #else
+            self
+        #endif
     }
 }
