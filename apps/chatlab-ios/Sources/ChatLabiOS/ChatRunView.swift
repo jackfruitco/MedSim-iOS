@@ -352,7 +352,7 @@ public struct ChatRunView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(layoutMode == .padWorkspace ? (chromeMode == .keyboardCollapsed ? 8 : 12) : 0)
-        .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+        .background(layoutMode == .padWorkspace ? ChatLabTheme.systemBackground : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 18 : 0, style: .continuous))
         .accessibilityIdentifier("chat-message-timeline")
     }
@@ -425,7 +425,7 @@ public struct ChatRunView: View {
                 .accessibilityLabel("Send message")
             }
             .padding(layoutMode == .padWorkspace ? 14 : 0)
-            .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+            .background(layoutMode == .padWorkspace ? ChatLabTheme.systemBackground : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
@@ -488,7 +488,7 @@ public struct ChatRunView: View {
         .padding(layoutMode == .padWorkspace ? 24 : 16)
         .background(
             RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 24 : 18, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+                .fill(ChatLabTheme.systemBackground)
         )
     }
 
@@ -670,7 +670,7 @@ public struct ChatRunView: View {
             }
         }
         .padding(layoutMode == .padWorkspace ? 12 : 11)
-        .background(Color(uiColor: .systemBackground))
+        .background(ChatLabTheme.systemBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }

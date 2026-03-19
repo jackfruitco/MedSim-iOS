@@ -102,7 +102,7 @@ public struct ChatLabHomeView: View {
                 .frame(minWidth: 180)
             }
             .padding(20)
-            .background(Color(uiColor: .systemBackground))
+            .background(ChatLabTheme.systemBackground)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: Color.primary.opacity(0.04), radius: 18, y: 8)
 
@@ -224,7 +224,7 @@ private struct ChatSimulationCard: View {
         }
         .padding(layoutMode == .pad ? 18 : 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .systemBackground))
+        .background(ChatLabTheme.systemBackground)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Color.primary.opacity(0.04), radius: 12, y: 6)
     }

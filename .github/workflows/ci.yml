@@ -34,13 +34,13 @@ jobs:
       - name: Install SwiftFormat
         run: |
           set -euo pipefail
-          artifact_dir="$RUNNER_TEMP/swiftformat"
-          curl -fsSL \
-            -o "$RUNNER_TEMP/swiftformat.zip" \
-            "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFT_FORMAT_VERSION}/swiftformat-macos.artifactbundle.zip"
-          rm -rf "$artifact_dir"
-          unzip -q "$RUNNER_TEMP/swiftformat.zip" -d "$artifact_dir"
-          binary_path="$(find "$artifact_dir" -type f -name swiftformat | head -n 1)"
+          src_dir="$RUNNER_TEMP/SwiftFormat-src"
+          rm -rf "$src_dir"
+          git clone --depth 1 --branch "$SWIFT_FORMAT_VERSION" \
+            https://github.com/nicklockwood/SwiftFormat.git \
+            "$src_dir"
+          swift build -c release --package-path "$src_dir"
+          binary_path="$(find "$src_dir/.build" -type f -name swiftformat | head -n 1)"
           chmod +x "$binary_path"
           echo "$(dirname "$binary_path")" >> "$GITHUB_PATH"
 
@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           swiftlint version
-          swiftlint lint --strict --config .swiftlint.yml
+          swiftlint lint --strict --config .swiftlint.yml --force-exclude
 
   spm-package-validation:
     name: SPM Package Validation (${{ matrix.package.name }})
