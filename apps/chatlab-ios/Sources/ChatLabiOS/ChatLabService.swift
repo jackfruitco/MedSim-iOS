@@ -30,12 +30,14 @@ public protocol ChatLabServiceProtocol: Sendable {
     func createMessage(simulationID: Int, request: ChatCreateMessageRequest) async throws -> ChatMessage
     func retryMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage
     func getMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage
+    func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage
 
     func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<ChatEventEnvelope>
 
     func listTools(simulationID: Int, names: [String]?) async throws -> ChatToolListResponse
     func getTool(simulationID: Int, toolName: String) async throws -> ChatToolState
     func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse
+    func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse
 
     func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup]
 }
@@ -178,6 +180,13 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         )
     }
 
+    public func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+        try await apiClient.request(
+            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/read/", method: .patch, body: Data()),
+            as: ChatMessage.self
+        )
+    }
+
     public func listEvents(simulationID: Int, cursor: String?, limit: Int = 50) async throws -> PaginatedResponse<ChatEventEnvelope> {
         var queryItems: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor {
@@ -212,6 +221,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         return try await apiClient.request(
             Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/patient_results/orders/", method: .post, body: body),
             as: ChatSignOrdersResponse.self
+        )
+    }
+
+    public func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
+        let body = try encoder.encode(request)
+        return try await apiClient.request(
+            Endpoint(path: "/api/v1/simulations/\(simulationID)/lab-orders/", method: .post, body: body),
+            as: ChatLabOrdersResponse.self
         )
     }
 

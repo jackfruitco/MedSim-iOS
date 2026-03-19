@@ -72,4 +72,3 @@ public final class ChatToolsStore: ObservableObject {
         toolsByName[name]?.data ?? []
     }
 }
-

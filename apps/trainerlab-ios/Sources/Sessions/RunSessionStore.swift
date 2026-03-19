@@ -16,6 +16,8 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var injuryDictionary: InjuryDictionary?
     @Published public private(set) var runtimeState: TrainerRuntimeStateOut?
     @Published public private(set) var scenarioBrief: ScenarioBriefOut?
+    @Published public private(set) var controlPlaneDebug: ControlPlaneDebugOut?
+    @Published public private(set) var debriefAnnotations: [AnnotationOut] = []
     @Published public private(set) var assessmentFindings: [RuntimeAssessmentFindingState] = []
     @Published public private(set) var diagnosticResults: [RuntimeDiagnosticResultState] = []
     @Published public private(set) var resources: [RuntimeResourceState] = []
@@ -108,6 +110,7 @@ public final class RunSessionStore: ObservableObject {
         Task {
             await realtimeClient.connect(simulationID: session.simulationID, cursor: state.eventCursor)
             await loadRuntimeState()
+            await loadAnnotations()
             await reconcileAnnotationsFromSnapshot()
             await replayPendingCommands()
             await refreshPendingCount()
@@ -160,6 +163,25 @@ public final class RunSessionStore: ObservableObject {
             }
         } catch {
             // Non-critical; caller handles nil runtimeState
+        }
+    }
+
+    public func loadControlPlaneDebug() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        do {
+            controlPlaneDebug = try await service.getControlPlaneDebug(simulationID: simulationID)
+        } catch {
+            // Optional debug surface; ignore fetch failures.
+        }
+    }
+
+    public func loadAnnotations() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        do {
+            debriefAnnotations = try await service.listAnnotations(simulationID: simulationID)
+                .sorted { $0.createdAt > $1.createdAt }
+        } catch {
+            // Optional UI; keep current list if fetch fails.
         }
     }
 
@@ -236,6 +258,10 @@ public final class RunSessionStore: ObservableObject {
         supersedesEventID: Int? = nil
     ) {
         guard canMutateCommands else { return }
+        guard let targetProblemID else {
+            state.conflictBanner = "Select a target problem before recording an intervention."
+            return
+        }
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
@@ -388,14 +414,47 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let request = AnnotationCreateRequest(observationText: String(trimmed.prefix(2000)))
-
-            do {
-                _ = try await service.createAnnotation(
+            let request = SimulationNoteCreateRequest(content: String(trimmed.prefix(2000)))
+            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/notes/"
+            let body = try? JSONEncoder().encode(request)
+            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            await executeQueuedAckCommand(envelope: envelope) {
+                try await self.service.createNoteEvent(
                     simulationID: simulationID,
                     request: request,
-                    idempotencyKey: key
+                    idempotencyKey: envelope.idempotencyKey
                 )
+            }
+        }
+    }
+
+    public func createDebriefAnnotation(
+        observationText: String,
+        learningObjective: String,
+        outcome: String,
+        linkedEventID: Int? = nil
+    ) {
+        let trimmed = observationText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard canMutateCommands else { return }
+
+        Task {
+            guard let simulationID = state.session?.simulationID else { return }
+            let request = AnnotationCreateRequest(
+                observationText: String(trimmed.prefix(2000)),
+                learningObjective: learningObjective,
+                outcome: outcome,
+                linkedEventID: linkedEventID,
+                elapsedSecondsAt: state.stopwatchElapsedSeconds
+            )
+
+            do {
+                let created = try await service.createAnnotation(
+                    simulationID: simulationID,
+                    request: request,
+                    idempotencyKey: UUID().uuidString
+                )
+                debriefAnnotations.insert(created, at: 0)
             } catch {
                 state.conflictBanner = error.localizedDescription
             }
@@ -415,6 +474,40 @@ public final class RunSessionStore: ObservableObject {
                 request: request,
                 idempotencyKey: key
             )
+        }
+    }
+
+    public func triggerRunTick() {
+        guard canMutateCommands else { return }
+        Task {
+            guard let simulationID = state.session?.simulationID else { return }
+            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/"
+            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: Data())
+            await executeQueuedAckCommand(envelope: envelope) {
+                try await self.service.triggerRunTick(
+                    simulationID: simulationID,
+                    idempotencyKey: envelope.idempotencyKey
+                )
+            }
+            await loadRuntimeState()
+            await loadControlPlaneDebug()
+        }
+    }
+
+    public func triggerVitalsTick() {
+        guard canMutateCommands else { return }
+        Task {
+            guard let simulationID = state.session?.simulationID else { return }
+            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/"
+            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: Data())
+            await executeQueuedAckCommand(envelope: envelope) {
+                try await self.service.triggerVitalsTick(
+                    simulationID: simulationID,
+                    idempotencyKey: envelope.idempotencyKey
+                )
+            }
+            await loadRuntimeState()
+            await loadControlPlaneDebug()
         }
     }
 

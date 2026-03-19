@@ -56,7 +56,7 @@ public struct AppShellRootView: View {
                         },
                         onSignOut: {
                             selectedApp = nil
-                            model.authViewModel.signOut()
+                            Task { await model.authViewModel.signOut() }
                         }
                     )
                 }

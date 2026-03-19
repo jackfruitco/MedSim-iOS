@@ -4,7 +4,7 @@ import SharedModels
 
 public protocol AuthServiceProtocol: Sendable {
     func signIn(email: String, password: String) async throws -> AuthTokens
-    func signOut()
+    func signOut() async
     func hasActiveTokens() -> Bool
 }
 
@@ -30,7 +30,17 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
         return tokens
     }
 
-    public func signOut() {
+    public func signOut() async {
+        if let tokens = tokenProvider.loadTokens(),
+           let payload = try? JSONEncoder().encode(["refresh_token": tokens.refreshToken]) {
+            let endpoint = Endpoint(
+                path: "/api/v1/auth/logout/",
+                method: .post,
+                body: payload,
+                requiresAuth: false
+            )
+            _ = try? await apiClient.requestData(endpoint)
+        }
         tokenProvider.clearTokens()
     }
 

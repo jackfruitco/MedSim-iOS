@@ -592,7 +592,7 @@ public struct InterventionGroup: Codable, Identifiable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case interventionType = "code"
+        case interventionType = "intervention_type"
         case label
         case sites
     }
@@ -1226,11 +1226,16 @@ public struct TrainerRuntimeStateOut: Codable, Sendable {
     public let status: String
     public let stateRevision: Int
     public let activeElapsedSeconds: Int
+    public let tickIntervalSeconds: Int?
+    public let nextTickAt: Date?
     public let scenarioBrief: ScenarioBriefOut?
     public let currentSnapshot: TrainerRuntimeSnapshot
     public let aiPlan: RuntimeInstructorIntent?
     public let aiRationaleNotes: [String]
+    public let pendingRuntimeReasons: [JSONValue]
     public let pendingReasons: [JSONValue]
+    public let currentlyProcessingReasons: [JSONValue]
+    public let lastRuntimeError: String
     public let lastAITickAt: Date?
 
     enum CodingKeys: String, CodingKey {
@@ -1239,12 +1244,37 @@ public struct TrainerRuntimeStateOut: Codable, Sendable {
         case status
         case stateRevision = "state_revision"
         case activeElapsedSeconds = "active_elapsed_seconds"
+        case tickIntervalSeconds = "tick_interval_seconds"
+        case nextTickAt = "next_tick_at"
         case scenarioBrief = "scenario_brief"
         case currentSnapshot = "current_snapshot"
         case aiPlan = "ai_plan"
         case aiRationaleNotes = "ai_rationale_notes"
+        case pendingRuntimeReasons = "pending_runtime_reasons"
         case pendingReasons = "pending_reasons"
+        case currentlyProcessingReasons = "currently_processing_reasons"
+        case lastRuntimeError = "last_runtime_error"
         case lastAITickAt = "last_ai_tick_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        simulationID = try container.decode(Int.self, forKey: .simulationID)
+        sessionID = try container.decode(Int.self, forKey: .sessionID)
+        status = try container.decode(String.self, forKey: .status)
+        stateRevision = try container.decode(Int.self, forKey: .stateRevision)
+        activeElapsedSeconds = try container.decode(Int.self, forKey: .activeElapsedSeconds)
+        tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds)
+        nextTickAt = try container.decodeIfPresent(Date.self, forKey: .nextTickAt)
+        scenarioBrief = try container.decodeIfPresent(ScenarioBriefOut.self, forKey: .scenarioBrief)
+        currentSnapshot = try container.decode(TrainerRuntimeSnapshot.self, forKey: .currentSnapshot)
+        aiPlan = try container.decodeIfPresent(RuntimeInstructorIntent.self, forKey: .aiPlan)
+        aiRationaleNotes = try container.decodeIfPresent([String].self, forKey: .aiRationaleNotes) ?? []
+        pendingRuntimeReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingRuntimeReasons) ?? []
+        pendingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingReasons) ?? []
+        currentlyProcessingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .currentlyProcessingReasons) ?? []
+        lastRuntimeError = try container.decodeIfPresent(String.self, forKey: .lastRuntimeError) ?? ""
+        lastAITickAt = try container.decodeIfPresent(Date.self, forKey: .lastAITickAt)
     }
 }
 
@@ -1333,8 +1363,8 @@ public struct IllnessEventRequest: Codable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name
-        case description
+        case name = "illness_name"
+        case description = "illness_description"
         case anatomicalLocation = "anatomical_location"
         case laterality
         case metadata
@@ -1345,23 +1375,25 @@ public struct IllnessEventRequest: Codable, Sendable {
 public struct InterventionEventRequest: Codable, Sendable {
     public let interventionType: String
     public let siteCode: String
-    public let targetProblemID: Int?
+    public let targetProblemID: Int
     public let status: InterventionStatus
     public let effectiveness: InterventionEffectiveness
     public let notes: String
-    public let details: [String: JSONValue]?
-    public let performedByRole: String
+    public let details: [String: JSONValue]
+    public let initiatedByType: String
+    public let initiatedByID: Int?
     public let supersedesEventID: Int?
 
     public init(
         interventionType: String,
         siteCode: String,
-        targetProblemID: Int? = nil,
+        targetProblemID: Int,
         status: InterventionStatus = .applied,
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",
         details: [String: JSONValue]? = nil,
-        performedByRole: String = "instructor",
+        initiatedByType: String = "instructor",
+        initiatedByID: Int? = nil,
         supersedesEventID: Int? = nil
     ) {
         self.interventionType = interventionType
@@ -1370,8 +1402,12 @@ public struct InterventionEventRequest: Codable, Sendable {
         self.status = status
         self.effectiveness = effectiveness
         self.notes = notes
-        self.details = details
-        self.performedByRole = performedByRole
+        self.details = details ?? [
+            "kind": .string(interventionType),
+            "version": .number(1),
+        ]
+        self.initiatedByType = initiatedByType
+        self.initiatedByID = initiatedByID
         self.supersedesEventID = supersedesEventID
     }
 
@@ -1383,7 +1419,8 @@ public struct InterventionEventRequest: Codable, Sendable {
         case effectiveness
         case notes
         case details
-        case performedByRole = "performed_by_role"
+        case initiatedByType = "initiated_by_type"
+        case initiatedByID = "initiated_by_id"
         case supersedesEventID = "supersedes_event_id"
     }
 }
@@ -1653,6 +1690,24 @@ public struct DispositionStateCreateRequest: Codable, Sendable {
     }
 }
 
+public struct SimulationNoteCreateRequest: Codable, Sendable {
+    public let content: String
+    public let sendToAI: Bool
+    public let performedByRole: String
+
+    public init(content: String, sendToAI: Bool = false, performedByRole: String = "instructor") {
+        self.content = content
+        self.sendToAI = sendToAI
+        self.performedByRole = performedByRole
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case content
+        case sendToAI = "send_to_ai"
+        case performedByRole = "performed_by_role"
+    }
+}
+
 // MARK: - Annotations
 
 public struct AnnotationCreateRequest: Codable, Sendable {
@@ -1712,6 +1767,46 @@ public struct AnnotationOut: Codable, Identifiable, Sendable {
         case linkedEventID = "linked_event_id"
         case elapsedSecondsAt = "elapsed_seconds_at"
         case createdAt = "created_at"
+    }
+}
+
+public struct ControlPlaneDebugOut: Codable, Sendable {
+    public let executionPlan: [String]
+    public let currentStepIndex: Int
+    public let queuedReasons: [JSONValue]
+    public let currentlyProcessingReasons: [JSONValue]
+    public let lastProcessedReasons: [JSONValue]
+    public let lastFailedStep: String
+    public let lastFailedError: String
+    public let lastPatchEvaluationSummary: [String: JSONValue]
+    public let lastRejectedOrNormalizedSummary: [String: JSONValue]
+    public let statusFlags: [String: JSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case executionPlan = "execution_plan"
+        case currentStepIndex = "current_step_index"
+        case queuedReasons = "queued_reasons"
+        case currentlyProcessingReasons = "currently_processing_reasons"
+        case lastProcessedReasons = "last_processed_reasons"
+        case lastFailedStep = "last_failed_step"
+        case lastFailedError = "last_failed_error"
+        case lastPatchEvaluationSummary = "last_patch_evaluation_summary"
+        case lastRejectedOrNormalizedSummary = "last_rejected_or_normalized_summary"
+        case statusFlags = "status_flags"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        executionPlan = try container.decodeIfPresent([String].self, forKey: .executionPlan) ?? []
+        currentStepIndex = try container.decodeIfPresent(Int.self, forKey: .currentStepIndex) ?? 0
+        queuedReasons = try container.decodeIfPresent([JSONValue].self, forKey: .queuedReasons) ?? []
+        currentlyProcessingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .currentlyProcessingReasons) ?? []
+        lastProcessedReasons = try container.decodeIfPresent([JSONValue].self, forKey: .lastProcessedReasons) ?? []
+        lastFailedStep = try container.decodeIfPresent(String.self, forKey: .lastFailedStep) ?? ""
+        lastFailedError = try container.decodeIfPresent(String.self, forKey: .lastFailedError) ?? ""
+        lastPatchEvaluationSummary = try container.decodeIfPresent([String: JSONValue].self, forKey: .lastPatchEvaluationSummary) ?? [:]
+        lastRejectedOrNormalizedSummary = try container.decodeIfPresent([String: JSONValue].self, forKey: .lastRejectedOrNormalizedSummary) ?? [:]
+        statusFlags = try container.decodeIfPresent([String: JSONValue].self, forKey: .statusFlags) ?? [:]
     }
 }
 

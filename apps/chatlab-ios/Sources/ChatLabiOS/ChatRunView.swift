@@ -2,6 +2,8 @@ import SharedModels
 import SwiftUI
 #if os(iOS)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 public struct ChatRunView: View {
@@ -352,7 +354,7 @@ public struct ChatRunView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(layoutMode == .padWorkspace ? (chromeMode == .keyboardCollapsed ? 8 : 12) : 0)
-        .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+        .background(layoutMode == .padWorkspace ? chatSystemBackgroundColor() : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 18 : 0, style: .continuous))
         .accessibilityIdentifier("chat-message-timeline")
     }
@@ -425,7 +427,7 @@ public struct ChatRunView: View {
                 .accessibilityLabel("Send message")
             }
             .padding(layoutMode == .padWorkspace ? 14 : 0)
-            .background(layoutMode == .padWorkspace ? Color(uiColor: .systemBackground) : Color.clear)
+            .background(layoutMode == .padWorkspace ? chatSystemBackgroundColor() : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
@@ -488,7 +490,7 @@ public struct ChatRunView: View {
         .padding(layoutMode == .padWorkspace ? 24 : 16)
         .background(
             RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 24 : 18, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+                .fill(chatSystemBackgroundColor())
         )
     }
 
@@ -623,7 +625,7 @@ public struct ChatRunView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text("Sign Orders")
+                    Text("Submit Orders")
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -670,7 +672,7 @@ public struct ChatRunView: View {
             }
         }
         .padding(layoutMode == .padWorkspace ? 12 : 11)
-        .background(Color(uiColor: .systemBackground))
+        .background(chatSystemBackgroundColor())
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }
@@ -797,12 +799,22 @@ private struct ChatBubble: View {
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
-                Text(item.content)
-                    .font(.body)
+                if !item.content.isEmpty {
+                    Text(item.content)
+                        .font(.body)
+                }
+                if !item.mediaList.isEmpty {
+                    mediaStrip
+                }
                 HStack(spacing: 8) {
                     Text(item.timestamp.formatted(date: .omitted, time: .shortened))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    if !item.isFromSelf && !item.isRead {
+                        Text("Unread")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.orange)
+                    }
                     if item.isFromSelf {
                         Text(item.deliveryStatus.rawValue.capitalized)
                             .font(.caption2.bold())
@@ -812,6 +824,11 @@ private struct ChatBubble: View {
                                 .font(.caption2.bold())
                         }
                     }
+                }
+                if let errorText = item.errorText, !errorText.isEmpty {
+                    Text(errorText)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
                 }
             }
             .padding(layoutMode == .padWorkspace ? 12 : 10)
@@ -837,6 +854,34 @@ private struct ChatBubble: View {
         }
     }
 
+    @ViewBuilder
+    private var mediaStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(item.mediaList.prefix(3)) { media in
+                VStack(alignment: .leading, spacing: 4) {
+                    AsyncImage(url: URL(string: media.thumbnailURL.isEmpty ? media.url : media.thumbnailURL)) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay(ProgressView().controlSize(.small))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    if !media.description.isEmpty {
+                        Text(media.description)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
     private func statusColor(_ status: DeliveryStatus) -> Color {
         switch status {
         case .sending:
@@ -849,6 +894,16 @@ private struct ChatBubble: View {
             return .red
         }
     }
+}
+
+private func chatSystemBackgroundColor() -> Color {
+    #if canImport(UIKit)
+    Color(uiColor: .systemBackground)
+    #elseif canImport(AppKit)
+    Color(nsColor: .windowBackgroundColor)
+    #else
+    Color.white
+    #endif
 }
 
 private struct ToolDataRows: View {

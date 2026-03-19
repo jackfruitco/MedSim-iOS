@@ -25,6 +25,8 @@ public struct ChatMessageItem: Identifiable, Sendable, Equatable {
     public var retryable: Bool
     public var errorText: String?
     public var retryDraft: String?
+    public var isRead: Bool
+    public var mediaList: [ChatMessageMedia]
 }
 
 @MainActor
@@ -65,6 +67,7 @@ public final class ChatRunStore: ObservableObject {
     private var awaitingReplyTasks: [Int: Task<Void, Never>] = [:]
     private var lastConnectionState: ChatRealtimeConnectionState = .disconnected
     private let awaitingReplyTimeoutNanoseconds: UInt64 = 20_000_000_000
+    private var markReadInFlight = Set<Int>()
 
     public init(
         service: ChatLabServiceProtocol,
@@ -174,13 +177,14 @@ public final class ChatRunStore: ObservableObject {
         do {
             let list = try await service.listConversations(simulationID: simulation.id)
             conversations = list.items
-            if activeConversationID == nil {
-                activeConversationID = conversations.first?.id
-            }
+        if activeConversationID == nil {
+            activeConversationID = conversations.first?.id
+        }
 
-            if let activeConversationID {
-                await loadInitialMessages(conversationID: activeConversationID)
-            }
+        if let activeConversationID {
+            await loadInitialMessages(conversationID: activeConversationID)
+            markConversationRead(conversationID: activeConversationID)
+        }
 
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
@@ -195,6 +199,8 @@ public final class ChatRunStore: ObservableObject {
         unreadByConversation[conversationID] = 0
         if messagesByConversation[conversationID] == nil {
             Task { await self.loadInitialMessages(conversationID: conversationID) }
+        } else {
+            markConversationRead(conversationID: conversationID)
         }
     }
 
@@ -235,6 +241,7 @@ public final class ChatRunStore: ObservableObject {
                 seenMessageIDs.insert(msg.id)
             }
             reconcileAwaitingReplyAfterMessageLoad(conversationID: conversationID)
+            markConversationRead(conversationID: conversationID)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -291,7 +298,9 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: .sending,
             retryable: true,
             errorText: nil,
-            retryDraft: content
+            retryDraft: content,
+            isRead: true,
+            mediaList: []
         )
         appendMessage(optimistic)
 
@@ -352,24 +361,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func notifyTypingChanged() {
-        guard let activeConversationID else { return }
-        guard !activeConversationLocked else { return }
-        Task {
-            await realtimeClient.send(
-                eventType: "typing",
-                payload: ["conversation_id": .number(Double(activeConversationID))]
-            )
-        }
-
         typingStopTask?.cancel()
-        typingStopTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard let self, let conversationID = self.activeConversationID else { return }
-            await self.realtimeClient.send(
-                eventType: "stopped_typing",
-                payload: ["conversation_id": .number(Double(conversationID))]
-            )
-        }
     }
 
     public func endSimulation() {
@@ -506,13 +498,18 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: status,
             retryable: bool(payload, key: "delivery_retryable") ?? true,
             errorText: string(payload, keys: ["delivery_error_text", "error_text"]),
-            retryDraft: nil
+            retryDraft: nil,
+            isRead: bool(payload, key: "is_read") ?? false,
+            mediaList: decodeMediaList(from: payload)
         )
 
         if conversationID != activeConversationID {
             unreadByConversation[conversationID, default: 0] += 1
         }
         appendMessage(item)
+        if conversationID == activeConversationID, !item.isFromSelf {
+            markConversationRead(conversationID: conversationID)
+        }
     }
 
     private func handleMessageStatusUpdate(_ payload: [String: JSONValue]) {
@@ -589,7 +586,9 @@ public final class ChatRunStore: ObservableObject {
             deliveryStatus: message.deliveryStatus,
             retryable: message.deliveryRetryable,
             errorText: message.deliveryErrorText.isEmpty ? nil : message.deliveryErrorText,
-            retryDraft: nil
+            retryDraft: nil,
+            isRead: message.isRead,
+            mediaList: message.mediaList
         )
     }
 
@@ -649,11 +648,11 @@ public final class ChatRunStore: ObservableObject {
         guard let pending = pendingLocalByKey[localID] else { return }
         pendingLocalByKey.removeValue(forKey: localID)
         var items = messagesByConversation[pending.conversationID] ?? []
+        let mapped = mapMessage(message)
         if let index = items.firstIndex(where: { $0.id == localID }) {
-            items[index].id = "server-\(message.id)"
-            items[index].serverID = message.id
-            items[index].deliveryStatus = message.deliveryStatus
-            items[index].retryDraft = nil
+            items[index] = mapped
+        } else {
+            items.append(mapped)
         }
         messagesByConversation[pending.conversationID] = dedupeMessages(items)
         seenMessageIDs.insert(message.id)
@@ -843,6 +842,52 @@ public final class ChatRunStore: ObservableObject {
 
     private func defaultRetryability(for simulation: ChatSimulation) -> Bool {
         isInitialGenerationFailure(simulation)
+    }
+
+    private func markConversationRead(conversationID: Int) {
+        let unreadMessageIDs = (messagesByConversation[conversationID] ?? [])
+            .filter { !$0.isFromSelf && !$0.isRead }
+            .compactMap(\.serverID)
+
+        guard !unreadMessageIDs.isEmpty else { return }
+        unreadByConversation[conversationID] = 0
+
+        for messageID in unreadMessageIDs where !markReadInFlight.contains(messageID) {
+            markReadInFlight.insert(messageID)
+            Task {
+                do {
+                    let updated = try await service.markMessageRead(
+                        simulationID: simulation.id,
+                        messageID: messageID
+                    )
+                    await MainActor.run {
+                        self.upsertMessage(self.mapMessage(updated))
+                        self.markReadInFlight.remove(messageID)
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.markReadInFlight.remove(messageID)
+                        self.unreadByConversation[conversationID] = (self.messagesByConversation[conversationID] ?? [])
+                            .filter { !$0.isFromSelf && !$0.isRead }
+                            .count
+                    }
+                }
+            }
+        }
+    }
+
+    private func decodeMediaList(from payload: [String: JSONValue]) -> [ChatMessageMedia] {
+        for key in ["media_list", "mediaList"] {
+            guard let value = payload[key] else { continue }
+            let raw = value.rawValue
+            guard JSONSerialization.isValidJSONObject(raw),
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let media = try? JSONDecoder().decode([ChatMessageMedia].self, from: data) else {
+                continue
+            }
+            return media
+        }
+        return []
     }
 
     private func int(_ payload: [String: JSONValue], keys: [String]) -> Int? {

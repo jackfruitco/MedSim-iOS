@@ -27,7 +27,7 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
         try signInResult.get()
     }
 
-    func signOut() { signOutCalled = true }
+    func signOut() async { signOutCalled = true }
 
     func hasActiveTokens() -> Bool { hasActiveTokensValue }
 }
@@ -45,7 +45,10 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
     func getSession(simulationID: Int) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
     func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut { throw MockError.accessMeFailed }
+    func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut { throw MockError.accessMeFailed }
     func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockError.accessMeFailed }
+    func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
+    func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
     func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope> { throw MockError.accessMeFailed }
     func getRunSummary(simulationID: Int) async throws -> RunSummary { throw MockError.accessMeFailed }
     func adjustSimulation(simulationID: Int, request: SimulationAdjustRequest, idempotencyKey: String) async throws -> SimulationAdjustAck { throw MockError.accessMeFailed }
@@ -72,6 +75,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     func interventionDictionary() async throws -> [InterventionGroup] { throw MockError.accessMeFailed }
     func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> { throw MockError.accessMeFailed }
     func updateProblemStatus(simulationID: Int, problemID: Int, request: ProblemStatusUpdateRequest, idempotencyKey: String) async throws -> ProblemStatusOut { throw MockError.accessMeFailed }
+    func createNoteEvent(simulationID: Int, request: SimulationNoteCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockError.accessMeFailed }
     func createAnnotation(simulationID: Int, request: AnnotationCreateRequest, idempotencyKey: String) async throws -> AnnotationOut { throw MockError.accessMeFailed }
     func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] { throw MockError.accessMeFailed }
     func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut { throw MockError.accessMeFailed }
@@ -158,7 +162,7 @@ final class AuthViewModelTests: XCTestCase {
         await vm.signIn()
         XCTAssertTrue(vm.isAuthenticated)
 
-        vm.signOut()
+        await vm.signOut()
 
         XCTAssertFalse(vm.isAuthenticated)
         XCTAssertTrue(vm.email.isEmpty)

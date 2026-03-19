@@ -10,6 +10,7 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var createdMessage: ChatMessage?
     var retriedMessage: ChatMessage?
     var retriedSimulation: ChatSimulation?
+    var markReadCalls: [(simulationID: Int, messageID: Int)] = []
 
     func listSimulations(
         limit: Int,
@@ -104,6 +105,38 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         throw NSError(domain: "missing-message", code: 404)
     }
 
+    func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage {
+        markReadCalls.append((simulationID, messageID))
+        for (conversationID, messages) in messagesByConversation {
+            if let index = messages.firstIndex(where: { $0.id == messageID }) {
+                var updated = messages[index]
+                updated = ChatMessage(
+                    id: updated.id,
+                    simulationID: updated.simulationID,
+                    conversationID: updated.conversationID,
+                    conversationType: updated.conversationType,
+                    senderID: updated.senderID,
+                    content: updated.content,
+                    role: updated.role,
+                    messageType: updated.messageType,
+                    timestamp: updated.timestamp,
+                    isFromAI: updated.isFromAI,
+                    displayName: updated.displayName,
+                    deliveryStatus: updated.deliveryStatus,
+                    deliveryErrorCode: updated.deliveryErrorCode,
+                    deliveryErrorText: updated.deliveryErrorText,
+                    deliveryRetryable: updated.deliveryRetryable,
+                    deliveryRetryCount: updated.deliveryRetryCount,
+                    isRead: true,
+                    mediaList: updated.mediaList
+                )
+                messagesByConversation[conversationID]?[index] = updated
+                return updated
+            }
+        }
+        throw NSError(domain: "missing-message", code: 404)
+    }
+
     func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
         PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
     }
@@ -118,6 +151,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         ChatSignOrdersResponse(status: "ok", orders: [])
+    }
+
+    func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
+        ChatLabOrdersResponse(status: "accepted", callID: "call-1", orders: request.orders)
     }
 
     func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup] {
@@ -322,6 +359,30 @@ final class ChatRunStoreTests: XCTestCase {
         store.stop()
     }
 
+    func testOpeningConversationMarksUnreadIncomingMessagesRead() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let unreadMessage = makeMessage(
+            id: 99,
+            conversationID: patientConversation.id,
+            isFromAI: true,
+            content: "Unread reply"
+        )
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [unreadMessage]
+
+        let store = ChatRunStore(service: service, realtimeClient: TestRealtimeClient(), simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil {
+            service.markReadCalls.contains(where: { $0.messageID == 99 }) &&
+                store.activeMessages.first?.isRead == true
+        }
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
         condition: @escaping @MainActor () -> Bool
@@ -405,7 +466,9 @@ final class ChatRunStoreTests: XCTestCase {
             deliveryErrorCode: "",
             deliveryErrorText: "",
             deliveryRetryable: true,
-            deliveryRetryCount: 0
+            deliveryRetryCount: 0,
+            isRead: false,
+            mediaList: []
         )
     }
 

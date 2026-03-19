@@ -14,6 +14,7 @@ public struct RunConsoleView: View {
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showNoteSheet = false
+    @State private var showAnnotationSheet = false
 
     // Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
@@ -129,6 +130,17 @@ public struct RunConsoleView: View {
             .presentationDetents([.height(180)])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showAnnotationSheet) {
+            DebriefAnnotationSheet { observationText, learningObjective, outcome in
+                store.createDebriefAnnotation(
+                    observationText: observationText,
+                    learningObjective: learningObjective,
+                    outcome: outcome
+                )
+                showAnnotationSheet = false
+            }
+            .presentationDetents([.fraction(0.55)])
+        }
         .sheet(isPresented: $showScenarioBriefEditSheet) {
             if let brief = store.scenarioBrief ?? store.runtimeState?.scenarioBrief {
                 ScenarioBriefEditSheet(brief: brief) { request in
@@ -141,6 +153,7 @@ public struct RunConsoleView: View {
         .task {
             store.startConsole()
             await store.loadRuntimeState()
+            await store.loadControlPlaneDebug()
         }
         .onDisappear {
             store.stopConsole()
@@ -262,8 +275,17 @@ public struct RunConsoleView: View {
             quickAction("Add Note", systemImage: "note.text.badge.plus", enabled: canMutate) {
                 showNoteSheet = true
             }
+            quickAction("Add Annotation", systemImage: "text.badge.plus", enabled: canMutate) {
+                showAnnotationSheet = true
+            }
             quickAction("Steer AI", systemImage: "wand.and.sparkles", enabled: canMutate) {
                 showSteerSheet = true
+            }
+            quickAction("Tick AI", systemImage: "timer", enabled: canMutate) {
+                store.triggerRunTick()
+            }
+            quickAction("Tick Vitals", systemImage: "heart.text.square", enabled: canMutate) {
+                store.triggerVitalsTick()
             }
 
             Spacer(minLength: 10)
@@ -348,6 +370,24 @@ public struct RunConsoleView: View {
                         "Add Note", systemImage: "note.text.badge.plus",
                         compactMetrics: compactMetrics,
                         action: { showNoteSheet = true },
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Add Annotation", systemImage: "text.badge.plus",
+                        compactMetrics: compactMetrics,
+                        action: { showAnnotationSheet = true },
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Tick AI", systemImage: "timer",
+                        compactMetrics: compactMetrics,
+                        action: { store.triggerRunTick() },
+                        controlPresentation: controlPresentation
+                    )
+                    compactScenarioAction(
+                        "Tick Vitals", systemImage: "heart.text.square",
+                        compactMetrics: compactMetrics,
+                        action: { store.triggerVitalsTick() },
                         controlPresentation: controlPresentation
                     )
                 }
@@ -495,7 +535,7 @@ public struct RunConsoleView: View {
 
     // MARK: - Combined Info Panel (Scenario Brief + AI Instructor)
 
-    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor }
+    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor, annotations }
 
     private var combinedInfoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -504,6 +544,7 @@ public struct RunConsoleView: View {
                 HStack(spacing: 0) {
                     infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
                     infoPanelSegment(.aiInstructor, label: "AI Instructor")
+                    infoPanelSegment(.annotations, label: "Annotations")
                 }
                 .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -533,6 +574,8 @@ public struct RunConsoleView: View {
                     scenarioBriefContent
                 } else if activeInfoPanel == .aiInstructor {
                     aiInstructorContent
+                } else if activeInfoPanel == .annotations {
+                    annotationsContent
                 }
             }
         }
@@ -555,8 +598,8 @@ public struct RunConsoleView: View {
             withAnimation(.spring(duration: 0.25)) {
                 activeInfoPanel = isActive ? nil : panel
             }
-            if !isActive && store.runtimeState == nil {
-                Task { await fetchRuntimeState() }
+            if !isActive {
+                Task { await fetchInfoPanelData(for: panel) }
             }
         } label: {
             HStack(spacing: 5) {
@@ -631,6 +674,33 @@ public struct RunConsoleView: View {
     @ViewBuilder private var aiInstructorContent: some View {
         if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Runtime")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    debugMetaRow(label: "Status", value: rs.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                    if let tickInterval = rs.tickIntervalSeconds {
+                        debugMetaRow(label: "Tick Interval", value: "\(tickInterval)s")
+                    }
+                    if let nextTickAt = rs.nextTickAt {
+                        debugMetaRow(label: "Next Tick", value: nextTickAt.formatted(date: .omitted, time: .standard))
+                    }
+                    if let lastAITickAt = rs.lastAITickAt {
+                        debugMetaRow(label: "Last AI Tick", value: lastAITickAt.formatted(date: .omitted, time: .standard))
+                    }
+                    if !rs.pendingRuntimeReasons.isEmpty {
+                        debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.pendingRuntimeReasons.count)")
+                    }
+                    if !rs.currentlyProcessingReasons.isEmpty {
+                        debugMetaRow(label: "Processing Reasons", value: "\(rs.currentlyProcessingReasons.count)")
+                    }
+                    if !rs.lastRuntimeError.isEmpty {
+                        Text(rs.lastRuntimeError)
+                            .font(.caption)
+                            .foregroundStyle(TrainerLabTheme.danger)
+                    }
+                }
+
                 if let plan = rs.aiPlan {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Current Focus")
@@ -686,16 +756,59 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
+                if let debug = store.controlPlaneDebug {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Control Plane Debug")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        debugMetaRow(label: "Current Step", value: "\(debug.currentStepIndex)")
+                        if !debug.executionPlan.isEmpty {
+                            ForEach(Array(debug.executionPlan.prefix(4).enumerated()), id: \.offset) { index, step in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text(index == debug.currentStepIndex ? "•" : "◦")
+                                        .foregroundStyle(index == debug.currentStepIndex ? TrainerLabTheme.accentBlue : .secondary)
+                                    Text(step)
+                                        .font(.caption)
+                                        .foregroundStyle(Color(white: 0.70))
+                                }
+                            }
+                        }
+                        if !debug.lastFailedStep.isEmpty {
+                            debugMetaRow(label: "Last Failed Step", value: debug.lastFailedStep)
+                        }
+                        if !debug.lastFailedError.isEmpty {
+                            Text(debug.lastFailedError)
+                                .font(.caption)
+                                .foregroundStyle(TrainerLabTheme.warning)
+                        }
+                    }
+                }
                 if rs.aiPlan == nil && rs.aiRationaleNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Button("Refresh") {
-                    Task { await fetchRuntimeState() }
+                HStack(spacing: 8) {
+                    if canMutate {
+                        Button("Tick AI") {
+                            store.triggerRunTick()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+
+                        Button("Tick Vitals") {
+                            store.triggerVitalsTick()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                    }
+
+                    Button("Refresh") {
+                        Task { await fetchRuntimeState() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
                 }
-                .font(.caption)
-                .buttonStyle(.bordered)
             }
         } else if isLoadingRuntimeState {
             ProgressView()
@@ -705,6 +818,69 @@ public struct RunConsoleView: View {
             Text("Could not load runtime state.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var annotationsContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Debrief annotations stay separate from live simulation notes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if canMutate {
+                    Button {
+                        showAnnotationSheet = true
+                    } label: {
+                        Label("Add Annotation", systemImage: "plus.circle")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(TrainerLabTheme.accentBlue)
+                }
+            }
+
+            if store.debriefAnnotations.isEmpty {
+                Text("No debrief annotations yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.debriefAnnotations.prefix(8)) { annotation in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(annotation.learningObjectiveLabel)
+                                .font(.caption2.bold())
+                                .foregroundStyle(TrainerLabTheme.accentBlue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(TrainerLabTheme.accentBlue.opacity(0.14))
+                                .clipShape(Capsule())
+                            Text(annotation.outcomeLabel)
+                                .font(.caption2.bold())
+                                .foregroundStyle(annotationOutcomeColor(annotation.outcome))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(annotationOutcomeColor(annotation.outcome).opacity(0.14))
+                                .clipShape(Capsule())
+                            Spacer()
+                            Text(annotation.createdAt.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(annotation.observationText)
+                            .font(.subheadline)
+                        if let linkedEventID = annotation.linkedEventID {
+                            Text("Linked event #\(linkedEventID)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
         }
     }
 
@@ -740,7 +916,17 @@ public struct RunConsoleView: View {
     private func fetchRuntimeState() async {
         isLoadingRuntimeState = true
         await store.loadRuntimeState()
+        await store.loadControlPlaneDebug()
         isLoadingRuntimeState = false
+    }
+
+    private func fetchInfoPanelData(for panel: ActiveInfoPanel) async {
+        switch panel {
+        case .scenarioBrief, .aiInstructor:
+            await fetchRuntimeState()
+        case .annotations:
+            await store.loadAnnotations()
+        }
     }
 
     // MARK: - Timeline pane
@@ -1448,6 +1634,30 @@ public struct RunConsoleView: View {
         selectedTimelineFilter = .all
     }
 
+    private func annotationOutcomeColor(_ outcome: String) -> Color {
+        switch outcome.lowercased() {
+        case "correct", "effective", "strong":
+            return TrainerLabTheme.success
+        case "incorrect", "missed":
+            return TrainerLabTheme.danger
+        default:
+            return TrainerLabTheme.warning
+        }
+    }
+
+    private func debugMetaRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label + ":")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+                .frame(width: 118, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(Color(white: 0.70))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func avpuButton(_ stateValue: AVPUState, label: String) -> some View {
         Button {
             selectedAVPU = stateValue
@@ -1684,7 +1894,7 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String) -> Void
+    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String) -> Void
 
     @State private var selectedType: String? = nil
     @State private var selectedTargetProblemID: Int? = nil
@@ -1718,7 +1928,7 @@ private struct InterventionPickerSheet: View {
     }
 
     private var canSubmit: Bool {
-        canMutate && resolvedSiteCode != nil && (problems.isEmpty || selectedTargetProblemID != nil)
+        canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
     }
 
     var body: some View {
@@ -1746,6 +1956,12 @@ private struct InterventionPickerSheet: View {
                                 }
                             }
                         }
+                    }
+                } else {
+                    Section("Target Problem") {
+                        Text("A target problem is required by the backend before an intervention can be submitted.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -1859,7 +2075,9 @@ private struct InterventionPickerSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
-                        guard let siteCode = resolvedSiteCode, let type = selectedType else { return }
+                        guard let siteCode = resolvedSiteCode,
+                              let type = selectedType,
+                              let selectedTargetProblemID else { return }
                         onSubmit(type, siteCode, selectedTargetProblemID, status, effectiveness, notes)
                     }
                     .disabled(!canSubmit)
@@ -2302,7 +2520,7 @@ private struct NoteComposerSheet: View {
                 .padding(.bottom, 12)
 
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Add a trainer note to the timeline…", text: $draft, axis: .vertical)
+                TextField("Add a simulation note event for the live run…", text: $draft, axis: .vertical)
                     .lineLimit(1...4)
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white)
@@ -2331,6 +2549,78 @@ private struct NoteComposerSheet: View {
         }
         .background(.ultraThinMaterial)
         .onAppear { focused = true }
+    }
+}
+
+private struct DebriefAnnotationSheet: View {
+    let onSubmit: (String, String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var observationText = ""
+    @State private var learningObjective = "other"
+    @State private var outcome = "pending"
+
+    private let learningObjectiveOptions = [
+        ("other", "General"),
+        ("hemorrhage_control", "Hemorrhage Control"),
+        ("airway_management", "Airway"),
+        ("breathing", "Breathing"),
+        ("circulation", "Circulation"),
+        ("team_communication", "Communication"),
+    ]
+
+    private let outcomeOptions = [
+        ("pending", "Pending"),
+        ("correct", "Correct"),
+        ("partially_correct", "Partially Correct"),
+        ("incorrect", "Incorrect"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Observation") {
+                    TextField("What should be captured for debrief?", text: $observationText, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+
+                Section("Learning Objective") {
+                    Picker("Learning Objective", selection: $learningObjective) {
+                        ForEach(learningObjectiveOptions, id: \.0) { option in
+                            Text(option.1).tag(option.0)
+                        }
+                    }
+                }
+
+                Section("Outcome") {
+                    Picker("Outcome", selection: $outcome) {
+                        ForEach(outcomeOptions, id: \.0) { option in
+                            Text(option.1).tag(option.0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("Add Annotation")
+            .inlineNavBarTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSubmit(
+                            observationText.trimmingCharacters(in: .whitespacesAndNewlines),
+                            learningObjective,
+                            outcome
+                        )
+                        dismiss()
+                    }
+                    .disabled(observationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .foregroundStyle(.primary)
     }
 }
 

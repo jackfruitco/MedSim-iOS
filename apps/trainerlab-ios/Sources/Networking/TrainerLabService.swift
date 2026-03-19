@@ -15,7 +15,10 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO
     func getSession(simulationID: Int) async throws -> TrainerSessionDTO
     func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut
+    func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut
     func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO
+    func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck
+    func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck
 
     func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope>
     func getRunSummary(simulationID: Int) async throws -> RunSummary
@@ -49,6 +52,7 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser>
 
     func updateProblemStatus(simulationID: Int, problemID: Int, request: ProblemStatusUpdateRequest, idempotencyKey: String) async throws -> ProblemStatusOut
+    func createNoteEvent(simulationID: Int, request: SimulationNoteCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck
     func createAnnotation(simulationID: Int, request: AnnotationCreateRequest, idempotencyKey: String) async throws -> AnnotationOut
     func listAnnotations(simulationID: Int) async throws -> [AnnotationOut]
     func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut
@@ -112,6 +116,13 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         )
     }
 
+    public func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut {
+        try await apiClient.request(
+            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/control-plane/"),
+            as: ControlPlaneDebugOut.self
+        )
+    }
+
     public func runCommand(
         simulationID: Int,
         command: RunCommand,
@@ -125,6 +136,30 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
                 idempotencyKey: idempotencyKey
             ),
             as: TrainerSessionDTO.self
+        )
+    }
+
+    public func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck {
+        try await apiClient.request(
+            Endpoint(
+                path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/",
+                method: .post,
+                body: Data(),
+                idempotencyKey: idempotencyKey
+            ),
+            as: TrainerCommandAck.self
+        )
+    }
+
+    public func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck {
+        try await apiClient.request(
+            Endpoint(
+                path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/",
+                method: .post,
+                body: Data(),
+                idempotencyKey: idempotencyKey
+            ),
+            as: TrainerCommandAck.self
         )
     }
 
@@ -408,6 +443,23 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
                 idempotencyKey: idempotencyKey
             ),
             as: ProblemStatusOut.self
+        )
+    }
+
+    public func createNoteEvent(
+        simulationID: Int,
+        request: SimulationNoteCreateRequest,
+        idempotencyKey: String
+    ) async throws -> TrainerCommandAck {
+        let body = try encoder.encode(request)
+        return try await apiClient.request(
+            Endpoint(
+                path: "/api/v1/trainerlab/simulations/\(simulationID)/events/notes/",
+                method: .post,
+                body: body,
+                idempotencyKey: idempotencyKey
+            ),
+            as: TrainerCommandAck.self
         )
     }
 

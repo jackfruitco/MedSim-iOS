@@ -1,5 +1,5 @@
 import Foundation
-import ChatLabiOS
+@testable import ChatLabiOS
 import Networking
 import SharedModels
 import XCTest
@@ -27,6 +27,63 @@ private final class ChatRecordingAPIClient: APIClientProtocol, @unchecked Sendab
 }
 
 final class ChatLabContractTests: XCTestCase {
+    func testChatMessageDecodesBackendDefaultsAndMediaList() throws {
+        let json = """
+        {
+          "id": 77,
+          "simulation_id": 42,
+          "conversation_id": 3,
+          "sender_id": 0,
+          "content": "XR image attached",
+          "role": "assistant",
+          "timestamp": "2026-03-12T12:00:00Z",
+          "is_from_ai": true,
+          "media_list": [
+            {
+              "id": 9,
+              "uuid": "media-1",
+              "original_url": "https://example.com/original.png",
+              "thumbnail_url": "https://example.com/thumb.png"
+            }
+          ]
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let message = try decoder.decode(ChatMessage.self, from: Data(json.utf8))
+
+        XCTAssertEqual(message.messageType, "text")
+        XCTAssertEqual(message.displayName, "")
+        XCTAssertEqual(message.deliveryStatus, .sent)
+        XCTAssertEqual(message.deliveryRetryCount, 0)
+        XCTAssertFalse(message.isRead)
+        XCTAssertEqual(message.mediaList.count, 1)
+        XCTAssertEqual(message.mediaList.first?.url, "https://example.com/thumb.png")
+    }
+
+    func testChatSSEParserDecodesBackendEventEnvelope() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let data = """
+        {
+          "event_id": "evt-1",
+          "event_type": "chat.message_created",
+          "created_at": "2026-03-12T12:00:00Z",
+          "correlation_id": null,
+          "payload": {
+            "message_id": 19,
+            "content": "hello"
+          }
+        }
+        """
+
+        let event = try ChatSSEParser.parseEvent(dataString: data, decoder: decoder)
+        XCTAssertEqual(event?.eventID, "evt-1")
+        XCTAssertEqual(event?.eventType, "chat.message_created")
+    }
+
     func testChatSimulationDecodesTerminalFields() throws {
         let json = """
         {
@@ -104,11 +161,41 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/tools/patient_results/orders/")
 
         do {
+            _ = try await service.markMessageRead(simulationID: 7, messageID: 55)
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/messages/55/read/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .patch)
+
+        do {
+            _ = try await service.submitLabOrders(
+                simulationID: 7,
+                request: ChatSubmitLabOrdersRequest(orders: ["CBC"])
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/lab-orders/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+        XCTAssertEqual(
+            try decodeJSONBody(api.capturedEndpoints.last?.body)?["orders"] as? [String],
+            ["CBC"]
+        )
+
+        do {
             _ = try await service.listModifierGroups(groups: ["ClinicalScenario"])
             XCTFail("Expected intercepted error")
         } catch {
             XCTAssertTrue(error is ChatRecordingError)
         }
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/config/modifier-groups/")
+    }
+
+    private func decodeJSONBody(_ data: Data?) throws -> [String: Any]? {
+        guard let data else { return nil }
+        return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
     }
 }

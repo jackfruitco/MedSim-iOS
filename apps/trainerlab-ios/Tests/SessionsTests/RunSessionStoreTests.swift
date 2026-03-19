@@ -16,7 +16,10 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
     func getSession(simulationID: Int) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
     func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut { throw MockServiceError.unused }
+    func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut { throw MockServiceError.unused }
     func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO { throw MockServiceError.unused }
+    func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
+    func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
     func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope> { throw MockServiceError.unused }
     func getRunSummary(simulationID: Int) async throws -> RunSummary { throw MockServiceError.unused }
     func adjustSimulation(simulationID: Int, request: SimulationAdjustRequest, idempotencyKey: String) async throws -> SimulationAdjustAck { throw MockServiceError.unused }
@@ -43,6 +46,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     func interventionDictionary() async throws -> [InterventionGroup] { throw MockServiceError.unused }
     func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> { throw MockServiceError.unused }
     func updateProblemStatus(simulationID: Int, problemID: Int, request: ProblemStatusUpdateRequest, idempotencyKey: String) async throws -> ProblemStatusOut { throw MockServiceError.unused }
+    func createNoteEvent(simulationID: Int, request: SimulationNoteCreateRequest, idempotencyKey: String) async throws -> TrainerCommandAck { throw MockServiceError.unused }
     func createAnnotation(simulationID: Int, request: AnnotationCreateRequest, idempotencyKey: String) async throws -> AnnotationOut { throw MockServiceError.unused }
     func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] { throw MockServiceError.unused }
     func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut { throw MockServiceError.unused }

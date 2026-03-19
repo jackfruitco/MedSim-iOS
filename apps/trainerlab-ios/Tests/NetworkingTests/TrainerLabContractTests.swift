@@ -27,6 +27,18 @@ private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     }
 }
 
+private final class RecordingTokenProvider: AuthTokenProvider, @unchecked Sendable {
+    var tokens: AuthTokens?
+    var cleared = false
+
+    func loadTokens() -> AuthTokens? { tokens }
+    func saveTokens(_ tokens: AuthTokens) { self.tokens = tokens }
+    func clearTokens() {
+        cleared = true
+        tokens = nil
+    }
+}
+
 final class TrainerLabContractTests: XCTestCase {
     func testTrainerRunDecodesWithoutLegacyID() throws {
         let json = """
@@ -82,6 +94,67 @@ final class TrainerLabContractTests: XCTestCase {
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
         XCTAssertEqual(object?["simulation_id"] as? Int, 77)
         XCTAssertNil(object?["session_id"])
+    }
+
+    func testInterventionDictionaryDecodesInterventionTypeKey() throws {
+        let json = """
+        {
+          "intervention_type": "tourniquet",
+          "label": "Tourniquet",
+          "sites": []
+        }
+        """
+
+        let group = try JSONDecoder().decode(InterventionGroup.self, from: Data(json.utf8))
+        XCTAssertEqual(group.interventionType, "tourniquet")
+    }
+
+    func testIllnessEventRequestEncodesCurrentBackendKeys() throws {
+        let request = IllnessEventRequest(name: "sepsis", description: "Fever and hypotension")
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["illness_name"] as? String, "sepsis")
+        XCTAssertEqual(object?["illness_description"] as? String, "Fever and hypotension")
+        XCTAssertNil(object?["name"])
+        XCTAssertNil(object?["description"])
+    }
+
+    func testInterventionEventRequestEncodesCurrentBackendKeys() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "left_arm",
+            targetProblemID: 19,
+            status: .applied,
+            effectiveness: .effective,
+            notes: "Applied high and tight"
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let details = object?["details"] as? [String: Any]
+
+        XCTAssertEqual(object?["target_problem_id"] as? Int, 19)
+        XCTAssertEqual(object?["initiated_by_type"] as? String, "instructor")
+        XCTAssertNil(object?["performed_by_role"])
+        XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+    }
+
+    func testAuthServiceLogoutPostsRefreshTokenAndClearsLocalTokens() async {
+        let api = RecordingAPIClient()
+        let tokenProvider = RecordingTokenProvider()
+        tokenProvider.tokens = AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
+        let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
+
+        await service.signOut()
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/auth/logout/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+        XCTAssertEqual(api.capturedEndpoints.last?.requiresAuth, false)
+        XCTAssertEqual(
+            try? decodeJSONBody(api.capturedEndpoints.last?.body)?["refresh_token"] as? String,
+            "r"
+        )
+        XCTAssertTrue(tokenProvider.cleared)
     }
 
     func testTrainerLabServiceUsesSimulationFirstEndpoints() async throws {
@@ -156,6 +229,46 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
             "/api/v1/trainerlab/simulations/7/problems/3/"
+        )
+
+        do {
+            _ = try await service.getControlPlaneDebug(simulationID: 7)
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/control-plane/")
+
+        do {
+            _ = try await service.triggerRunTick(simulationID: 7, idempotencyKey: "k4")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/run/tick/")
+
+        do {
+            _ = try await service.triggerVitalsTick(simulationID: 7, idempotencyKey: "k5")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/run/tick/vitals/")
+
+        do {
+            _ = try await service.createNoteEvent(
+                simulationID: 7,
+                request: SimulationNoteCreateRequest(content: "Observe airway"),
+                idempotencyKey: "k6"
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is RecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/events/notes/")
+        XCTAssertEqual(
+            try decodeJSONBody(api.capturedEndpoints.last?.body)?["content"] as? String,
+            "Observe airway"
         )
     }
 
@@ -264,5 +377,10 @@ final class TrainerLabContractTests: XCTestCase {
                 userInfo: [NSLocalizedDescriptionKey: message]
             )
         }
+    }
+
+    private func decodeJSONBody(_ data: Data?) throws -> [String: Any]? {
+        guard let data else { return nil }
+        return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
     }
 }
