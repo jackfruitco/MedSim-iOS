@@ -515,19 +515,30 @@ final class RunSessionStoreTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let terminalAt = payload.terminalAt ?? Date()
+        var eventPayload: [String: JSONValue] = [
+            "status": .string(payload.status),
+            "terminal_at": .string(formatter.string(from: terminalAt)),
+        ]
+
+        if let retryable = payload.retryable {
+            eventPayload["retryable"] = .bool(retryable)
+        }
+        if let simulationID = payload.simulationID {
+            eventPayload["simulation_id"] = .number(Double(simulationID))
+        }
+        if let terminalReasonCode = payload.terminalReasonCode {
+            eventPayload["terminal_reason_code"] = .string(terminalReasonCode)
+        }
+        if let terminalReasonText = payload.terminalReasonText {
+            eventPayload["terminal_reason_text"] = .string(terminalReasonText)
+        }
+
         return EventEnvelope(
             eventID: UUID().uuidString.lowercased(),
             eventType: "simulation.state_changed",
             createdAt: terminalAt,
             correlationID: nil,
-            payload: [
-                "status": .string(payload.status),
-                "retryable": .bool(payload.retryable),
-                "terminal_at": .string(formatter.string(from: terminalAt)),
-                "simulation_id": .number(Double(payload.simulationID)),
-                "terminal_reason_code": .string(payload.terminalReasonCode ?? ""),
-                "terminal_reason_text": .string(payload.terminalReasonText ?? ""),
-            ],
+            payload: eventPayload,
         )
     }
 
