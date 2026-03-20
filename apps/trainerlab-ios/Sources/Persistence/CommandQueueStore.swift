@@ -12,6 +12,7 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
 
     public var localID: Int64?
     public var idempotencyKey: String
+    public var simulationID: Int?
     public var endpoint: String
     public var method: String
     public var bodyBase64: String?
@@ -30,6 +31,7 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
     public init(
         localID: Int64? = nil,
         idempotencyKey: String,
+        simulationID: Int? = nil,
         endpoint: String,
         method: String,
         bodyBase64: String?,
@@ -43,6 +45,7 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
     ) {
         self.localID = localID
         self.idempotencyKey = idempotencyKey
+        self.simulationID = simulationID
         self.endpoint = endpoint
         self.method = method
         self.bodyBase64 = bodyBase64
@@ -62,6 +65,7 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
     enum CodingKeys: String, CodingKey {
         case localID = "local_id"
         case idempotencyKey = "idempotency_key"
+        case simulationID = "simulation_id"
         case endpoint
         case method
         case bodyBase64 = "body_base64"
@@ -73,6 +77,33 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
         case nextRetryAt = "next_retry_at"
         case ackState = "ack_state"
     }
+
+    public var resolvedSimulationID: Int? {
+        if let simulationID {
+            return simulationID
+        }
+
+        let pathComponents = endpoint.split(separator: "/")
+        guard let simulationIndex = pathComponents.firstIndex(of: "simulations") else {
+            return nil
+        }
+
+        let idIndex = pathComponents.index(after: simulationIndex)
+        guard idIndex < pathComponents.endIndex else { return nil }
+        return Int(pathComponents[idIndex])
+    }
+
+    var isActivePending: Bool {
+        retryCount < maxRetries
+    }
+
+    func matches(simulationID: Int?) -> Bool {
+        guard let simulationID else {
+            return true
+        }
+
+        return resolvedSimulationID == simulationID
+    }
 }
 
 public enum CommandQueueStoreError: Error {
@@ -83,8 +114,9 @@ public protocol CommandQueueStoreProtocol: Sendable {
     func enqueue(_ envelope: PendingCommandEnvelope) async throws
     func markAcked(idempotencyKey: String) async throws
     func markFailed(idempotencyKey: String, error: String, nextRetryAt: Date) async throws
-    func nextRetryBatch(limit: Int, now: Date) async throws -> [PendingCommandEnvelope]
-    func pendingCount() async throws -> Int
+    func markTerminalFailure(idempotencyKey: String, error: String) async throws
+    func nextRetryBatch(limit: Int, now: Date, simulationID: Int?) async throws -> [PendingCommandEnvelope]
+    func pendingCount(simulationID: Int?) async throws -> Int
     /// Deletes commands that have exceeded their max retry count. Returns the number of rows removed.
     func purgeAbandoned() async throws -> Int
 }
@@ -124,6 +156,11 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
                 table.add(column: "max_retries", .integer).notNull().defaults(to: 10)
             }
         }
+        migrator.registerMigration("add_simulation_id") { db in
+            try db.alter(table: PendingCommandEnvelope.databaseTableName) { table in
+                table.add(column: "simulation_id", .integer)
+            }
+        }
         migrator.registerMigration("migrate_simulation_first_endpoints") { db in
             try db.execute(sql: """
                 UPDATE pending_commands
@@ -149,6 +186,7 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
                 .filter(Column("idempotency_key") == envelope.idempotencyKey)
                 .fetchOne(db)
             {
+                existing.simulationID = envelope.simulationID
                 existing.endpoint = envelope.endpoint
                 existing.method = envelope.method
                 existing.bodyBase64 = envelope.bodyBase64
@@ -186,22 +224,44 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
         }
     }
 
-    public func nextRetryBatch(limit: Int, now: Date) async throws -> [PendingCommandEnvelope] {
+    public func markTerminalFailure(idempotencyKey: String, error: String) async throws {
+        try await dbQueue.write { db in
+            if var existing = try PendingCommandEnvelope
+                .filter(Column("idempotency_key") == idempotencyKey)
+                .fetchOne(db)
+            {
+                existing.retryCount = existing.maxRetries
+                existing.lastError = error
+                existing.nextRetryAt = Date.distantFuture
+                existing.ackState = .failed
+                try existing.update(db)
+            }
+        }
+    }
+
+    public func nextRetryBatch(limit: Int, now: Date, simulationID: Int?) async throws -> [PendingCommandEnvelope] {
         try await dbQueue.read { db in
-            try PendingCommandEnvelope
+            var request = PendingCommandEnvelope
                 .filter(
                     (Column("ack_state") != PendingAckState.pending.rawValue || Column("next_retry_at") <= now)
                         && Column("retry_count") < Column("max_retries")
                 )
+            if let simulationID {
+                request = request.filter(Column("simulation_id") == simulationID || Column("simulation_id") == nil)
+            }
+            return try request
                 .order(Column("next_retry_at").asc)
                 .limit(limit)
                 .fetchAll(db)
         }
     }
 
-    public func pendingCount() async throws -> Int {
+    public func pendingCount(simulationID: Int?) async throws -> Int {
         try await dbQueue.read { db in
-            try PendingCommandEnvelope.fetchCount(db)
+            let activeRows = try PendingCommandEnvelope
+                .filter(Column("retry_count") < Column("max_retries"))
+                .fetchAll(db)
+            return activeRows.count(where: { $0.matches(simulationID: simulationID) })
         }
     }
 
@@ -218,12 +278,14 @@ public enum CommandEnvelopeBuilder {
     public static func make(
         endpoint: String,
         method: String,
-        body: Data?
+        body: Data?,
+        simulationID: Int? = nil
     ) -> PendingCommandEnvelope {
         let now = Date()
         let key = "ios.\(UUID().uuidString.lowercased())"
         return PendingCommandEnvelope(
             idempotencyKey: key,
+            simulationID: simulationID,
             endpoint: endpoint,
             method: method,
             bodyBase64: body?.base64EncodedString(),

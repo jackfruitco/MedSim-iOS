@@ -167,6 +167,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     func testLifecycleActionsMatchSessionStatus() {
+        XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeding), [])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeded), [.start])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .running), [.pause, .stop])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .paused), [.resume, .stop])

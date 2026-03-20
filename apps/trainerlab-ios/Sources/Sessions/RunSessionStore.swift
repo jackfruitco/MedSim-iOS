@@ -60,7 +60,7 @@ public final class RunSessionStore: ObservableObject {
         eventTask = Task { [weak self] in
             guard let self else { return }
             for await event in realtimeClient.events {
-                await MainActor.run {
+                let shouldRehydrateSeededSession = await MainActor.run {
                     let previousStatus = self.state.session?.status
                     self.state = RunSessionReducer.reduce(state: self.state, action: .eventReceived(event))
                     self.handleSimulationStateChanged(event)
@@ -71,11 +71,19 @@ public final class RunSessionStore: ObservableObject {
                     self.captureRecommendedIntervention(from: event)
                     self.capturePulseAnnotation(from: event)
                     self.captureClinicalTimelineEntry(from: event)
+                    let shouldRehydrate = self.handleSessionSeeded(event, previousStatus: previousStatus)
                     self.syncStopwatchState(previousStatus: previousStatus)
+                    return shouldRehydrate
                 }
                 if shouldRefreshRuntimeProjection(for: event) {
                     await loadRuntimeState()
                     await reconcileAnnotationsFromSnapshot()
+                }
+                if shouldRehydrateSeededSession {
+                    await refreshSession()
+                    await loadRuntimeState()
+                    await reconcileAnnotationsFromSnapshot()
+                    await loadAnnotations()
                 }
             }
         }
@@ -224,22 +232,22 @@ public final class RunSessionStore: ObservableObject {
     }
 
     public func start() {
-        guard canMutateCommands else { return }
+        guard canRunCommands else { return }
         Task { await sendRunCommand(.start) }
     }
 
     public func pause() {
-        guard canMutateCommands else { return }
+        guard canRunCommands else { return }
         Task { await sendRunCommand(.pause) }
     }
 
     public func resume() {
-        guard canMutateCommands else { return }
+        guard canRunCommands else { return }
         Task { await sendRunCommand(.resume) }
     }
 
     public func stop() {
-        guard canMutateCommands else { return }
+        guard canRunCommands else { return }
         Task { await sendRunCommand(.stop) }
     }
 
@@ -261,7 +269,12 @@ public final class RunSessionStore: ObservableObject {
             )
             let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/adjust/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: body,
+                simulationID: session.simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 let ack = try await self.service.adjustSimulation(simulationID: session.simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
                 return TrainerCommandAck(commandID: ack.commandID, status: ack.status)
@@ -277,9 +290,10 @@ public final class RunSessionStore: ObservableObject {
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",
         details: [String: JSONValue]? = nil,
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
         supersedesEventID: Int? = nil
     ) {
-        guard canMutateCommands else { return }
+        guard canInterventionCommands else { return }
         guard let targetProblemID else {
             state.conflictBanner = "Select a target problem before recording an intervention."
             return
@@ -295,11 +309,17 @@ public final class RunSessionStore: ObservableObject {
                 effectiveness: effectiveness,
                 notes: notes,
                 details: details,
+                tourniquetApplicationMode: tourniquetApplicationMode,
                 supersedesEventID: supersedesEventID
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: body,
+                simulationID: simulationID
+            )
 
             // Optimistic local timeline entry
             let typeLabel = interventionDictionary
@@ -343,7 +363,12 @@ public final class RunSessionStore: ObservableObject {
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: body,
+                simulationID: simulationID
+            )
 
             addOptimisticInjury(
                 id: "pending:\(envelope.idempotencyKey)",
@@ -367,7 +392,12 @@ public final class RunSessionStore: ObservableObject {
             let request = IllnessEventRequest(name: name, description: description)
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/illnesses/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: body,
+                simulationID: simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectIllnessEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -410,7 +440,12 @@ public final class RunSessionStore: ObservableObject {
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: body,
+                simulationID: simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectVitalEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -471,7 +506,12 @@ public final class RunSessionStore: ObservableObject {
         Task {
             guard let simulationID = state.session?.simulationID else { return }
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/"
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: Data())
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: Data(),
+                simulationID: simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerRunTick(
                     simulationID: simulationID,
@@ -488,7 +528,12 @@ public final class RunSessionStore: ObservableObject {
         Task {
             guard let simulationID = state.session?.simulationID else { return }
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/"
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: Data())
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.post.rawValue,
+                body: Data(),
+                simulationID: simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerVitalsTick(
                     simulationID: simulationID,
@@ -511,8 +556,12 @@ public final class RunSessionStore: ObservableObject {
 
     public func replayPendingCommands() async {
         do {
-            let batch = try await commandQueue.nextRetryBatch(limit: 25, now: Date())
+            guard let simulationID = state.session?.simulationID else { return }
+            let batch = try await commandQueue.nextRetryBatch(limit: 25, now: Date(), simulationID: simulationID)
             for envelope in batch {
+                if let envelopeSimulationID = envelope.resolvedSimulationID, envelopeSimulationID != simulationID {
+                    continue
+                }
                 let data = envelope.bodyBase64.flatMap { Data(base64Encoded: $0) }
                 do {
                     try await service.replayPending(
@@ -523,12 +572,19 @@ public final class RunSessionStore: ObservableObject {
                     )
                     try await commandQueue.markAcked(idempotencyKey: envelope.idempotencyKey)
                 } catch {
-                    let nextRetryAt = Date().addingTimeInterval(nextBackoffSeconds(for: envelope.retryCount))
-                    try await commandQueue.markFailed(
-                        idempotencyKey: envelope.idempotencyKey,
-                        error: error.localizedDescription,
-                        nextRetryAt: nextRetryAt
-                    )
+                    if isTerminalReplayFailure(error) {
+                        try await commandQueue.markTerminalFailure(
+                            idempotencyKey: envelope.idempotencyKey,
+                            error: error.localizedDescription
+                        )
+                    } else {
+                        let nextRetryAt = Date().addingTimeInterval(nextBackoffSeconds(for: envelope.retryCount))
+                        try await commandQueue.markFailed(
+                            idempotencyKey: envelope.idempotencyKey,
+                            error: error.localizedDescription,
+                            nextRetryAt: nextRetryAt
+                        )
+                    }
                 }
             }
             await refreshPendingCount()
@@ -541,6 +597,14 @@ public final class RunSessionStore: ObservableObject {
         state.commandChannelAvailable
     }
 
+    private var canRunCommands: Bool {
+        canMutateCommands && state.session?.status != .seeding
+    }
+
+    private var canInterventionCommands: Bool {
+        canMutateCommands && state.session?.status != .seeding
+    }
+
     private func sendRunCommand(_ command: RunCommand) async {
         guard let session = state.session else {
             return
@@ -548,7 +612,12 @@ public final class RunSessionStore: ObservableObject {
 
         let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/run/\(command.rawValue)/"
         let body = Data()
-        let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
+        let envelope = CommandEnvelopeBuilder.make(
+            endpoint: path,
+            method: HTTPMethod.post.rawValue,
+            body: body,
+            simulationID: session.simulationID
+        )
 
         await executeQueuedSessionCommand(envelope: envelope) {
             try await self.service.runCommand(simulationID: session.simulationID, command: command, idempotencyKey: envelope.idempotencyKey)
@@ -610,7 +679,12 @@ public final class RunSessionStore: ObservableObject {
 
     private func refreshPendingCount() async {
         do {
-            let count = try await commandQueue.pendingCount()
+            guard let simulationID = state.session?.simulationID else {
+                state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(0))
+                return
+            }
+
+            let count = try await commandQueue.pendingCount(simulationID: simulationID)
             state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(count))
         } catch {
             state.conflictBanner = error.localizedDescription
@@ -686,6 +760,41 @@ public final class RunSessionStore: ObservableObject {
                 "Failed to decode simulation.state_changed payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
         }
+    }
+
+    private func handleSessionSeeded(_ event: EventEnvelope, previousStatus _: TrainerSessionStatus?) -> Bool {
+        let eventType = canonicalEventType(event.eventType)
+        guard eventType == "session.seeded" else { return false }
+        guard let session = state.session else { return false }
+
+        if let payloadSimulationID = jsonInt(event.payload["simulation_id"]), payloadSimulationID != session.simulationID {
+            logger.warning(
+                "Ignoring session.seeded for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+            )
+            return false
+        }
+
+        let seededSession = TrainerSessionDTO(
+            simulationID: session.simulationID,
+            status: .seeded,
+            scenarioSpec: session.scenarioSpec,
+            runtimeState: session.runtimeState,
+            initialDirectives: session.initialDirectives,
+            tickIntervalSeconds: session.tickIntervalSeconds,
+            runStartedAt: nil,
+            runPausedAt: nil,
+            runCompletedAt: nil,
+            lastAITickAt: session.lastAITickAt,
+            createdAt: session.createdAt,
+            modifiedAt: max(session.modifiedAt, event.createdAt),
+            terminalReasonCode: nil,
+            terminalReasonText: nil,
+            retryable: nil
+        )
+
+        state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seededSession))
+        state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+        return true
     }
 
     private func captureClinicalTimelineEntry(from event: EventEnvelope) {
@@ -1427,7 +1536,12 @@ public final class RunSessionStore: ObservableObject {
             )
             let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.patch.rawValue, body: body)
+            let envelope = CommandEnvelopeBuilder.make(
+                endpoint: path,
+                method: HTTPMethod.patch.rawValue,
+                body: body,
+                simulationID: simulationID
+            )
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.updateProblemStatus(
                     simulationID: simulationID,
@@ -1724,6 +1838,15 @@ public final class RunSessionStore: ObservableObject {
     private func nextBackoffSeconds(for retryCount: Int) -> TimeInterval {
         let capped = min(retryCount + 1, 6)
         return min(pow(2.0, Double(capped)), 20)
+    }
+
+    private func isTerminalReplayFailure(_ error: Error) -> Bool {
+        guard let apiError = error as? APIClientError,
+              case let .http(statusCode, _, _) = apiError
+        else {
+            return false
+        }
+        return statusCode == 400 || statusCode == 404 || statusCode == 422
     }
 
     private func lifecycleTitle(for eventType: String) -> String? {

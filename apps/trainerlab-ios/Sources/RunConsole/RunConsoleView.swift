@@ -15,10 +15,8 @@ public struct RunConsoleView: View {
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
 
-    /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
 
-    /// Timeline filter
     @State private var selectedTimelineFilter: RunConsoleTimelineFilter = .all
 
     // Collapsible panels
@@ -28,10 +26,8 @@ public struct RunConsoleView: View {
     @State private var showScenarioBriefEditSheet = false
     @Namespace private var segmentNS
 
-    // Intervention sheet state
     @State private var interventionTargetProblemID: Int?
 
-    /// Steer sheet state
     @State private var steerDraft = ""
 
     // Event sheet state
@@ -49,10 +45,8 @@ public struct RunConsoleView: View {
     @State private var vitalMax = "100"
     @State private var eventMode = "injury"
 
-    /// AVPU
     @State private var selectedAVPU: AVPUState = .alert
 
-    /// Terminal card dismissed
     @State private var terminalCardDismissed = false
 
     public init(
@@ -304,7 +298,7 @@ public struct RunConsoleView: View {
         compactMetrics: RunConsoleCompactMetrics,
         controlPresentation: RunConsoleCompactControlPresentation
     ) -> some View {
-        return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
+        VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
             if controlPresentation == .phoneMenus {
                 compactPhoneControlPanel(compactMetrics: compactMetrics)
             } else {
@@ -436,6 +430,7 @@ public struct RunConsoleView: View {
                 pulses: store.state.pulseAnnotations,
                 canMutate: canMutate,
                 onSelectInjury: { injury in
+                    guard canIntervene else { return }
                     quickActionInjury = injury
                 },
                 onUpdateProblemStatus: { problem, status in
@@ -1195,15 +1190,16 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canMutate
-        ) { type, siteCode, targetProblemID, status, effectiveness, notes in
+            canMutate: canIntervene
+        ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
                 status: status,
                 effectiveness: effectiveness,
-                notes: notes
+                notes: notes,
+                tourniquetApplicationMode: tourniquetApplicationMode
             )
             showInterventionSheet = false
         }
@@ -1213,14 +1209,15 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canMutate
-        ) { type, siteCode, status, effectiveness in
+            canMutate: canIntervene
+        ) { type, siteCode, status, effectiveness, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
-                effectiveness: effectiveness
+                effectiveness: effectiveness,
+                tourniquetApplicationMode: tourniquetApplicationMode
             )
         }
     }
@@ -1692,6 +1689,14 @@ public struct RunConsoleView: View {
         store.state.commandChannelAvailable
     }
 
+    private var canRunMutate: Bool {
+        canMutate && store.state.session?.status != .seeding
+    }
+
+    private var canIntervene: Bool {
+        canMutate && store.state.session?.status != .seeding
+    }
+
     private var canRetryInitialSimulation: Bool {
         store.state.session?.status == .failed && store.state.session?.retryable == true
     }
@@ -1821,7 +1826,16 @@ public struct RunConsoleView: View {
     // MARK: - Button helpers
 
     private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
-        !control.requiresCommandChannel || canMutate
+        switch control {
+        case .exit, .summary:
+            true
+        case .lifecycle:
+            canRunMutate
+        case .quick(.intervention):
+            canIntervene
+        case .quick:
+            canMutate
+        }
     }
 
     private func performControl(_ control: RunConsoleControlItem) {
@@ -1945,7 +1959,7 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String) -> Void
+    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
 
     @State private var selectedType: String?
     @State private var selectedTargetProblemID: Int?
@@ -1953,6 +1967,7 @@ private struct InterventionPickerSheet: View {
     @State private var selectedLaterality: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
+    @State private var tourniquetApplicationMode: TourniquetApplicationMode = .hasty
     @State private var notes = ""
     @Environment(\.dismiss) private var dismiss
 
@@ -1980,6 +1995,10 @@ private struct InterventionPickerSheet: View {
 
     private var canSubmit: Bool {
         canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
+    }
+
+    private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
+        selectedType == "tourniquet" ? tourniquetApplicationMode : nil
     }
 
     var body: some View {
@@ -2112,6 +2131,17 @@ private struct InterventionPickerSheet: View {
                         .listRowBackground(Color.clear)
                     }
 
+                    if selectedType == "tourniquet" {
+                        Section("Application Mode") {
+                            Picker("Application Mode", selection: $tourniquetApplicationMode) {
+                                Text("Hasty").tag(TourniquetApplicationMode.hasty)
+                                Text("Deliberate").tag(TourniquetApplicationMode.deliberate)
+                            }
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.clear)
+                        }
+                    }
+
                     Section("Notes (optional)") {
                         TextField("Additional notes...", text: $notes, axis: .vertical)
                             .lineLimit(1 ... 3)
@@ -2129,7 +2159,15 @@ private struct InterventionPickerSheet: View {
                         guard let siteCode = resolvedSiteCode,
                               let type = selectedType,
                               let selectedTargetProblemID else { return }
-                        onSubmit(type, siteCode, selectedTargetProblemID, status, effectiveness, notes)
+                        onSubmit(
+                            type,
+                            siteCode,
+                            selectedTargetProblemID,
+                            status,
+                            effectiveness,
+                            notes,
+                            selectedTourniquetApplicationMode
+                        )
                     }
                     .disabled(!canSubmit)
                 }
@@ -2165,6 +2203,7 @@ private struct InterventionPickerSheet: View {
             selectedType = group.interventionType
             selectedLocationLabel = nil
             selectedLaterality = nil
+            tourniquetApplicationMode = .hasty
         } label: {
             Text(group.label)
                 .font(.caption.weight(.semibold))
@@ -2218,12 +2257,13 @@ private struct InjuryQuickActionSheet: View {
     let injury: InjuryAnnotation
     let dictionary: [InterventionGroup]
     let canMutate: Bool
-    let onApply: (String, String, InterventionStatus, InterventionEffectiveness) -> Void
+    let onApply: (String, String, InterventionStatus, InterventionEffectiveness, TourniquetApplicationMode?) -> Void
 
     @State private var selectedSuggestionType: String?
     @State private var selectedSiteCode: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
+    @State private var tourniquetApplicationMode: TourniquetApplicationMode = .hasty
     @Environment(\.dismiss) private var dismiss
 
     private var suggestions: [InterventionSuggestion] {
@@ -2237,6 +2277,10 @@ private struct InjuryQuickActionSheet: View {
 
     private var canSubmit: Bool {
         canMutate && selectedSuggestionType != nil && selectedSiteCode != nil
+    }
+
+    private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
+        selectedSuggestionType == "tourniquet" ? tourniquetApplicationMode : nil
     }
 
     var body: some View {
@@ -2256,7 +2300,7 @@ private struct InjuryQuickActionSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         guard let type = selectedSuggestionType, let site = selectedSiteCode else { return }
-                        onApply(type, site, status, effectiveness)
+                        onApply(type, site, status, effectiveness, selectedTourniquetApplicationMode)
                         dismiss()
                     }
                     .disabled(!canSubmit)
@@ -2302,10 +2346,12 @@ private struct InjuryQuickActionSheet: View {
             if selected {
                 selectedSuggestionType = nil
                 selectedSiteCode = nil
+                tourniquetApplicationMode = .hasty
             } else {
                 selectedSuggestionType = suggestion.interventionType
                 let group = InterventionDictionary.group(for: suggestion.interventionType, in: dictionary)
                 selectedSiteCode = group?.sites.count == 1 ? group?.sites.first?.code : nil
+                tourniquetApplicationMode = .hasty
             }
         } label: {
             HStack {
@@ -2354,6 +2400,16 @@ private struct InjuryQuickActionSheet: View {
                 }
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
+            }
+            if selectedSuggestionType == "tourniquet" {
+                Section("Application Mode") {
+                    Picker("Application Mode", selection: $tourniquetApplicationMode) {
+                        Text("Hasty").tag(TourniquetApplicationMode.hasty)
+                        Text("Deliberate").tag(TourniquetApplicationMode.deliberate)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                }
             }
             Section("Status") {
                 Picker("Status", selection: $status) {

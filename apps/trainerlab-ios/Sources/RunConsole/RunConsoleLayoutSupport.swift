@@ -80,7 +80,9 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
     case tickAI
     case tickVitals
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     var title: String {
         switch self {
@@ -368,6 +370,8 @@ enum RunConsoleLifecycleAction: String, CaseIterable {
 
     static func visibleActions(for status: TrainerSessionStatus?) -> [Self] {
         switch status {
+        case .seeding:
+            []
         case .seeded:
             [.start]
         case .running:
