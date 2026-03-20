@@ -49,7 +49,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
         session: URLSession = .shared,
-        staleThresholdSeconds: TimeInterval = 45,
+        staleThresholdSeconds: TimeInterval = 45
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -190,7 +190,7 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
             return try decoder.decode(EventEnvelope.self, from: data)
         } catch {
             logger.error(
-                "Failed to decode trainer SSE event: \(error.localizedDescription, privacy: .public). Payload prefix: \(String(dataString.prefix(256)), privacy: .public)",
+                "Failed to decode trainer SSE event: \(error.localizedDescription, privacy: .public). Payload prefix: \(String(dataString.prefix(256)), privacy: .public)"
             )
             throw error
         }
