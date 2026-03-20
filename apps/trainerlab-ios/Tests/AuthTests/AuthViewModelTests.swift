@@ -64,6 +64,10 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockError.accessMeFailed
     }
 
+    func retryInitialSimulation(simulationID _: Int) async throws -> TrainerSessionDTO {
+        throw MockError.accessMeFailed
+    }
+
     func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
         throw MockError.accessMeFailed
     }

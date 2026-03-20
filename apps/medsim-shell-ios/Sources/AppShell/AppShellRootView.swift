@@ -98,7 +98,10 @@ private struct TrainerLabWorkspace: View {
                     RunConsoleScreen(
                         model: model,
                         session: session,
-                        onBack: { selectedSession = nil },
+                        onBack: {
+                            selectedSession = nil
+                            Task { await model.sessionHubViewModel.loadSessions() }
+                        },
                         onOpenSummary: { showSummary = true }
                     )
                 } else {

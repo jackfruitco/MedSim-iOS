@@ -11,14 +11,21 @@ private enum RecordingError: Error {
 
 private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
+    var responseDataByPath: [String: Data] = [:]
 
     func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
+        if let data = responseDataByPath[endpoint.path] {
+            return try makeContractDecoder().decode(T.self, from: data)
+        }
         throw RecordingError.intercepted
     }
 
     func requestData(_ endpoint: Endpoint) async throws -> Data {
         capturedEndpoints.append(endpoint)
+        if let data = responseDataByPath[endpoint.path] {
+            return data
+        }
         throw RecordingError.intercepted
     }
 
@@ -92,6 +99,39 @@ final class TrainerLabContractTests: XCTestCase {
 
         XCTAssertEqual(summary.simulationID, 420)
         XCTAssertEqual(summary.status, "completed")
+    }
+
+    func testSimulationStateChangedEnvelopeDecodesExactFailurePayload() throws {
+        let json = """
+        {
+          "event_id": "cfb87f10-d622-42af-9eff-1267e51607d6",
+          "event_type": "simulation.state_changed",
+          "created_at": "2026-03-20T13:54:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "failed",
+            "retryable": true,
+            "terminal_at": "2026-03-20T13:54:34.986942+00:00",
+            "simulation_id": 1,
+            "terminal_reason_code": "trainerlab_initial_generation_enqueue_failed",
+            "terminal_reason_text": "We could not start this simulation. Please try again."
+          },
+          "status": "delivered",
+          "delivery_attempts": 0,
+          "last_error": null,
+          "idempotency_key": "simulation.state_changed:b5cd7d71-7e95-44ef-9ccd-9d3e5e1f3cb2"
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SimulationStateChangedPayload.self)
+
+        XCTAssertEqual(event.eventType, "simulation.state_changed")
+        XCTAssertEqual(payload.status, "failed")
+        XCTAssertEqual(payload.retryable, true)
+        XCTAssertEqual(payload.simulationID, 1)
+        XCTAssertEqual(payload.terminalReasonCode, "trainerlab_initial_generation_enqueue_failed")
+        XCTAssertEqual(payload.terminalReasonText, "We could not start this simulation. Please try again.")
     }
 
     func testScenarioInstructionApplyEncodesSimulationID() throws {
@@ -309,6 +349,39 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
+    func testRetryInitialSimulationUsesGenericRetryEndpointThenReloadsTrainerSession() async throws {
+        let api = RecordingAPIClient()
+        api.responseDataByPath["/api/v1/simulations/7/retry-initial/"] = Data()
+        api.responseDataByPath["/api/v1/trainerlab/simulations/7/"] = Data(
+            """
+            {
+              "simulation_id": 7,
+              "status": "seeded",
+              "scenario_spec": {},
+              "runtime_state": {},
+              "initial_directives": null,
+              "tick_interval_seconds": 15,
+              "run_started_at": null,
+              "run_paused_at": null,
+              "run_completed_at": null,
+              "last_ai_tick_at": null,
+              "created_at": "2026-03-12T12:00:00Z",
+              "modified_at": "2026-03-12T12:00:00Z"
+            }
+            """.utf8
+        )
+        let service = TrainerLabService(apiClient: api)
+
+        let session = try await service.retryInitialSimulation(simulationID: 7)
+
+        XCTAssertEqual(session.simulationID, 7)
+        XCTAssertEqual(session.status, .seeded)
+        XCTAssertEqual(api.capturedEndpoints.map(\.path), [
+            "/api/v1/simulations/7/retry-initial/",
+            "/api/v1/trainerlab/simulations/7/",
+        ])
+    }
+
     func testTrainerRuntimeStateDecodesRuntimeAdditions() throws {
         let json = """
         {
@@ -509,4 +582,29 @@ final class TrainerLabContractTests: XCTestCase {
         guard let data else { return nil }
         return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
     }
+}
+
+private func makeContractDecoder() -> JSONDecoder {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        if let date = parseISO8601(value) {
+            return date
+        }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(value)")
+    }
+    return decoder
+}
+
+private func parseISO8601(_ value: String) -> Date? {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractional.date(from: value) {
+        return date
+    }
+
+    let standard = ISO8601DateFormatter()
+    standard.formatOptions = [.withInternetDateTime]
+    return standard.date(from: value)
 }
