@@ -28,6 +28,9 @@ public struct RunSummaryView: View {
                     if viewModel.isLoading {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 220)
+                    } else if let notReadyMessage = viewModel.notReadyMessage {
+                        Text(notReadyMessage)
+                            .foregroundStyle(.secondary)
                     } else if let error = viewModel.errorMessage {
                         Text(error)
                             .foregroundStyle(TrainerLabTheme.danger)

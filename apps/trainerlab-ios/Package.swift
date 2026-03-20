@@ -117,7 +117,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SummaryTests",
-            dependencies: ["Summary"]
+            dependencies: ["Summary", "Networking", "SharedModels"]
         ),
         .testTarget(
             name: "AuthTests",

@@ -10,9 +10,28 @@ private enum MockServiceError: Error {
     case unused
 }
 
+private struct ReplayPendingCall: Equatable {
+    let endpoint: String
+    let method: String
+    let body: Data?
+    let idempotencyKey: String
+}
+
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
+    var getSessionCalls: [Int] = []
+    var getSessionResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
     var retryInitialCalls: [Int] = []
     var retryInitialResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
+    var getRuntimeStateCalls: [Int] = []
+    var getRuntimeStateResult: Result<TrainerRuntimeStateOut, Error> = .failure(MockServiceError.unused)
+    var listAnnotationsCalls: [Int] = []
+    var listAnnotationsResult: Result<[AnnotationOut], Error> = .failure(MockServiceError.unused)
+    var replayPendingCalls: [ReplayPendingCall] = []
+    var replayPendingErrorByEndpoint: [String: Error] = [:]
+    var runCommandCalls: [(simulationID: Int, command: RunCommand)] = []
+    var runCommandResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
+    var injectInterventionCalls: [InterventionEventRequest] = []
+    var injectInterventionResult: Result<TrainerCommandAck, Error> = .failure(MockServiceError.unused)
 
     func accessMe() async throws -> LabAccess {
         throw MockServiceError.unused
@@ -26,8 +45,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
-        throw MockServiceError.unused
+    func getSession(simulationID: Int) async throws -> TrainerSessionDTO {
+        getSessionCalls.append(simulationID)
+        return try getSessionResult.get()
     }
 
     func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO {
@@ -35,16 +55,18 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         return try retryInitialResult.get()
     }
 
-    func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
-        throw MockServiceError.unused
+    func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {
+        getRuntimeStateCalls.append(simulationID)
+        return try getRuntimeStateResult.get()
     }
 
     func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut {
         throw MockServiceError.unused
     }
 
-    func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
-        throw MockServiceError.unused
+    func runCommand(simulationID: Int, command: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        runCommandCalls.append((simulationID: simulationID, command: command))
+        return try runCommandResult.get()
     }
 
     func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
@@ -103,8 +125,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func injectInterventionEvent(simulationID _: Int, request _: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
-        throw MockServiceError.unused
+    func injectInterventionEvent(simulationID _: Int, request: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        injectInterventionCalls.append(request)
+        return try injectInterventionResult.get()
     }
 
     func listPresets(limit _: Int, cursor _: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
@@ -167,15 +190,21 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func listAnnotations(simulationID _: Int) async throws -> [AnnotationOut] {
-        throw MockServiceError.unused
+    func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] {
+        listAnnotationsCalls.append(simulationID)
+        return try listAnnotationsResult.get()
     }
 
     func updateScenarioBrief(simulationID _: Int, request _: ScenarioBriefUpdateRequest, idempotencyKey _: String) async throws -> ScenarioBriefOut {
         throw MockServiceError.unused
     }
 
-    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {}
+    func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws {
+        replayPendingCalls.append(ReplayPendingCall(endpoint: endpoint, method: method, body: body, idempotencyKey: idempotencyKey))
+        if let error = replayPendingErrorByEndpoint[endpoint] {
+            throw error
+        }
+    }
 }
 
 private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
@@ -368,7 +397,7 @@ final class RunSessionStoreTests: XCTestCase {
             !store.state.commandChannelAvailable && store.state.transportBanner.message == "Polling Fallback"
         }
 
-        let pending = try await queue.pendingCount()
+        let pending = try await queue.pendingCount(simulationID: 420)
         XCTAssertEqual(pending, 0)
     }
 
@@ -482,6 +511,212 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertNil(store.state.conflictBanner)
     }
 
+    func testRunAndInterventionMutationsAreBlockedWhileSeeding() async {
+        let service = MockTrainerLabService()
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .seeding))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.commandChannelAvailable
+        }
+
+        store.start()
+        store.addIntervention(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: 99
+        )
+
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertTrue(service.runCommandCalls.isEmpty)
+        XCTAssertTrue(service.injectInterventionCalls.isEmpty)
+    }
+
+    func testReplayPendingCommandsOnlyReplaysRowsForBoundSimulation() async throws {
+        let service = MockTrainerLabService()
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: queue
+        )
+        store.bind(session: makeSession(status: .seeded))
+
+        let matching = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        let otherSimulation = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421
+        )
+        let legacyMatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+        let legacyMismatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+
+        try await queue.enqueue(matching)
+        try await queue.enqueue(otherSimulation)
+        try await queue.enqueue(legacyMatch)
+        try await queue.enqueue(legacyMismatch)
+
+        await store.replayPendingCommands()
+
+        XCTAssertEqual(
+            service.replayPendingCalls.map(\.endpoint),
+            [matching.endpoint, legacyMatch.endpoint]
+        )
+        let pendingCount = try await queue.pendingCount(simulationID: 420)
+        let remainingEndpoints = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
+            .map(\.endpoint)
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertEqual(remainingEndpoints, [legacyMismatch.endpoint])
+    }
+
+    func testReplayPendingCommandsTreatsTerminalHTTPFailuresAsNonRetryable() async throws {
+        let service = MockTrainerLabService()
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: queue
+        )
+        store.bind(session: makeSession(status: .seeded))
+
+        let envelope = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        try await queue.enqueue(envelope)
+        service.replayPendingErrorByEndpoint[envelope.endpoint] = APIClientError.http(
+            statusCode: 404,
+            detail: "Not ready",
+            correlationID: nil
+        )
+
+        await store.replayPendingCommands()
+
+        let pendingCount = try await queue.pendingCount(simulationID: 420)
+        let retryBatch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertTrue(retryBatch.isEmpty)
+    }
+
+    func testStartConsoleScopesPendingCountToBoundSimulation() async throws {
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: queue
+        )
+
+        var matching = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        matching.nextRetryAt = .distantFuture
+
+        var legacyMatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+        legacyMatch.nextRetryAt = .distantFuture
+
+        var persistedMismatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421
+        )
+        persistedMismatch.nextRetryAt = .distantFuture
+
+        var legacyMismatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+        legacyMismatch.nextRetryAt = .distantFuture
+
+        var terminalMatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        terminalMatch.retryCount = terminalMatch.maxRetries
+        terminalMatch.nextRetryAt = .distantFuture
+
+        try await queue.enqueue(matching)
+        try await queue.enqueue(legacyMatch)
+        try await queue.enqueue(persistedMismatch)
+        try await queue.enqueue(legacyMismatch)
+        try await queue.enqueue(terminalMatch)
+
+        store.bind(session: makeSession(status: .seeded))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.pendingCommandCount == 2
+        }
+
+        XCTAssertEqual(store.state.pendingCommandCount, 2)
+    }
+
+    func testSessionSeededEventRefreshesBoundState() async throws {
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(status: .seeded))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded"))
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .seeding))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.commandChannelAvailable
+        }
+        let runtimeCallsBefore = service.getRuntimeStateCalls.count
+        let annotationCallsBefore = service.listAnnotationsCalls.count
+
+        realtime.emit(event: makeSessionSeededEvent(simulationID: 420))
+
+        await waitUntil(timeout: 1.5) {
+            service.getSessionCalls == [420]
+                && service.getRuntimeStateCalls.count > runtimeCallsBefore
+                && service.listAnnotationsCalls.count > annotationCallsBefore
+                && store.state.session?.status == .seeded
+        }
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
         runStartedAt: Date? = nil,
@@ -540,6 +775,59 @@ final class RunSessionStoreTests: XCTestCase {
             correlationID: nil,
             payload: eventPayload
         )
+    }
+
+    private func makeSessionSeededEvent(simulationID: Int?) -> EventEnvelope {
+        var payload: [String: JSONValue] = [:]
+        if let simulationID {
+            payload["simulation_id"] = .number(Double(simulationID))
+        }
+        return EventEnvelope(
+            eventID: UUID().uuidString.lowercased(),
+            eventType: "session.seeded",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: payload
+        )
+    }
+
+    private func makeRuntimeState(status: String) throws -> TrainerRuntimeStateOut {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "\(status)",
+          "state_revision": 1,
+          "active_elapsed_seconds": 0,
+          "tick_interval_seconds": 15,
+          "next_tick_at": null,
+          "scenario_brief": null,
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "ai_plan": null,
+          "ai_rationale_notes": [],
+          "pending_runtime_reasons": [],
+          "pending_reasons": [],
+          "currently_processing_reasons": [],
+          "last_runtime_error": "",
+          "last_ai_tick_at": null
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
     }
 
     private func waitUntil(

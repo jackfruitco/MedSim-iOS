@@ -112,7 +112,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
 
     public func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO {
         _ = try await apiClient.requestData(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-initial/", method: .post, body: Data())
+            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/retry-initial/", method: .post, body: Data())
         )
         return try await getSession(simulationID: simulationID)
     }

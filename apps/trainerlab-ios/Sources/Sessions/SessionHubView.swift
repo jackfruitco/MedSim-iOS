@@ -251,6 +251,8 @@ private struct SessionCard: View {
 
     private var statusColor: Color {
         switch session.status {
+        case .seeding:
+            TrainerLabTheme.warning
         case .seeded:
             TrainerLabTheme.accentBlue
         case .running:
