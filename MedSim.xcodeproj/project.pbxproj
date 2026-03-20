@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		7F1A10012F6D100100A0B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F1A10102F6D100100A0B001 /* Assets.xcassets */; };
+		7F1A10022F6D100100A0B001 /* MedSimApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10122F6D100100A0B001 /* MedSimApp.swift */; };
+		7F1A10032F6D100100A0B001 /* MedSimSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10132F6D100100A0B001 /* MedSimSplashView.swift */; };
+		7F1A10042F6D100100A0B001 /* OrientationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10142F6D100100A0B001 /* OrientationCoordinator.swift */; };
+		7F1A10052F6D100100A0B001 /* MedSimTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10152F6D100100A0B001 /* MedSimTests.swift */; };
+		7F1A10062F6D100100A0B001 /* OrientationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10162F6D100100A0B001 /* OrientationCoordinatorTests.swift */; };
+		7F1A10072F6D100100A0B001 /* MedSimUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10172F6D100100A0B001 /* MedSimUITests.swift */; };
+		7F1A10082F6D100100A0B001 /* MedSimUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */; };
 		77E5AA832F60000100D02877 /* AppShell in Frameworks */ = {isa = PBXBuildFile; productRef = 77E5AA822F60000100D02877 /* AppShell */; };
 /* End PBXBuildFile section */
 
@@ -28,43 +36,24 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		7F1A10102F6D100100A0B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7F1A10112F6D100100A0B001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7F1A10122F6D100100A0B001 /* MedSimApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimApp.swift; sourceTree = "<group>"; };
+		7F1A10132F6D100100A0B001 /* MedSimSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimSplashView.swift; sourceTree = "<group>"; };
+		7F1A10142F6D100100A0B001 /* OrientationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationCoordinator.swift; sourceTree = "<group>"; };
+		7F1A10152F6D100100A0B001 /* MedSimTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimTests.swift; sourceTree = "<group>"; };
+		7F1A10162F6D100100A0B001 /* OrientationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationCoordinatorTests.swift; sourceTree = "<group>"; };
+		7F1A10172F6D100100A0B001 /* MedSimUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimUITests.swift; sourceTree = "<group>"; };
+		7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		77CAB7172F38C27900D02877 /* MedSim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedSim.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		77CAB7292F38C27E00D02877 /* MedSimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		77494C4D2F47D3E400A965FA /* Exceptions for "MedSim" folder in "MedSim" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 77CAB7162F38C27900D02877 /* MedSim */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		77B04BDB2F6C6A9200AF3818 /* scripts */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = scripts;
-			sourceTree = "<group>";
-		};
-		77CAB7192F38C27900D02877 /* MedSim */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				77494C4D2F47D3E400A965FA /* Exceptions for "MedSim" folder in "MedSim" target */,
-			);
-			path = MedSim;
-			sourceTree = "<group>";
-		};
-		77CAB72C2F38C27E00D02877 /* MedSimTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MedSimTests;
-			sourceTree = "<group>";
-		};
-		77CAB7362F38C27E00D02877 /* MedSimUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MedSimUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -95,6 +84,36 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		77CAB7192F38C27900D02877 /* MedSim */ = {
+			isa = PBXGroup;
+			children = (
+				7F1A10102F6D100100A0B001 /* Assets.xcassets */,
+				7F1A10112F6D100100A0B001 /* Info.plist */,
+				7F1A10122F6D100100A0B001 /* MedSimApp.swift */,
+				7F1A10132F6D100100A0B001 /* MedSimSplashView.swift */,
+				7F1A10142F6D100100A0B001 /* OrientationCoordinator.swift */,
+			);
+			path = MedSim;
+			sourceTree = "<group>";
+		};
+		77CAB72C2F38C27E00D02877 /* MedSimTests */ = {
+			isa = PBXGroup;
+			children = (
+				7F1A10152F6D100100A0B001 /* MedSimTests.swift */,
+				7F1A10162F6D100100A0B001 /* OrientationCoordinatorTests.swift */,
+			);
+			path = MedSimTests;
+			sourceTree = "<group>";
+		};
+		77CAB7362F38C27E00D02877 /* MedSimUITests */ = {
+			isa = PBXGroup;
+			children = (
+				7F1A10172F6D100100A0B001 /* MedSimUITests.swift */,
+				7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */,
+			);
+			path = MedSimUITests;
+			sourceTree = "<group>";
+		};
 		77CAB70E2F38C27900D02877 = {
 			isa = PBXGroup;
 			children = (
@@ -134,7 +153,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				77B04BDB2F6C6A9200AF3818 /* scripts */,
-				77CAB7192F38C27900D02877 /* MedSim */,
 			);
 			name = MedSim;
 			packageProductDependencies = (
@@ -157,9 +175,6 @@
 			dependencies = (
 				77CAB72B2F38C27E00D02877 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				77CAB72C2F38C27E00D02877 /* MedSimTests */,
-			);
 			name = MedSimTests;
 			packageProductDependencies = (
 			);
@@ -179,9 +194,6 @@
 			);
 			dependencies = (
 				77CAB7352F38C27E00D02877 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				77CAB7362F38C27E00D02877 /* MedSimUITests */,
 			);
 			name = MedSimUITests;
 			packageProductDependencies = (
@@ -244,6 +256,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7F1A10012F6D100100A0B001 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,6 +304,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7F1A10022F6D100100A0B001 /* MedSimApp.swift in Sources */,
+				7F1A10032F6D100100A0B001 /* MedSimSplashView.swift in Sources */,
+				7F1A10042F6D100100A0B001 /* OrientationCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -298,6 +314,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7F1A10052F6D100100A0B001 /* MedSimTests.swift in Sources */,
+				7F1A10062F6D100100A0B001 /* OrientationCoordinatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -305,6 +323,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7F1A10072F6D100100A0B001 /* MedSimUITests.swift in Sources */,
+				7F1A10082F6D100100A0B001 /* MedSimUITestsLaunchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
