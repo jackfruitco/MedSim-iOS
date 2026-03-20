@@ -372,24 +372,6 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(pending, 0)
     }
 
-    func testTrainerNotesAreAddedToClinicalTimelineImmediately() {
-        let store = RunSessionStore(
-            service: MockTrainerLabService(),
-            realtimeClient: MockRealtimeClient(),
-            commandQueue: InMemoryCommandQueueStore()
-        )
-
-        store.addTrainerNote("Patient became more agitated after intervention.")
-
-        XCTAssertEqual(store.state.clinicalTimelineEntries.count, 1)
-        XCTAssertEqual(store.state.clinicalTimelineEntries.first?.title, "Trainer Note")
-        XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .note)
-        XCTAssertEqual(
-            store.state.clinicalTimelineEntries.first?.message,
-            "Patient became more agitated after intervention."
-        )
-    }
-
     func testSimulationStateChangedFailureTransitionsSessionToFailed() async {
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(

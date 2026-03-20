@@ -417,39 +417,6 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func addTrainerNote(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let key = UUID().uuidString
-
-        // Optimistic local entry (always added, even if command channel is down)
-        addClinicalTimelineEntry(
-            dedupeKey: "note:\(key)",
-            kind: .note,
-            title: "Trainer Note",
-            message: trimmed,
-            createdAt: Date()
-        )
-
-        guard canMutateCommands else { return }
-
-        Task {
-            guard let simulationID = state.session?.simulationID else { return }
-            let request = SimulationNoteCreateRequest(content: String(trimmed.prefix(2000)))
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/notes/"
-            let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(endpoint: path, method: HTTPMethod.post.rawValue, body: body)
-            await executeQueuedAckCommand(envelope: envelope) {
-                try await self.service.createNoteEvent(
-                    simulationID: simulationID,
-                    request: request,
-                    idempotencyKey: envelope.idempotencyKey
-                )
-            }
-        }
-    }
-
     public func createDebriefAnnotation(
         observationText: String,
         learningObjective: AnnotationLearningObjective,

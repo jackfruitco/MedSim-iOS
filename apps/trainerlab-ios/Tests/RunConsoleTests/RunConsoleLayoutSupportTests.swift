@@ -73,27 +73,27 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(metrics.vitalValueVerticalPadding, 3)
     }
 
-    func testCompactControlPresentationUsesIconOnlyForCompactPhoneOnly() {
+    func testCompactControlPresentationUsesPhoneMenusForSharedPhoneBreakpoints() {
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .compact,
+                width: 375,
                 horizontalSizeClass: .compact
             ),
-            .iconOnly
+            .phoneMenus
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .compact,
+                width: 430,
+                horizontalSizeClass: .compact
+            ),
+            .phoneMenus
+        )
+        XCTAssertEqual(
+            RunConsoleCompactControlPresentation.resolve(
+                width: 700,
                 horizontalSizeClass: .regular
             ),
-            .labeled
-        )
-        XCTAssertEqual(
-            RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .regular,
-                horizontalSizeClass: .compact
-            ),
-            .labeled
+            .grid
         )
     }
 
@@ -125,6 +125,45 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: injuryEntry), "Change")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: lifecycleEntry), "Run Started")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Trainer Note")
+    }
+
+    func testControlCatalogSeparatesSessionAndQuickControls() {
+        let sessionControls = RunConsoleControlsCatalog.sessionControls(lifecycleActions: [.pause, .stop])
+
+        XCTAssertEqual(sessionControls.map(\.title), ["Exit", "Pause", "Stop", "Summary"])
+        XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.quickControls.map(\.title),
+            ["Intervention", "Event", "Annotation", "Steer", "Tick AI", "Tick Vitals"]
+        )
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.quickControls.map(\.systemImage),
+            ["plus.app", "plus.app", "note.text.badge.plus", "wand.and.sparkles", "timer", "heart.text.square"]
+        )
+    }
+
+    func testTimelineFiltersHideNotesFromRunConsole() {
+        let causeEntry = ClinicalTimelineEntry(
+            dedupeKey: "cause-1",
+            kind: .cause,
+            title: "Cause",
+            message: "Left arm injury",
+            createdAt: Date()
+        )
+        let noteEntry = ClinicalTimelineEntry(
+            dedupeKey: "note-1",
+            kind: .note,
+            title: "Trainer Note",
+            message: "Internal note",
+            createdAt: Date()
+        )
+        let visibleEntries = RunConsoleTimelineFilter.visibleEntries(
+            from: [causeEntry, noteEntry],
+            matching: .all
+        )
+
+        XCTAssertFalse(RunConsoleTimelineFilter.allCases.contains(.kind(.note)))
+        XCTAssertEqual(visibleEntries, [causeEntry])
     }
 
     func testLifecycleActionsMatchSessionStatus() {

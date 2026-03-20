@@ -27,17 +27,19 @@ enum RunConsoleCompactDensity: Equatable {
 }
 
 enum RunConsoleCompactControlPresentation: Equatable {
-    case labeled
-    case iconOnly
+    case grid
+    case phoneMenus
 
     static func resolve(
-        layoutMode: RunConsoleLayoutMode,
+        width: CGFloat,
         horizontalSizeClass: UserInterfaceSizeClass?
     ) -> Self {
-        guard layoutMode == .compact, horizontalSizeClass == .compact else {
-            return .labeled
+        switch TrainerLabLayoutMode.resolve(width: width, horizontalSizeClass: horizontalSizeClass) {
+        case .pad:
+            .grid
+        case .phone, .narrowPhone:
+            .phoneMenus
         }
-        return .iconOnly
     }
 }
 
@@ -61,6 +63,184 @@ enum RunConsoleTimelinePresentation {
             "Trainer Note"
         case .vitals:
             entry.title
+        }
+    }
+}
+
+enum RunConsoleControlGroup: String {
+    case session = "Session Controls"
+    case quick = "Quick Controls"
+}
+
+enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
+    case intervention
+    case event
+    case annotation
+    case steer
+    case tickAI
+    case tickVitals
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .intervention:
+            "Intervention"
+        case .event:
+            "Event"
+        case .annotation:
+            "Annotation"
+        case .steer:
+            "Steer"
+        case .tickAI:
+            "Tick AI"
+        case .tickVitals:
+            "Tick Vitals"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .intervention, .event:
+            "plus.app"
+        case .annotation:
+            "note.text.badge.plus"
+        case .steer:
+            "wand.and.sparkles"
+        case .tickAI:
+            "timer"
+        case .tickVitals:
+            "heart.text.square"
+        }
+    }
+}
+
+enum RunConsoleControlItem: Hashable, Identifiable {
+    case exit
+    case lifecycle(RunConsoleLifecycleAction)
+    case summary
+    case quick(RunConsoleQuickAction)
+
+    var id: String {
+        switch self {
+        case .exit:
+            "exit"
+        case let .lifecycle(action):
+            "lifecycle-\(action.rawValue)"
+        case .summary:
+            "summary"
+        case let .quick(action):
+            "quick-\(action.rawValue)"
+        }
+    }
+
+    var group: RunConsoleControlGroup {
+        switch self {
+        case .exit, .lifecycle, .summary:
+            .session
+        case .quick:
+            .quick
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .exit:
+            "Exit"
+        case let .lifecycle(action):
+            action.title
+        case .summary:
+            "Summary"
+        case let .quick(action):
+            action.title
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .exit:
+            "xmark"
+        case let .lifecycle(action):
+            action.systemImage
+        case .summary:
+            "doc.text"
+        case let .quick(action):
+            action.systemImage
+        }
+    }
+
+    var requiresCommandChannel: Bool {
+        switch self {
+        case .exit, .summary:
+            false
+        case .lifecycle, .quick:
+            true
+        }
+    }
+}
+
+enum RunConsoleControlsCatalog {
+    static func sessionControls(lifecycleActions: [RunConsoleLifecycleAction]) -> [RunConsoleControlItem] {
+        [.exit] + lifecycleActions.map(RunConsoleControlItem.lifecycle) + [.summary]
+    }
+
+    static let quickControls = RunConsoleQuickAction.allCases.map(RunConsoleControlItem.quick)
+}
+
+enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
+    case all
+    case kind(ClinicalTimelineKind)
+
+    static var allCases: [RunConsoleTimelineFilter] {
+        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.vitals)]
+    }
+
+    var id: String {
+        switch self {
+        case .all:
+            "all"
+        case let .kind(kind):
+            kind.rawValue
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all:
+            "All Events"
+        case .kind(.lifecycle):
+            "Lifecycle"
+        case .kind(.cause):
+            "Causes"
+        case .kind(.problem):
+            "Problems"
+        case .kind(.recommendation):
+            "Recommendations"
+        case .kind(.intervention):
+            "Intervention"
+        case .kind(.loc):
+            "LOC"
+        case .kind(.vitals):
+            "Vitals"
+        case .kind(.injury):
+            "Injury"
+        case .kind(.illness):
+            "Illness"
+        case .kind(.note):
+            "Notes"
+        }
+    }
+
+    static func visibleEntries(
+        from entries: [ClinicalTimelineEntry],
+        matching filter: RunConsoleTimelineFilter
+    ) -> [ClinicalTimelineEntry] {
+        let visibleEntries = entries.filter { $0.kind != .note }
+        return switch filter {
+        case .all:
+            visibleEntries
+        case let .kind(kind):
+            visibleEntries.filter { $0.kind == kind }
         }
     }
 }

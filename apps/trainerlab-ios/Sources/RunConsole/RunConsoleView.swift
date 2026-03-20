@@ -13,14 +13,13 @@ public struct RunConsoleView: View {
     @State private var showInterventionSheet = false
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
-    @State private var showNoteSheet = false
     @State private var showAnnotationSheet = false
 
     /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
 
     /// Timeline filter
-    @State private var selectedTimelineFilter: TimelineFilter = .all
+    @State private var selectedTimelineFilter: RunConsoleTimelineFilter = .all
 
     // Collapsible panels
     @State private var isOperationalLogExpanded = false
@@ -30,11 +29,6 @@ public struct RunConsoleView: View {
     @Namespace private var segmentNS
 
     // Intervention sheet state
-    @State private var selectedInterventionType: String?
-    @State private var selectedLocationLabel: String?
-    @State private var selectedLaterality: String?
-    @State private var selectedInterventionStatus: InterventionStatus = .applied
-    @State private var interventionNotes = ""
     @State private var interventionTargetProblemID: Int?
 
     /// Steer sheet state
@@ -54,9 +48,6 @@ public struct RunConsoleView: View {
     @State private var vitalMin = "80"
     @State private var vitalMax = "100"
     @State private var eventMode = "injury"
-
-    /// Note composer
-    @State private var trainerNoteDraft = ""
 
     /// AVPU
     @State private var selectedAVPU: AVPUState = .alert
@@ -84,6 +75,10 @@ public struct RunConsoleView: View {
                 width: proxy.size.width,
                 layoutMode: layoutMode
             )
+            let controlPresentation = RunConsoleCompactControlPresentation.resolve(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass
+            )
 
             ZStack {
                 TrainerLabTheme.tacticalBackground.ignoresSafeArea()
@@ -92,7 +87,10 @@ public struct RunConsoleView: View {
                     if layoutMode == .regular {
                         regularConsoleLayout
                     } else {
-                        compactConsoleLayout(compactMetrics: compactMetrics)
+                        compactConsoleLayout(
+                            compactMetrics: compactMetrics,
+                            controlPresentation: controlPresentation
+                        )
                     }
                 }
 
@@ -118,17 +116,6 @@ public struct RunConsoleView: View {
         .sheet(isPresented: $showSteerSheet) {
             steerSheet
                 .presentationDetents([.fraction(0.35)])
-        }
-        .sheet(isPresented: $showNoteSheet) {
-            NoteComposerSheet(
-                draft: $trainerNoteDraft,
-                onSubmit: {
-                    addTrainerNote()
-                    showNoteSheet = false
-                }
-            )
-            .presentationDetents([.height(180)])
-            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showAnnotationSheet) {
             DebriefAnnotationSheet { observationText, learningObjective, outcome in
@@ -195,10 +182,16 @@ public struct RunConsoleView: View {
         .padding(12)
     }
 
-    private func compactConsoleLayout(compactMetrics: RunConsoleCompactMetrics) -> some View {
+    private func compactConsoleLayout(
+        compactMetrics: RunConsoleCompactMetrics,
+        controlPresentation: RunConsoleCompactControlPresentation
+    ) -> some View {
         ScrollView {
             VStack(spacing: 8) {
-                compactCommandPanel(compactMetrics: compactMetrics)
+                compactCommandPanel(
+                    compactMetrics: compactMetrics,
+                    controlPresentation: controlPresentation
+                )
                 topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 if store.state.conflictBanner != nil {
                     conflictBanner
@@ -262,165 +255,60 @@ public struct RunConsoleView: View {
     // MARK: - Command bars
 
     private var regularCommandBar: some View {
-        HStack(spacing: 10) {
-            Button("Exit") { onBack() }
-                .buttonStyle(.bordered)
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(sessionControls) { control in
+                        controlButton(control)
+                    }
 
-            ForEach(lifecycleActions, id: \.self) { action in
-                lifecycleActionButton(action, compact: false)
-            }
+                    Spacer(minLength: 10)
 
-            quickAction("Add Intervention", systemImage: "cross.vial.fill", enabled: canMutate) {
-                interventionTargetProblemID = nil
-                showInterventionSheet = true
-            }
-            quickAction("Add Event", systemImage: "bolt.heart.fill", enabled: canMutate) {
-                showEventSheet = true
-            }
-            quickAction("Add Note", systemImage: "note.text.badge.plus", enabled: canMutate) {
-                showNoteSheet = true
-            }
-            quickAction("Add Annotation", systemImage: "text.badge.plus", enabled: canMutate) {
-                showAnnotationSheet = true
-            }
-            quickAction("Steer AI", systemImage: "wand.and.sparkles", enabled: canMutate) {
-                showSteerSheet = true
-            }
-            quickAction("Tick AI", systemImage: "timer", enabled: canMutate) {
-                store.triggerRunTick()
-            }
-            quickAction("Tick Vitals", systemImage: "heart.text.square", enabled: canMutate) {
-                store.triggerVitalsTick()
+                    TransportChip(banner: store.state.transportBanner)
+                    regularStopwatchStatus
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        ForEach(sessionControls) { control in
+                            controlButton(control)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        TransportChip(banner: store.state.transportBanner)
+                        regularStopwatchStatus
+                    }
+                }
             }
 
-            Spacer(minLength: 10)
-
-            TransportChip(banner: store.state.transportBanner)
-
-            Label(formattedStopwatch, systemImage: "stopwatch.fill")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-
-            Button("Run Summary") { onOpenSummary() }
-                .buttonStyle(.borderedProminent)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 136), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(quickControls) { control in
+                    controlButton(
+                        control,
+                        fullWidth: true,
+                        multiline: true
+                    )
+                }
+            }
         }
         .padding(10)
         .background(TrainerLabTheme.tacticalSurfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func compactCommandPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
-        let controlPresentation = RunConsoleCompactControlPresentation.resolve(
-            layoutMode: .compact,
-            horizontalSizeClass: horizontalSizeClass
-        )
-
+    private func compactCommandPanel(
+        compactMetrics: RunConsoleCompactMetrics,
+        controlPresentation: RunConsoleCompactControlPresentation
+    ) -> some View {
         return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
-            if !lifecycleActions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Session Controls")
-                        .font(compactMetrics.controlLabelFont)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(
-                        columns: compactControlColumns(for: compactMetrics),
-                        spacing: compactMetrics.gridSpacing
-                    ) {
-                        compactBackAction(compactMetrics: compactMetrics, controlPresentation: controlPresentation)
-                            .frame(maxWidth: .infinity)
-                        ForEach(lifecycleActions, id: \.self) { action in
-                            lifecycleActionButton(
-                                action,
-                                compact: true,
-                                compactMetrics: compactMetrics,
-                                controlPresentation: controlPresentation
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Scenario Actions")
-                    .font(compactMetrics.controlLabelFont)
-                    .foregroundStyle(.secondary)
-
-                LazyVGrid(
-                    columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
-                ) {
-                    compactScenarioAction(
-                        "Add Intervention", systemImage: "cross.vial.fill",
-                        compactMetrics: compactMetrics,
-                        action: {
-                            interventionTargetProblemID = nil
-                            showInterventionSheet = true
-                        },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Event", systemImage: "bolt.heart.fill",
-                        compactMetrics: compactMetrics,
-                        action: { showEventSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Steer AI", systemImage: "wand.and.sparkles",
-                        compactMetrics: compactMetrics,
-                        action: { showSteerSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Note", systemImage: "note.text.badge.plus",
-                        compactMetrics: compactMetrics,
-                        action: { showNoteSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Annotation", systemImage: "text.badge.plus",
-                        compactMetrics: compactMetrics,
-                        action: { showAnnotationSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Tick AI", systemImage: "timer",
-                        compactMetrics: compactMetrics,
-                        action: { store.triggerRunTick() },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Tick Vitals", systemImage: "heart.text.square",
-                        compactMetrics: compactMetrics,
-                        action: { store.triggerVitalsTick() },
-                        controlPresentation: controlPresentation
-                    )
-                }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: compactMetrics.gridSpacing) {
-                    TransportChip(banner: store.state.transportBanner)
-                    stopwatchStatus
-                    Spacer(minLength: 0)
-                    compactSummaryButton(compactMetrics: compactMetrics)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: compactMetrics.gridSpacing) {
-                            TransportChip(banner: store.state.transportBanner)
-                            stopwatchStatus
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            TransportChip(banner: store.state.transportBanner)
-                            stopwatchStatus
-                        }
-                    }
-
-                    compactSummaryButton(compactMetrics: compactMetrics)
-                }
+            if controlPresentation == .phoneMenus {
+                compactPhoneControlPanel(compactMetrics: compactMetrics)
+            } else {
+                compactGridControlPanel(compactMetrics: compactMetrics)
             }
         }
         .modifier(
@@ -429,6 +317,95 @@ public struct RunConsoleView: View {
                 padding: compactMetrics.cardPadding
             )
         )
+    }
+
+    private func compactGridControlPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(RunConsoleControlGroup.session.rawValue)
+                    .font(compactMetrics.controlLabelFont)
+                    .foregroundStyle(.secondary)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: compactMetrics.gridSpacing) {
+                        TransportChip(banner: store.state.transportBanner)
+                        stopwatchStatus
+                        Spacer(minLength: 0)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        TransportChip(banner: store.state.transportBanner)
+                        stopwatchStatus
+                    }
+                }
+
+                LazyVGrid(
+                    columns: compactControlColumns(for: compactMetrics),
+                    spacing: compactMetrics.gridSpacing
+                ) {
+                    ForEach(sessionControls) { control in
+                        controlButton(
+                            control,
+                            compact: true,
+                            compactMetrics: compactMetrics,
+                            fullWidth: true,
+                            multiline: true
+                        )
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(RunConsoleControlGroup.quick.rawValue)
+                    .font(compactMetrics.controlLabelFont)
+                    .foregroundStyle(.secondary)
+
+                LazyVGrid(
+                    columns: compactControlColumns(for: compactMetrics),
+                    spacing: compactMetrics.gridSpacing
+                ) {
+                    ForEach(quickControls) { control in
+                        controlButton(
+                            control,
+                            compact: true,
+                            compactMetrics: compactMetrics,
+                            fullWidth: true,
+                            multiline: true
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func compactPhoneControlPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: compactMetrics.gridSpacing) {
+                    TransportChip(banner: store.state.transportBanner)
+                    stopwatchStatus
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    TransportChip(banner: store.state.transportBanner)
+                    stopwatchStatus
+                }
+            }
+
+            HStack(spacing: compactMetrics.gridSpacing) {
+                compactControlMenu(
+                    title: RunConsoleControlGroup.session.rawValue,
+                    controls: sessionControls,
+                    compactMetrics: compactMetrics
+                )
+                compactControlMenu(
+                    title: RunConsoleControlGroup.quick.rawValue,
+                    controls: quickControls,
+                    compactMetrics: compactMetrics
+                )
+            }
+        }
     }
 
     // MARK: - Conflict banner
@@ -829,15 +806,16 @@ public struct RunConsoleView: View {
     private var annotationsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Debrief annotations stay separate from live simulation notes.")
+                Text("Debrief annotations stay separate from the live run timeline.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 if canMutate {
+                    let annotationAction = RunConsoleQuickAction.annotation
                     Button {
                         showAnnotationSheet = true
                     } label: {
-                        Label("Add Annotation", systemImage: "plus.circle")
+                        Label(annotationAction.title, systemImage: annotationAction.systemImage)
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -1248,11 +1226,6 @@ public struct RunConsoleView: View {
     }
 
     private func resetInterventionSheet() {
-        selectedInterventionType = nil
-        selectedLocationLabel = nil
-        selectedLaterality = nil
-        selectedInterventionStatus = .applied
-        interventionNotes = ""
         interventionTargetProblemID = nil
     }
 
@@ -1261,7 +1234,7 @@ public struct RunConsoleView: View {
     private var steerSheet: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                Text("Direct the AI to adjust the simulation in a specific direction.")
+                Text("Direct the simulation in a specific direction.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1276,7 +1249,7 @@ public struct RunConsoleView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
 
-                Button("Send Steer Prompt") {
+                Button("Send Steer") {
                     store.steerPrompt(steerDraft)
                     steerDraft = ""
                     showSteerSheet = false
@@ -1288,7 +1261,7 @@ public struct RunConsoleView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Steer AI")
+            .navigationTitle("Steer")
             .inlineNavBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1620,6 +1593,12 @@ public struct RunConsoleView: View {
 
     // MARK: - Helpers
 
+    private var regularStopwatchStatus: some View {
+        Label(formattedStopwatch, systemImage: "stopwatch.fill")
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+
     private var stopwatchStatus: some View {
         Label(formattedStopwatch, systemImage: "stopwatch.fill")
             .font(.caption.monospacedDigit())
@@ -1635,7 +1614,7 @@ public struct RunConsoleView: View {
 
             Menu {
                 Picker("Event Type", selection: $selectedTimelineFilter) {
-                    ForEach(TimelineFilter.allCases) { filter in
+                    ForEach(RunConsoleTimelineFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
                     }
                 }
@@ -1648,20 +1627,10 @@ public struct RunConsoleView: View {
     }
 
     private var filteredTimelineEntries: [ClinicalTimelineEntry] {
-        switch selectedTimelineFilter {
-        case .all:
-            store.state.clinicalTimelineEntries
-        case let .kind(kind):
-            store.state.clinicalTimelineEntries.filter { $0.kind == kind }
-        }
-    }
-
-    private func addTrainerNote() {
-        let trimmed = trainerNoteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        store.addTrainerNote(trimmed)
-        trainerNoteDraft = ""
-        selectedTimelineFilter = .all
+        RunConsoleTimelineFilter.visibleEntries(
+            from: store.state.clinicalTimelineEntries,
+            matching: selectedTimelineFilter
+        )
     }
 
     private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
@@ -1733,6 +1702,14 @@ public struct RunConsoleView: View {
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
         RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
+    }
+
+    private var sessionControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.sessionControls(lifecycleActions: lifecycleActions)
+    }
+
+    private var quickControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.quickControls
     }
 
     private var orderedVitals: [VitalStatusSnapshot] {
@@ -1843,71 +1820,107 @@ public struct RunConsoleView: View {
 
     // MARK: - Button helpers
 
-    private func lifecycleActionButton(
-        _ action: RunConsoleLifecycleAction,
-        compact: Bool,
-        compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled
-    ) -> some View {
-        quickAction(action.title, systemImage: action.systemImage, enabled: canMutate, compact: compact, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
+    private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
+        !control.requiresCommandChannel || canMutate
+    }
+
+    private func performControl(_ control: RunConsoleControlItem) {
+        switch control {
+        case .exit:
+            onBack()
+        case .summary:
+            onOpenSummary()
+        case let .lifecycle(action):
             switch action {
-            case .start: store.start()
-            case .pause: store.pause()
-            case .resume: store.resume()
-            case .stop: store.stop()
+            case .start:
+                store.start()
+            case .pause:
+                store.pause()
+            case .resume:
+                store.resume()
+            case .stop:
+                store.stop()
+            }
+        case let .quick(action):
+            switch action {
+            case .intervention:
+                interventionTargetProblemID = nil
+                showInterventionSheet = true
+            case .event:
+                showEventSheet = true
+            case .annotation:
+                showAnnotationSheet = true
+            case .steer:
+                showSteerSheet = true
+            case .tickAI:
+                store.triggerRunTick()
+            case .tickVitals:
+                store.triggerVitalsTick()
             }
         }
     }
 
-    private func compactBackAction(compactMetrics: RunConsoleCompactMetrics, controlPresentation: RunConsoleCompactControlPresentation) -> some View {
-        quickAction("Exit", systemImage: "xmark", enabled: true, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
-            onBack()
-        }
-    }
-
-    private func compactScenarioAction(
-        _ title: String, systemImage: String,
-        compactMetrics: RunConsoleCompactMetrics,
-        action: @escaping () -> Void,
-        controlPresentation: RunConsoleCompactControlPresentation
-    ) -> some View {
-        quickAction(title, systemImage: systemImage, enabled: canMutate, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation, action: action)
-            .frame(maxWidth: .infinity)
-    }
-
-    private func quickAction(
-        _ title: String, systemImage: String, enabled: Bool,
+    @ViewBuilder
+    private func controlButton(
+        _ control: RunConsoleControlItem,
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled,
-        action: @escaping () -> Void
+        fullWidth: Bool = false,
+        multiline: Bool = false
     ) -> some View {
-        Button(action: action) {
-            if compact, controlPresentation == .iconOnly {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: compactMetrics.buttonMinHeight)
-            } else {
-                Label(title, systemImage: systemImage)
-                    .font(compact ? compactMetrics.buttonFont : .body)
-                    .lineLimit(compact ? 2 : 1)
-                    .multilineTextAlignment(compact ? .center : .leading)
-                    .frame(maxWidth: compact ? .infinity : nil)
-                    .frame(minHeight: compact ? compactMetrics.buttonMinHeight : nil)
+        let button = Button {
+            performControl(control)
+        } label: {
+            Label {
+                Text(control.title)
+                    .lineLimit(multiline ? 2 : 1)
+                    .multilineTextAlignment(fullWidth ? .center : .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: control.systemImage)
             }
+            .font(compact ? compactMetrics.buttonFont : .body)
+            .frame(maxWidth: fullWidth ? .infinity : nil, alignment: fullWidth ? .center : .leading)
+            .frame(minHeight: compact ? compactMetrics.buttonMinHeight : nil)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
-        .disabled(!enabled)
-        .accessibilityLabel(title)
+
+        if case .exit = control {
+            button
+                .buttonStyle(.bordered)
+                .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
+                .disabled(!controlEnabled(control))
+                .accessibilityLabel(control.title)
+        } else {
+            button
+                .buttonStyle(.borderedProminent)
+                .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
+                .disabled(!controlEnabled(control))
+                .accessibilityLabel(control.title)
+        }
     }
 
-    private func compactSummaryButton(compactMetrics: RunConsoleCompactMetrics) -> some View {
-        Button("Run Summary") { onOpenSummary() }
-            .buttonStyle(.borderedProminent)
-            .controlSize(compactMetrics.buttonControlSize)
-            .frame(minHeight: compactMetrics.buttonMinHeight)
+    private func compactControlMenu(
+        title: String,
+        controls: [RunConsoleControlItem],
+        compactMetrics: RunConsoleCompactMetrics
+    ) -> some View {
+        Menu {
+            ForEach(controls) { control in
+                Button {
+                    performControl(control)
+                } label: {
+                    Label(control.title, systemImage: control.systemImage)
+                }
+                .disabled(!controlEnabled(control))
+            }
+        } label: {
+            Text(title)
+                .font(compactMetrics.buttonFont)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: compactMetrics.buttonMinHeight)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(compactMetrics.buttonControlSize)
     }
 
     private func compactVitalCell(_ vital: VitalStatusSnapshot, compactMetrics: RunConsoleCompactMetrics) -> some View {
@@ -2355,40 +2368,6 @@ private struct InjuryQuickActionSheet: View {
     }
 }
 
-// MARK: - Timeline filter
-
-private enum TimelineFilter: Hashable, CaseIterable, Identifiable {
-    case all
-    case kind(ClinicalTimelineKind)
-
-    static var allCases: [TimelineFilter] {
-        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.note), .kind(.vitals)]
-    }
-
-    var id: String {
-        switch self {
-        case .all: "all"
-        case let .kind(kind): kind.rawValue
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .all: "All Events"
-        case .kind(.lifecycle): "Lifecycle"
-        case .kind(.cause): "Causes"
-        case .kind(.problem): "Problems"
-        case .kind(.recommendation): "Recommendations"
-        case .kind(.intervention): "Intervention"
-        case .kind(.loc): "LOC"
-        case .kind(.note): "Notes"
-        case .kind(.vitals): "Vitals"
-        case .kind(.injury): "Injury"
-        case .kind(.illness): "Illness"
-        }
-    }
-}
-
 // MARK: - Card modifier
 
 private struct RunConsoleCardModifier: ViewModifier {
@@ -2539,54 +2518,6 @@ private extension View {
         #else
             self
         #endif
-    }
-}
-
-// MARK: - Note composer sheet
-
-private struct NoteComposerSheet: View {
-    @Binding var draft: String
-    let onSubmit: () -> Void
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 4)
-                .padding(.top, 10)
-                .padding(.bottom, 12)
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Add a simulation note event for the live run…", text: $draft, axis: .vertical)
-                    .lineLimit(1 ... 4)
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .tint(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .focused($focused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                        onSubmit()
-                    }
-
-                Button(action: onSubmit) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 8)
-        }
-        .background(.ultraThinMaterial)
-        .onAppear { focused = true }
     }
 }
 
