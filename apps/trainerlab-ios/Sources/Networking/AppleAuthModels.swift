@@ -98,7 +98,7 @@ public enum AuthServiceError: Error, Equatable, LocalizedError {
     }
 }
 
-struct AppleTokenRequest: Codable, Sendable {
+struct AppleTokenRequest: Codable {
     let identityToken: String
     let authorizationCode: String
     let givenName: String?
@@ -114,7 +114,7 @@ struct AppleTokenRequest: Codable, Sendable {
     }
 }
 
-struct AppleProfileCompletionEnvelope: Codable, Sendable {
+struct AppleProfileCompletionEnvelope: Codable {
     let type: String
     let title: String
     let status: Int
@@ -138,7 +138,7 @@ struct AppleProfileCompletionEnvelope: Codable, Sendable {
     }
 }
 
-struct AppleCompleteSignupRequest: Codable, Sendable {
+struct AppleCompleteSignupRequest: Codable {
     let signupToken: String
     let roleID: Int
     let givenName: String

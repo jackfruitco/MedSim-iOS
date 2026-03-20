@@ -248,7 +248,7 @@ final class TrainerLabContractTests: XCTestCase {
             invitationToken: "invite-token"
         )
 
-        guard case .authenticated(let tokens) = result else {
+        guard case let .authenticated(tokens) = result else {
             return XCTFail("Expected authenticated result")
         }
         XCTAssertEqual(tokens.accessToken, "a")
@@ -280,7 +280,7 @@ final class TrainerLabContractTests: XCTestCase {
             invitationToken: nil
         )
 
-        guard case .profileCompletionRequired(let pending) = result else {
+        guard case let .profileCompletionRequired(pending) = result else {
             return XCTFail("Expected pending signup result")
         }
         XCTAssertEqual(pending.signupToken, "signup-token")

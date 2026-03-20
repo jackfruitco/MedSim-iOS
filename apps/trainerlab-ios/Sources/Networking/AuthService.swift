@@ -53,10 +53,10 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
             familyName: credential.familyName,
             invitationToken: invitationToken
         )
-        let endpoint = Endpoint(
+        let endpoint = try Endpoint(
             path: "/api/v1/auth/apple/",
             method: .post,
-            body: try encoder.encode(payload),
+            body: encoder.encode(payload),
             requiresAuth: false
         )
         let response = try await apiClient.perform(endpoint)
@@ -94,10 +94,10 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
             givenName: givenName,
             familyName: familyName
         )
-        let endpoint = Endpoint(
+        let endpoint = try Endpoint(
             path: "/api/v1/auth/apple/complete-signup/",
             method: .post,
-            body: try encoder.encode(payload),
+            body: encoder.encode(payload),
             requiresAuth: false
         )
         let response = try await apiClient.perform(endpoint)
@@ -130,7 +130,7 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
         tokenProvider.loadTokens() != nil
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+    private func decode<T: Decodable>(_: T.Type, from data: Data) throws -> T {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {

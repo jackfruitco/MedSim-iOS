@@ -1,7 +1,7 @@
+import AuthenticationServices
 import DesignSystem
 import Networking
 import SwiftUI
-import AuthenticationServices
 
 public struct AuthGateView: View {
     private enum Field: Hashable {
@@ -223,7 +223,6 @@ public struct AuthGateView: View {
         }
     }
 
-    @ViewBuilder
     private func divider(label: String) -> some View {
         HStack(spacing: 10) {
             Rectangle()
@@ -278,7 +277,7 @@ private struct AppleSignupCompletionSheet: View {
                     TextField("First Name", text: $givenName)
                     TextField("Last Name", text: $familyName)
                     Picker("Role", selection: $selectedRoleID) {
-                        Text("Select a role...").tag(Optional<Int>.none)
+                        Text("Select a role...").tag(Int?.none)
                         ForEach(pendingSignup.roles) { role in
                             Text(role.title).tag(Optional(role.id))
                         }
