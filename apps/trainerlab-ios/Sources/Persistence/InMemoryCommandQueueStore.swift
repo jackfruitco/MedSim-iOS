@@ -25,9 +25,21 @@ public actor InMemoryCommandQueueStore: CommandQueueStoreProtocol {
         storage[index].ackState = .failed
     }
 
-    public func nextRetryBatch(limit: Int, now: Date) async throws -> [PendingCommandEnvelope] {
+    public func markTerminalFailure(idempotencyKey: String, error: String) async throws {
+        guard let index = storage.firstIndex(where: { $0.idempotencyKey == idempotencyKey }) else { return }
+        storage[index].retryCount = storage[index].maxRetries
+        storage[index].lastError = error
+        storage[index].nextRetryAt = Date.distantFuture
+        storage[index].ackState = .failed
+    }
+
+    public func nextRetryBatch(limit: Int, now: Date, simulationID: Int?) async throws -> [PendingCommandEnvelope] {
         Array(storage
-            .filter { ($0.nextRetryAt <= now || $0.ackState == .failed) && $0.retryCount < $0.maxRetries }
+            .filter {
+                ($0.nextRetryAt <= now || $0.ackState == .failed)
+                    && $0.retryCount < $0.maxRetries
+                    && (simulationID == nil || $0.simulationID == simulationID || $0.simulationID == nil)
+            }
             .sorted(by: { $0.nextRetryAt < $1.nextRetryAt })
             .prefix(limit))
     }

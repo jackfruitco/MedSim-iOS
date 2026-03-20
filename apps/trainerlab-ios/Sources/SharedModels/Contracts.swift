@@ -82,6 +82,7 @@ public struct LabAccess: Codable, Sendable {
 }
 
 public enum TrainerSessionStatus: String, Codable, Sendable, CaseIterable {
+    case seeding
     case seeded
     case running
     case paused
@@ -1443,6 +1444,11 @@ public struct IllnessEventRequest: Codable, Sendable {
     }
 }
 
+public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
+    case hasty
+    case deliberate
+}
+
 public struct InterventionEventRequest: Codable, Sendable {
     public let interventionType: String
     public let siteCode: String
@@ -1463,6 +1469,7 @@ public struct InterventionEventRequest: Codable, Sendable {
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",
         details: [String: JSONValue]? = nil,
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
         initiatedByType: String = "instructor",
         initiatedByID: Int? = nil,
         supersedesEventID: Int? = nil
@@ -1473,13 +1480,27 @@ public struct InterventionEventRequest: Codable, Sendable {
         self.status = status
         self.effectiveness = effectiveness
         self.notes = notes
-        self.details = details ?? [
-            "kind": .string(interventionType),
-            "version": .number(1),
-        ]
+        self.details = details ?? Self.defaultDetails(
+            for: interventionType,
+            tourniquetApplicationMode: tourniquetApplicationMode
+        )
         self.initiatedByType = initiatedByType
         self.initiatedByID = initiatedByID
         self.supersedesEventID = supersedesEventID
+    }
+
+    public static func defaultDetails(
+        for interventionType: String,
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil
+    ) -> [String: JSONValue] {
+        var details: [String: JSONValue] = [
+            "kind": .string(interventionType),
+            "version": .number(1),
+        ]
+        if interventionType == "tourniquet" {
+            details["application_mode"] = .string((tourniquetApplicationMode ?? .hasty).rawValue)
+        }
+        return details
     }
 
     enum CodingKeys: String, CodingKey {
