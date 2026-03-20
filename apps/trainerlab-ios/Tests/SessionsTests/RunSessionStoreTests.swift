@@ -11,6 +11,9 @@ private enum MockServiceError: Error {
 }
 
 private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
+    var retryInitialCalls: [Int] = []
+    var retryInitialResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
+
     func accessMe() async throws -> LabAccess {
         throw MockServiceError.unused
     }
@@ -25,6 +28,11 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
         throw MockServiceError.unused
+    }
+
+    func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO {
+        retryInitialCalls.append(simulationID)
+        return try retryInitialResult.get()
     }
 
     func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
@@ -382,7 +390,106 @@ final class RunSessionStoreTests: XCTestCase {
         )
     }
 
-    private func makeSession(status: TrainerSessionStatus) -> TrainerSessionDTO {
+    func testSimulationStateChangedFailureTransitionsSessionToFailed() async {
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date().addingTimeInterval(-12)))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.stopwatchIsRunning
+        }
+
+        realtime.emit(event: makeSimulationStateChangedEvent(
+            payload: SimulationStateChangedPayload(
+                status: "failed",
+                retryable: true,
+                terminalAt: Date(),
+                simulationID: 420,
+                terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
+                terminalReasonText: "We could not start this simulation. Please try again."
+            )
+        ))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .failed &&
+                store.state.terminalCard?.reasonText == "We could not start this simulation. Please try again." &&
+                store.state.session?.retryable == true &&
+                store.state.stopwatchIsRunning == false
+        }
+
+        XCTAssertEqual(store.state.session?.terminalReasonCode, "trainerlab_initial_generation_enqueue_failed")
+        XCTAssertEqual(store.state.terminalCard?.status, .failed)
+    }
+
+    func testSimulationStateChangedIgnoresMismatchedSimulationID() async {
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date().addingTimeInterval(-6)))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        realtime.emit(event: makeSimulationStateChangedEvent(
+            payload: SimulationStateChangedPayload(
+                status: "failed",
+                retryable: true,
+                terminalAt: Date(),
+                simulationID: 999,
+                terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
+                terminalReasonText: "Should be ignored."
+            )
+        ))
+
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(store.state.session?.status, .running)
+        XCTAssertNil(store.state.terminalCard)
+    }
+
+    func testRetryInitialSimulationRebindsSessionAfterFailure() async {
+        let service = MockTrainerLabService()
+        service.retryInitialResult = .success(makeSession(status: .seeded))
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(
+            status: .failed,
+            runCompletedAt: Date(),
+            terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
+            terminalReasonText: "We could not start this simulation. Please try again.",
+            retryable: true
+        ))
+
+        XCTAssertEqual(store.state.terminalCard?.status, .failed)
+
+        store.retryInitialSimulation()
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .seeded && store.state.terminalCard == nil
+        }
+
+        XCTAssertEqual(service.retryInitialCalls, [420])
+        XCTAssertNil(store.state.conflictBanner)
+    }
+
+    private func makeSession(
+        status: TrainerSessionStatus,
+        runStartedAt: Date? = nil,
+        runCompletedAt: Date? = nil,
+        terminalReasonCode: String? = nil,
+        terminalReasonText: String? = nil,
+        retryable: Bool? = nil
+    ) -> TrainerSessionDTO {
         TrainerSessionDTO(
             simulationID: 420,
             status: status,
@@ -390,12 +497,48 @@ final class RunSessionStoreTests: XCTestCase {
             runtimeState: [:],
             initialDirectives: nil,
             tickIntervalSeconds: 15,
-            runStartedAt: nil,
+            runStartedAt: runStartedAt,
             runPausedAt: nil,
-            runCompletedAt: nil,
+            runCompletedAt: runCompletedAt,
             lastAITickAt: nil,
             createdAt: Date(),
-            modifiedAt: Date()
+            modifiedAt: Date(),
+            terminalReasonCode: terminalReasonCode,
+            terminalReasonText: terminalReasonText,
+            retryable: retryable
+        )
+    }
+
+    private func makeSimulationStateChangedEvent(
+        payload: SimulationStateChangedPayload
+    ) -> EventEnvelope {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let terminalAt = payload.terminalAt ?? Date()
+        var eventPayload: [String: JSONValue] = [
+            "status": .string(payload.status),
+            "terminal_at": .string(formatter.string(from: terminalAt)),
+        ]
+
+        if let retryable = payload.retryable {
+            eventPayload["retryable"] = .bool(retryable)
+        }
+        if let simulationID = payload.simulationID {
+            eventPayload["simulation_id"] = .number(Double(simulationID))
+        }
+        if let terminalReasonCode = payload.terminalReasonCode {
+            eventPayload["terminal_reason_code"] = .string(terminalReasonCode)
+        }
+        if let terminalReasonText = payload.terminalReasonText {
+            eventPayload["terminal_reason_text"] = .string(terminalReasonText)
+        }
+
+        return EventEnvelope(
+            eventID: UUID().uuidString.lowercased(),
+            eventType: "simulation.state_changed",
+            createdAt: terminalAt,
+            correlationID: nil,
+            payload: eventPayload
         )
     }
 

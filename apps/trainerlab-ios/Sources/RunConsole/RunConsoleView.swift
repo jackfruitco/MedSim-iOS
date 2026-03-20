@@ -158,6 +158,11 @@ public struct RunConsoleView: View {
         .onDisappear {
             store.stopConsole()
         }
+        .onChange(of: store.state.terminalCard) { _, newValue in
+            if newValue != nil {
+                terminalCardDismissed = false
+            }
+        }
     }
 
     // MARK: - Layouts
@@ -1119,7 +1124,7 @@ public struct RunConsoleView: View {
                     .buttonStyle(.plain)
                 }
 
-                if let reason = card.reasonText {
+                if let reason = terminalCardMessage(card) {
                     Text(reason)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -1127,9 +1132,17 @@ public struct RunConsoleView: View {
                 }
 
                 if let completedAt = card.completedAt {
-                    Text("Completed at \(completedAt.formatted(date: .abbreviated, time: .shortened))")
+                    Text("\(terminalTimestampLabel(card.status)) \(completedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                if canRetryInitialSimulation {
+                    Button("Retry Simulation") {
+                        store.retryInitialSimulation()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
                 }
 
                 Button("View Run Summary") {
@@ -1155,6 +1168,29 @@ public struct RunConsoleView: View {
         case .completed: "Session Complete"
         case .failed: "Session Failed"
         default: "Session Ended"
+        }
+    }
+
+    private func terminalCardMessage(_ card: TerminalCard) -> String? {
+        if let reason = card.reasonText?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty {
+            return reason
+        }
+
+        if card.status == .failed {
+            return "We could not start this simulation. Please try again."
+        }
+
+        return nil
+    }
+
+    private func terminalTimestampLabel(_ status: TrainerSessionStatus) -> String {
+        switch status {
+        case .completed:
+            "Completed at"
+        case .failed:
+            "Failed at"
+        default:
+            "Ended at"
         }
     }
 
@@ -1685,6 +1721,10 @@ public struct RunConsoleView: View {
 
     private var canMutate: Bool {
         store.state.commandChannelAvailable
+    }
+
+    private var canRetryInitialSimulation: Bool {
+        store.state.session?.status == .failed && store.state.session?.retryable == true
     }
 
     private var sessionStatus: TrainerSessionStatus? {

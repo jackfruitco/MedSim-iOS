@@ -1,8 +1,11 @@
 import Foundation
 import Networking
+import OSLog
 import Persistence
 import Realtime
 import SharedModels
+
+private let logger = Logger(subsystem: "com.jackfruit.medsim", category: "TrainerSessionStore")
 
 @MainActor
 public final class RunSessionStore: ObservableObject {
@@ -60,6 +63,7 @@ public final class RunSessionStore: ObservableObject {
                 await MainActor.run {
                     let previousStatus = self.state.session?.status
                     self.state = RunSessionReducer.reduce(state: self.state, action: .eventReceived(event))
+                    self.handleSimulationStateChanged(event)
                     self.captureVitalRange(from: event)
                     self.captureInjuryAnnotation(from: event)
                     self.captureInterventionAnnotation(from: event)
@@ -198,6 +202,24 @@ public final class RunSessionStore: ObservableObject {
             syncStopwatchState(previousStatus: previousStatus)
         } catch {
             state.conflictBanner = error.localizedDescription
+        }
+    }
+
+    public func retryInitialSimulation() {
+        guard let simulationID = state.session?.simulationID else { return }
+
+        Task {
+            do {
+                let updated = try await service.retryInitialSimulation(simulationID: simulationID)
+                let previousStatus = state.session?.status
+                state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updated))
+                state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+                syncStopwatchState(previousStatus: previousStatus)
+                await loadRuntimeState()
+                await reconcileAnnotationsFromSnapshot()
+            } catch {
+                state.conflictBanner = error.localizedDescription
+            }
         }
     }
 
@@ -645,6 +667,57 @@ public final class RunSessionStore: ObservableObject {
         case .disconnected:
             state.commandChannelAvailable = false
             state.transportBanner = TransportBanner(style: .error, message: "Disconnected", visible: true)
+        }
+    }
+
+    private func handleSimulationStateChanged(_ event: EventEnvelope) {
+        let eventType = canonicalEventType(event.eventType)
+        guard eventType == "simulation.state_changed" else { return }
+        guard let session = state.session else { return }
+
+        do {
+            let payload = try event.decodePayload(SimulationStateChangedPayload.self)
+
+            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
+                logger.warning(
+                    "Ignoring simulation.state_changed for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+                )
+                return
+            }
+
+            guard payload.status.lowercased() == "failed" else {
+                logger.debug(
+                    "Unhandled simulation.state_changed status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return
+            }
+
+            let failedSession = TrainerSessionDTO(
+                simulationID: session.simulationID,
+                status: .failed,
+                scenarioSpec: session.scenarioSpec,
+                runtimeState: session.runtimeState,
+                initialDirectives: session.initialDirectives,
+                tickIntervalSeconds: session.tickIntervalSeconds,
+                runStartedAt: session.runStartedAt,
+                runPausedAt: session.runPausedAt,
+                runCompletedAt: payload.terminalAt ?? event.createdAt,
+                lastAITickAt: session.lastAITickAt,
+                createdAt: session.createdAt,
+                modifiedAt: max(session.modifiedAt, event.createdAt),
+                terminalReasonCode: payload.terminalReasonCode ?? session.terminalReasonCode,
+                terminalReasonText: payload.terminalReasonText ?? session.terminalReasonText,
+                retryable: payload.retryable ?? session.retryable
+            )
+
+            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
+            logger.warning(
+                "Simulation \(failedSession.simulationID, privacy: .public) transitioned to failed state: \(failedSession.terminalReasonText ?? "Simulation failed.", privacy: .public)"
+            )
+        } catch {
+            logger.error(
+                "Failed to decode simulation.state_changed payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 

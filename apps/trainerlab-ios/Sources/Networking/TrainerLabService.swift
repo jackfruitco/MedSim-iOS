@@ -14,6 +14,7 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func listSessions(limit: Int, cursor: String?, status: String?, query: String?) async throws -> PaginatedResponse<TrainerSessionDTO>
     func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO
     func getSession(simulationID: Int) async throws -> TrainerSessionDTO
+    func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO
     func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut
     func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut
     func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO
@@ -107,6 +108,13 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
             Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/"),
             as: TrainerSessionDTO.self
         )
+    }
+
+    public func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO {
+        _ = try await apiClient.requestData(
+            Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-initial/", method: .post, body: Data())
+        )
+        return try await getSession(simulationID: simulationID)
     }
 
     public func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {

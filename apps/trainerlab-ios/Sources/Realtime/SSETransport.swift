@@ -1,6 +1,9 @@
 import Foundation
+import OSLog
 import Persistence
 import SharedModels
+
+private let logger = Logger(subsystem: "com.jackfruit.medsim", category: "TrainerSSE")
 
 public enum SSEStreamItem: Sendable {
     case event(EventEnvelope)
@@ -180,9 +183,17 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
 
     private func parseEvent(dataString: String) throws -> EventEnvelope? {
         guard let data = dataString.data(using: .utf8) else {
+            logger.error("Dropping trainer SSE event because payload was not valid UTF-8")
             return nil
         }
-        return try decoder.decode(EventEnvelope.self, from: data)
+        do {
+            return try decoder.decode(EventEnvelope.self, from: data)
+        } catch {
+            logger.error(
+                "Failed to decode trainer SSE event: \(error.localizedDescription, privacy: .public). Payload prefix: \(String(dataString.prefix(256)), privacy: .public)"
+            )
+            throw error
+        }
     }
 
     private nonisolated static func parseISO8601(_ value: String) -> Date? {

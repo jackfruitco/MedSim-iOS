@@ -165,6 +165,40 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public struct SimulationStateChangedPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let retryable: Bool?
+    public let terminalAt: Date?
+    public let simulationID: Int?
+    public let terminalReasonCode: String?
+    public let terminalReasonText: String?
+
+    public init(
+        status: String,
+        retryable: Bool? = nil,
+        terminalAt: Date? = nil,
+        simulationID: Int? = nil,
+        terminalReasonCode: String? = nil,
+        terminalReasonText: String? = nil
+    ) {
+        self.status = status
+        self.retryable = retryable
+        self.terminalAt = terminalAt
+        self.simulationID = simulationID
+        self.terminalReasonCode = terminalReasonCode
+        self.terminalReasonText = terminalReasonText
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case retryable
+        case terminalAt = "terminal_at"
+        case simulationID = "simulation_id"
+        case terminalReasonCode = "terminal_reason_code"
+        case terminalReasonText = "terminal_reason_text"
+    }
+}
+
 public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let eventID: String
     public let eventType: String
@@ -196,6 +230,33 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
         case createdAt = "created_at"
         case correlationID = "correlation_id"
         case payload
+    }
+
+    public func decodePayload<T: Decodable>(_ type: T.Type) throws -> T {
+        let rawPayload = payload.mapValues(\.rawValue)
+        let data = try JSONSerialization.data(withJSONObject: rawPayload)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = Self.parseISO8601(value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(value)")
+        }
+        return try decoder.decode(type, from: data)
+    }
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) {
+            return date
+        }
+
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
     }
 }
 
