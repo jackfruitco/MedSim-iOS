@@ -18,7 +18,7 @@ private enum MockError: Error, LocalizedError {
 
 private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
     var signInResult: Result<AuthTokens, Error> = .success(
-        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
+        AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer"),
     )
     var signOutCalled = false
     var hasActiveTokensValue = false
