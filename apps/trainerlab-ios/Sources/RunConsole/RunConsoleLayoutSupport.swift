@@ -188,6 +188,8 @@ enum RunConsoleLifecycleAction: String, CaseIterable {
 
     static func visibleActions(for status: TrainerSessionStatus?) -> [Self] {
         switch status {
+        case .seeding:
+            []
         case .seeded:
             [.start]
         case .running:

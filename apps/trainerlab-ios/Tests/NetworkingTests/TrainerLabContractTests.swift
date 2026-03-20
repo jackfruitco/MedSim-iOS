@@ -57,7 +57,7 @@ final class TrainerLabContractTests: XCTestCase {
         let json = """
         {
           "simulation_id": 420,
-          "status": "seeded",
+          "status": "seeding",
           "scenario_spec": {},
           "runtime_state": {},
           "initial_directives": null,
@@ -77,6 +77,7 @@ final class TrainerLabContractTests: XCTestCase {
 
         XCTAssertEqual(run.simulationID, 420)
         XCTAssertEqual(run.id, 420)
+        XCTAssertEqual(run.status, .seeding)
     }
 
     func testRunSummaryDecodesWithoutLegacySessionID() throws {
@@ -182,7 +183,26 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(object?["target_problem_id"] as? Int, 19)
         XCTAssertEqual(object?["initiated_by_type"] as? String, "instructor")
         XCTAssertNil(object?["performed_by_role"])
+        XCTAssertNil(object?["body"])
         XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+        XCTAssertEqual(details?["application_mode"] as? String, "hasty")
+    }
+
+    func testInterventionEventRequestEncodesExplicitTourniquetApplicationMode() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "left_arm",
+            targetProblemID: 19,
+            tourniquetApplicationMode: .deliberate
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let details = object?["details"] as? [String: Any]
+
+        XCTAssertEqual(object?["intervention_type"] as? String, "tourniquet")
+        XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+        XCTAssertEqual(details?["version"] as? Double, 1)
+        XCTAssertEqual(details?["application_mode"] as? String, "deliberate")
     }
 
     func testSimulationNoteCreateRequestEncodesCurrentBackendKeys() throws {
@@ -349,9 +369,9 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
-    func testRetryInitialSimulationUsesGenericRetryEndpointThenReloadsTrainerSession() async throws {
+    func testRetryInitialSimulationUsesTrainerLabRetryEndpointThenReloadsTrainerSession() async throws {
         let api = RecordingAPIClient()
-        api.responseDataByPath["/api/v1/simulations/7/retry-initial/"] = Data()
+        api.responseDataByPath["/api/v1/trainerlab/simulations/7/retry-initial/"] = Data()
         api.responseDataByPath["/api/v1/trainerlab/simulations/7/"] = Data(
             """
             {
@@ -377,7 +397,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(session.simulationID, 7)
         XCTAssertEqual(session.status, .seeded)
         XCTAssertEqual(api.capturedEndpoints.map(\.path), [
-            "/api/v1/simulations/7/retry-initial/",
+            "/api/v1/trainerlab/simulations/7/retry-initial/",
             "/api/v1/trainerlab/simulations/7/",
         ])
     }
@@ -513,14 +533,67 @@ final class TrainerLabContractTests: XCTestCase {
         try seedLegacyQueueDatabase(at: dbURL)
 
         let store = try GRDBCommandQueueStore(fileURL: dbURL)
-        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture)
+        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture, simulationID: nil)
         let endpoints = Set(rows.map(\.endpoint))
 
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/77/adjust/"))
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/"))
         XCTAssertFalse(endpoints.contains("/api/v1/trainerlab/sessions/55/run/start/"))
-        let pendingCount = try await store.pendingCount()
+        let pendingCount = try await store.pendingCount(simulationID: nil)
         XCTAssertEqual(pendingCount, 2)
+    }
+
+    func testCommandQueuePendingCountScopesToActiveRowsForSimulation() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("trainerlab-queue-pending-count-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: dbURL) }
+
+        let store = try GRDBCommandQueueStore(fileURL: dbURL)
+
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+
+        let terminal = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        try await store.enqueue(terminal)
+        try await store.markTerminalFailure(idempotencyKey: terminal.idempotencyKey, error: "terminal")
+
+        let currentSimulationCount = try await store.pendingCount(simulationID: 420)
+        let otherSimulationCount = try await store.pendingCount(simulationID: 421)
+        let globalCount = try await store.pendingCount(simulationID: nil)
+
+        XCTAssertEqual(currentSimulationCount, 2)
+        XCTAssertEqual(otherSimulationCount, 2)
+        XCTAssertEqual(globalCount, 5)
     }
 
     private func seedLegacyQueueDatabase(at url: URL) throws {

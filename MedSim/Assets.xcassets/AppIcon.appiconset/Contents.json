@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "5A570C87-0AA9-490D-AB92-098DE507888C.png",
+      "filename" : "logo-glass.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,6 +13,7 @@
           "value" : "dark"
         }
       ],
+      "filename" : "logo-dark.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -24,6 +25,7 @@
           "value" : "tinted"
         }
       ],
+      "filename" : "logo-glass-tinted.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
