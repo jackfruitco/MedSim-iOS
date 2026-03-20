@@ -717,7 +717,12 @@ public final class RunSessionStore: ObservableObject {
 
     private func refreshPendingCount() async {
         do {
-            let count = try await commandQueue.pendingCount()
+            guard let simulationID = state.session?.simulationID else {
+                state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(0))
+                return
+            }
+
+            let count = try await commandQueue.pendingCount(simulationID: simulationID)
             state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(count))
         } catch {
             state.conflictBanner = error.localizedDescription

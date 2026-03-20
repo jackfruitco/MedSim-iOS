@@ -92,6 +92,18 @@ public struct PendingCommandEnvelope: Codable, FetchableRecord, MutablePersistab
         guard idIndex < pathComponents.endIndex else { return nil }
         return Int(pathComponents[idIndex])
     }
+
+    var isActivePending: Bool {
+        retryCount < maxRetries
+    }
+
+    func matches(simulationID: Int?) -> Bool {
+        guard let simulationID else {
+            return true
+        }
+
+        return resolvedSimulationID == simulationID
+    }
 }
 
 public enum CommandQueueStoreError: Error {
@@ -104,7 +116,7 @@ public protocol CommandQueueStoreProtocol: Sendable {
     func markFailed(idempotencyKey: String, error: String, nextRetryAt: Date) async throws
     func markTerminalFailure(idempotencyKey: String, error: String) async throws
     func nextRetryBatch(limit: Int, now: Date, simulationID: Int?) async throws -> [PendingCommandEnvelope]
-    func pendingCount() async throws -> Int
+    func pendingCount(simulationID: Int?) async throws -> Int
     /// Deletes commands that have exceeded their max retry count. Returns the number of rows removed.
     func purgeAbandoned() async throws -> Int
 }
@@ -244,9 +256,12 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
         }
     }
 
-    public func pendingCount() async throws -> Int {
+    public func pendingCount(simulationID: Int?) async throws -> Int {
         try await dbQueue.read { db in
-            try PendingCommandEnvelope.fetchCount(db)
+            let activeRows = try PendingCommandEnvelope
+                .filter(Column("retry_count") < Column("max_retries"))
+                .fetchAll(db)
+            return activeRows.filter { $0.matches(simulationID: simulationID) }.count
         }
     }
 

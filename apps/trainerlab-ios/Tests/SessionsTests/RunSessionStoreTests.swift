@@ -397,7 +397,7 @@ final class RunSessionStoreTests: XCTestCase {
             !store.state.commandChannelAvailable && store.state.transportBanner.message == "Polling Fallback"
         }
 
-        let pending = try await queue.pendingCount()
+        let pending = try await queue.pendingCount(simulationID: 420)
         XCTAssertEqual(pending, 0)
     }
 
@@ -583,10 +583,10 @@ final class RunSessionStoreTests: XCTestCase {
             service.replayPendingCalls.map(\.endpoint),
             [matching.endpoint, legacyMatch.endpoint]
         )
-        let pendingCount = try await queue.pendingCount()
+        let pendingCount = try await queue.pendingCount(simulationID: 420)
         let remainingEndpoints = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
             .map(\.endpoint)
-        XCTAssertEqual(pendingCount, 2)
+        XCTAssertEqual(pendingCount, 0)
         XCTAssertEqual(remainingEndpoints, [legacyMismatch.endpoint])
     }
 
@@ -615,10 +615,74 @@ final class RunSessionStoreTests: XCTestCase {
 
         await store.replayPendingCommands()
 
-        let pendingCount = try await queue.pendingCount()
+        let pendingCount = try await queue.pendingCount(simulationID: 420)
         let retryBatch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
-        XCTAssertEqual(pendingCount, 1)
+        XCTAssertEqual(pendingCount, 0)
         XCTAssertTrue(retryBatch.isEmpty)
+    }
+
+    func testStartConsoleScopesPendingCountToBoundSimulation() async throws {
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: queue
+        )
+
+        var matching = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        matching.nextRetryAt = .distantFuture
+
+        var legacyMatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+        legacyMatch.nextRetryAt = .distantFuture
+
+        var persistedMismatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421
+        )
+        persistedMismatch.nextRetryAt = .distantFuture
+
+        var legacyMismatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        )
+        legacyMismatch.nextRetryAt = .distantFuture
+
+        var terminalMatch = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        terminalMatch.retryCount = terminalMatch.maxRetries
+        terminalMatch.nextRetryAt = .distantFuture
+
+        try await queue.enqueue(matching)
+        try await queue.enqueue(legacyMatch)
+        try await queue.enqueue(persistedMismatch)
+        try await queue.enqueue(legacyMismatch)
+        try await queue.enqueue(terminalMatch)
+
+        store.bind(session: makeSession(status: .seeded))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.pendingCommandCount == 2
+        }
+
+        XCTAssertEqual(store.state.pendingCommandCount, 2)
     }
 
     func testSessionSeededEventRefreshesBoundState() async throws {

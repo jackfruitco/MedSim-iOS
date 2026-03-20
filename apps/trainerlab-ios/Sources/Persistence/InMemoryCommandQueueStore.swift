@@ -44,8 +44,8 @@ public actor InMemoryCommandQueueStore: CommandQueueStoreProtocol {
             .prefix(limit))
     }
 
-    public func pendingCount() async throws -> Int {
-        storage.count
+    public func pendingCount(simulationID: Int?) async throws -> Int {
+        storage.filter { $0.isActivePending && $0.matches(simulationID: simulationID) }.count
     }
 
     public func purgeAbandoned() async throws -> Int {

@@ -539,8 +539,61 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/77/adjust/"))
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/"))
         XCTAssertFalse(endpoints.contains("/api/v1/trainerlab/sessions/55/run/start/"))
-        let pendingCount = try await store.pendingCount()
+        let pendingCount = try await store.pendingCount(simulationID: nil)
         XCTAssertEqual(pendingCount, 2)
+    }
+
+    func testCommandQueuePendingCountScopesToActiveRowsForSimulation() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("trainerlab-queue-pending-count-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: dbURL) }
+
+        let store = try GRDBCommandQueueStore(fileURL: dbURL)
+
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil
+        ))
+
+        let terminal = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420
+        )
+        try await store.enqueue(terminal)
+        try await store.markTerminalFailure(idempotencyKey: terminal.idempotencyKey, error: "terminal")
+
+        let currentSimulationCount = try await store.pendingCount(simulationID: 420)
+        let otherSimulationCount = try await store.pendingCount(simulationID: 421)
+        let globalCount = try await store.pendingCount(simulationID: nil)
+
+        XCTAssertEqual(currentSimulationCount, 2)
+        XCTAssertEqual(otherSimulationCount, 2)
+        XCTAssertEqual(globalCount, 5)
     }
 
     private func seedLegacyQueueDatabase(at url: URL) throws {
