@@ -261,7 +261,7 @@ public actor GRDBCommandQueueStore: CommandQueueStoreProtocol {
             let activeRows = try PendingCommandEnvelope
                 .filter(Column("retry_count") < Column("max_retries"))
                 .fetchAll(db)
-            return activeRows.filter { $0.matches(simulationID: simulationID) }.count
+            return activeRows.count(where: { $0.matches(simulationID: simulationID) })
         }
     }
 

@@ -2376,11 +2376,11 @@ private struct InjuryQuickActionSheet: View {
     }
 
     @ViewBuilder private var statusSections: some View {
-            if selectedSuggestionType != nil {
-                Section("Effectiveness") {
-                    Picker("Effectiveness", selection: $effectiveness) {
-                        Text("Unknown").tag(InterventionEffectiveness.unknown)
-                        Text("Effective").tag(InterventionEffectiveness.effective)
+        if selectedSuggestionType != nil {
+            Section("Effectiveness") {
+                Picker("Effectiveness", selection: $effectiveness) {
+                    Text("Unknown").tag(InterventionEffectiveness.unknown)
+                    Text("Effective").tag(InterventionEffectiveness.effective)
                     Text("Partial").tag(InterventionEffectiveness.partiallyEffective)
                     Text("Ineffective").tag(InterventionEffectiveness.ineffective)
                 }

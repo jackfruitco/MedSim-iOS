@@ -688,7 +688,7 @@ final class RunSessionStoreTests: XCTestCase {
     func testSessionSeededEventRefreshesBoundState() async throws {
         let service = MockTrainerLabService()
         service.getSessionResult = .success(makeSession(status: .seeded))
-        service.getRuntimeStateResult = .success(try makeRuntimeState(status: "seeded"))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded"))
         service.listAnnotationsResult = .success([])
 
         let realtime = MockRealtimeClient()
