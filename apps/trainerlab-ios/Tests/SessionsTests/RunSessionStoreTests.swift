@@ -297,9 +297,9 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testVitalEventsTriggerAuthoritativeRefreshAndTimelineEntries() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(
                 status: "running",
                 vitals: [[
                     "vital_type": "heart_rate",
@@ -346,7 +346,7 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testBootstrapLoadsAuthoritativeRuntimeStateAndHistoricalTimeline() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = .success(try makeRuntimeState(
+        service.getRuntimeStateResult = try .success(makeRuntimeState(
             status: "seeded",
             stateRevision: 4,
             scenarioBrief: [
@@ -441,8 +441,8 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testStateUpdatedAuthoritativelyReplacesVitals() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
                 status: "running",
                 stateRevision: 1,
                 vitals: [[
@@ -451,7 +451,7 @@ final class RunSessionStoreTests: XCTestCase {
                     "max_value": 100,
                 ]]
             )),
-            .success(try makeRuntimeState(
+            .success(makeRuntimeState(
                 status: "running",
                 stateRevision: 2,
                 vitals: [[
@@ -495,9 +495,9 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testAIIntentUpdatedTriggersAuthoritativeRefresh() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(
                 status: "running",
                 aiPlan: [
                     "summary": "Reassess airway",
@@ -538,9 +538,9 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testBurstRuntimeEventsCoalesceToSingleRefresh() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(status: "running", stateRevision: 2)),
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(status: "running", stateRevision: 2)),
         ]
 
         let realtime = MockRealtimeClient()
@@ -571,7 +571,7 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testHistoryAndLiveTimelineDedupesAndSortsStably() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = .success(try makeRuntimeState(status: "running"))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
         service.listEventsResult = .success(PaginatedResponse(
             items: [
                 makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
