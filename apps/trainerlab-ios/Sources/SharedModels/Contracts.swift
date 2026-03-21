@@ -200,6 +200,96 @@ public struct SimulationStateChangedPayload: Codable, Equatable, Sendable {
     }
 }
 
+public struct SessionSeedingPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let scenarioSpec: [String: JSONValue]
+    public let stateRevision: Int
+    public let retryCount: Int?
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        scenarioSpec: [String: JSONValue],
+        stateRevision: Int,
+        retryCount: Int? = nil,
+        simulationID: Int? = nil
+    ) {
+        self.status = status
+        self.scenarioSpec = scenarioSpec
+        self.stateRevision = stateRevision
+        self.retryCount = retryCount
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case scenarioSpec = "scenario_spec"
+        case stateRevision = "state_revision"
+        case retryCount = "retry_count"
+        case simulationID = "simulation_id"
+    }
+}
+
+public struct SessionSeededPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let scenarioSpec: [String: JSONValue]
+    public let stateRevision: Int
+    public let callID: String?
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        scenarioSpec: [String: JSONValue],
+        stateRevision: Int,
+        callID: String? = nil,
+        simulationID: Int? = nil
+    ) {
+        self.status = status
+        self.scenarioSpec = scenarioSpec
+        self.stateRevision = stateRevision
+        self.callID = callID
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case scenarioSpec = "scenario_spec"
+        case stateRevision = "state_revision"
+        case callID = "call_id"
+        case simulationID = "simulation_id"
+    }
+}
+
+public struct SessionFailedPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let reasonCode: String
+    public let reasonText: String
+    public let retryable: Bool
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        reasonCode: String,
+        reasonText: String,
+        retryable: Bool,
+        simulationID: Int? = nil
+    ) {
+        self.status = status
+        self.reasonCode = reasonCode
+        self.reasonText = reasonText
+        self.retryable = retryable
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case reasonCode = "reason_code"
+        case reasonText = "reason_text"
+        case retryable
+        case simulationID = "simulation_id"
+    }
+}
+
 public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let eventID: String
     public let eventType: String
