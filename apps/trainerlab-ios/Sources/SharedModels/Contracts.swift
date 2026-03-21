@@ -1239,13 +1239,13 @@ public struct RuntimeDispositionState: Codable, Sendable {
 
 public struct RuntimeVitalState: Codable, Sendable {
     public let domainEventID: Int?
-    public let vitalType: String
-    public let minValue: Int
-    public let maxValue: Int
-    public let lockValue: Bool
+    public let vitalType: String?
+    public let minValue: Int?
+    public let maxValue: Int?
+    public let lockValue: Bool?
     public let minValueDiastolic: Int?
     public let maxValueDiastolic: Int?
-    public let trend: String
+    public let trend: String?
     public let source: String?
     public let timestamp: String?
 
@@ -1260,6 +1260,20 @@ public struct RuntimeVitalState: Codable, Sendable {
         case trend
         case source
         case timestamp
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
+        vitalType = try container.decodeIfPresent(String.self, forKey: .vitalType)
+        minValue = try container.decodeIfPresent(Int.self, forKey: .minValue)
+        maxValue = try container.decodeIfPresent(Int.self, forKey: .maxValue)
+        lockValue = try container.decodeIfPresent(Bool.self, forKey: .lockValue)
+        minValueDiastolic = try container.decodeIfPresent(Int.self, forKey: .minValueDiastolic)
+        maxValueDiastolic = try container.decodeIfPresent(Int.self, forKey: .maxValueDiastolic)
+        trend = try container.decodeIfPresent(String.self, forKey: .trend)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
     }
 }
 
@@ -1380,6 +1394,17 @@ public struct RuntimeInstructorIntent: Codable, Sendable {
         case upcomingChanges = "upcoming_changes"
         case monitoringFocus = "monitoring_focus"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        rationale = try container.decodeIfPresent(String.self, forKey: .rationale) ?? ""
+        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? ""
+        etaSeconds = try container.decodeIfPresent(Int.self, forKey: .etaSeconds)
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0
+        upcomingChanges = try container.decodeIfPresent([String].self, forKey: .upcomingChanges) ?? []
+        monitoringFocus = try container.decodeIfPresent([String].self, forKey: .monitoringFocus) ?? []
+    }
 }
 
 public struct TrainerRuntimeStateOut: Codable, Sendable {
@@ -1422,10 +1447,10 @@ public struct TrainerRuntimeStateOut: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         simulationID = try container.decode(Int.self, forKey: .simulationID)
-        sessionID = try container.decode(Int.self, forKey: .sessionID)
-        status = try container.decode(String.self, forKey: .status)
-        stateRevision = try container.decode(Int.self, forKey: .stateRevision)
-        activeElapsedSeconds = try container.decode(Int.self, forKey: .activeElapsedSeconds)
+        sessionID = try container.decodeIfPresent(Int.self, forKey: .sessionID) ?? simulationID
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+        stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
+        activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
         tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds)
         nextTickAt = try container.decodeIfPresent(Date.self, forKey: .nextTickAt)
         scenarioBrief = try container.decodeIfPresent(ScenarioBriefOut.self, forKey: .scenarioBrief)

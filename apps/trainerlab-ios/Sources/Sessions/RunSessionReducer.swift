@@ -24,8 +24,8 @@ public enum RunSessionReducer {
         case let .eventReceived(event):
             next.timeline.append(event)
             next.eventCursor = event.eventID
-            if next.timeline.count > 300 {
-                next.timeline.removeFirst(next.timeline.count - 300)
+            if next.timeline.count > 400 {
+                next.timeline.removeFirst(next.timeline.count - 400)
             }
             let eventType = canonicalEventType(event.eventType)
             if eventType.hasPrefix("run."), let session = next.session {

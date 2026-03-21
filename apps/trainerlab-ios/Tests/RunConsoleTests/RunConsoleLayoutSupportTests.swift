@@ -124,7 +124,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .loc), "LOC")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: injuryEntry), "Change")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: lifecycleEntry), "Run Started")
-        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Trainer Note")
+        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Anything")
     }
 
     func testControlCatalogSeparatesSessionAndQuickControls() {
@@ -142,7 +142,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         )
     }
 
-    func testTimelineFiltersHideNotesFromRunConsole() {
+    func testTimelineFiltersIncludeNotesInRunConsole() {
         let causeEntry = ClinicalTimelineEntry(
             dedupeKey: "cause-1",
             kind: .cause,
@@ -162,8 +162,12 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             matching: .all
         )
 
-        XCTAssertFalse(RunConsoleTimelineFilter.allCases.contains(.kind(.note)))
-        XCTAssertEqual(visibleEntries, [causeEntry])
+        XCTAssertTrue(RunConsoleTimelineFilter.allCases.contains(.kind(.note)))
+        XCTAssertEqual(visibleEntries, [causeEntry, noteEntry])
+        XCTAssertEqual(
+            RunConsoleTimelineFilter.visibleEntries(from: [causeEntry, noteEntry], matching: .kind(.note)),
+            [noteEntry]
+        )
     }
 
     func testLifecycleActionsMatchSessionStatus() {

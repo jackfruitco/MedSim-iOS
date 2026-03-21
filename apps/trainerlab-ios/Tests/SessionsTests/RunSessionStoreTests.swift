@@ -23,7 +23,11 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var retryInitialCalls: [Int] = []
     var retryInitialResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
     var getRuntimeStateCalls: [Int] = []
+    var getRuntimeStateResultsQueue: [Result<TrainerRuntimeStateOut, Error>] = []
     var getRuntimeStateResult: Result<TrainerRuntimeStateOut, Error> = .failure(MockServiceError.unused)
+    var listEventsCalls: [(simulationID: Int, cursor: String?, limit: Int)] = []
+    var listEventsResultsQueue: [Result<PaginatedResponse<EventEnvelope>, Error>] = []
+    var listEventsResult: Result<PaginatedResponse<EventEnvelope>, Error> = .failure(MockServiceError.unused)
     var listAnnotationsCalls: [Int] = []
     var listAnnotationsResult: Result<[AnnotationOut], Error> = .failure(MockServiceError.unused)
     var replayPendingCalls: [ReplayPendingCall] = []
@@ -57,6 +61,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {
         getRuntimeStateCalls.append(simulationID)
+        if !getRuntimeStateResultsQueue.isEmpty {
+            return try getRuntimeStateResultsQueue.removeFirst().get()
+        }
         return try getRuntimeStateResult.get()
     }
 
@@ -77,8 +84,12 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<EventEnvelope> {
-        throw MockServiceError.unused
+    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<EventEnvelope> {
+        listEventsCalls.append((simulationID: simulationID, cursor: cursor, limit: limit))
+        if !listEventsResultsQueue.isEmpty {
+            return try listEventsResultsQueue.removeFirst().get()
+        }
+        return try listEventsResult.get()
     }
 
     func getRunSummary(simulationID _: Int) async throws -> RunSummary {
@@ -210,6 +221,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     let events: AsyncStream<EventEnvelope>
     let transportStates: AsyncStream<RealtimeTransportState>
+    private(set) var connectCalls: [(simulationID: Int, cursor: String?)] = []
 
     private let eventContinuation: AsyncStream<EventEnvelope>.Continuation
     private let stateContinuation: AsyncStream<RealtimeTransportState>.Continuation
@@ -229,7 +241,8 @@ private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Senda
         stateContinuation = stateCont
     }
 
-    func connect(simulationID _: Int, cursor _: String?) async {
+    func connect(simulationID: Int, cursor: String?) async {
+        connectCalls.append((simulationID: simulationID, cursor: cursor))
         stateContinuation.yield(.connecting)
         stateContinuation.yield(.connectedSSE)
     }
@@ -282,16 +295,32 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .loc)
     }
 
-    func testVitalEventsDoNotCreateClinicalTimelineEntries() async {
+    func testVitalEventsTriggerAuthoritativeRefreshAndTimelineEntries() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = [
+            .success(try makeRuntimeState(status: "running")),
+            .success(try makeRuntimeState(
+                status: "running",
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 80,
+                    "max_value": 140,
+                ]]
+            )),
+        ]
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
-            service: MockTrainerLabService(),
+            service: service,
             realtimeClient: realtime,
             commandQueue: InMemoryCommandQueueStore()
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
         defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
 
         realtime.emit(event: EventEnvelope(
             eventID: "vital-1",
@@ -305,11 +334,282 @@ final class RunSessionStoreTests: XCTestCase {
             ]
         ))
 
-        await waitUntil(timeout: 1.5) {
-            store.state.vitals.count == 1
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+                && store.state.vitals.count == 1
+                && store.state.clinicalTimelineEntries.first?.kind == .vitals
         }
 
-        XCTAssertTrue(store.state.clinicalTimelineEntries.isEmpty)
+        XCTAssertEqual(store.state.vitals.first?.key, "heart_rate")
+        XCTAssertEqual(store.state.clinicalTimelineEntries.first?.title, "Vital Update")
+    }
+
+    func testBootstrapLoadsAuthoritativeRuntimeStateAndHistoricalTimeline() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = .success(try makeRuntimeState(
+            status: "seeded",
+            stateRevision: 4,
+            scenarioBrief: [
+                "read_aloud_brief": "Patrol medic called to blast injury.",
+                "environment": "Night operation",
+            ],
+            causes: [[
+                "cause_id": 11,
+                "kind": "injury",
+                "title": "Blast Injury",
+                "description": "Open wound to the left arm",
+                "injury_location": "LEFT_ARM",
+            ]],
+            problems: [[
+                "problem_id": 21,
+                "title": "Hemorrhagic Shock",
+                "status": "active",
+                "cause_id": 11,
+                "anatomical_location": "LEFT_ARM",
+            ]],
+            vitals: [[
+                "vital_type": "heart_rate",
+                "min_value": 120,
+                "max_value": 140,
+            ]],
+            pulses: [[
+                "location": "radial_left",
+                "present": false,
+                "quality": "weak",
+            ]],
+            assessmentFindings: [[
+                "title": "Absent breath sounds",
+                "status": "present",
+            ]],
+            diagnosticResults: [[
+                "title": "Ultrasound pending",
+                "status": "queued",
+            ]],
+            resources: [[
+                "title": "Whole blood available",
+                "status": "ready",
+            ]],
+            disposition: [
+                "title": "Urgent evacuation",
+                "status": "requested",
+            ],
+            patientStatus: [
+                "avpu": "verbal",
+                "narrative": "Increasing respiratory distress.",
+                "respiratory_distress": true,
+            ],
+            aiPlan: [
+                "summary": "Escalate respiratory distress",
+                "upcoming_changes": ["Decrease SpO2"],
+            ]
+        ))
+        service.listEventsResult = .success(PaginatedResponse(
+            items: [
+                makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
+                makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
+            ],
+            nextCursor: nil,
+            hasMore: false
+        ))
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .seeded))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 2.0) {
+            store.runtimeState?.stateRevision == 4
+                && store.state.clinicalTimelineEntries.count == 2
+                && realtime.connectCalls.first?.cursor == "run-1"
+        }
+
+        XCTAssertEqual(store.state.vitals.first?.key, "heart_rate")
+        XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
+        XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 11)
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
+        XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
+        XCTAssertEqual(store.runtimeState?.aiPlan?.summary, "Escalate respiratory distress")
+        XCTAssertEqual(store.state.clinicalTimelineEntries.map(\.title), ["Run Started", "Scenario Ready"])
+    }
+
+    func testStateUpdatedAuthoritativelyReplacesVitals() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = [
+            .success(try makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 80,
+                    "max_value": 100,
+                ]]
+            )),
+            .success(try makeRuntimeState(
+                status: "running",
+                stateRevision: 2,
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 120,
+                    "max_value": 150,
+                ]]
+            )),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.vitals.first?.minValue == 80
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "state-2",
+            eventType: "state.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:]
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+                && store.state.vitals.first?.minValue == 120
+                && store.state.vitals.first?.maxValue == 150
+        }
+
+        XCTAssertEqual(store.state.vitals.count, 1)
+    }
+
+    func testAIIntentUpdatedTriggersAuthoritativeRefresh() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = [
+            .success(try makeRuntimeState(status: "running")),
+            .success(try makeRuntimeState(
+                status: "running",
+                aiPlan: [
+                    "summary": "Reassess airway",
+                    "rationale": "SpO2 is falling",
+                ]
+            )),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "ai-1",
+            eventType: "ai.intent.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: ["summary": .string("Reassess airway")]
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+                && store.runtimeState?.aiPlan?.summary == "Reassess airway"
+        }
+
+        XCTAssertEqual(store.state.clinicalTimelineEntries.first?.title, "AI Instructor")
+    }
+
+    func testBurstRuntimeEventsCoalesceToSingleRefresh() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = [
+            .success(try makeRuntimeState(status: "running")),
+            .success(try makeRuntimeState(status: "running", stateRevision: 2)),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(eventID: "e1", eventType: "state.updated", createdAt: Date(), correlationID: nil, payload: [:]))
+        realtime.emit(event: EventEnvelope(eventID: "e2", eventType: "ai.intent.updated", createdAt: Date(), correlationID: nil, payload: [:]))
+        realtime.emit(event: EventEnvelope(eventID: "e3", eventType: "recommended_intervention.updated", createdAt: Date(), correlationID: nil, payload: [:]))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+        }
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(service.getRuntimeStateCalls.count, 2)
+    }
+
+    func testHistoryAndLiveTimelineDedupesAndSortsStably() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = .success(try makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(
+            items: [
+                makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
+                makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
+            ],
+            nextCursor: nil,
+            hasMore: false
+        ))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 2.0) {
+            store.state.timeline.count == 2
+        }
+
+        realtime.emit(event: makeLifecycleEvent(
+            eventID: "run-1",
+            eventType: "run.started",
+            createdAt: Date(timeIntervalSince1970: 20)
+        ))
+        realtime.emit(event: makeLifecycleEvent(
+            eventID: "run-2",
+            eventType: "run.paused",
+            createdAt: Date(timeIntervalSince1970: 30)
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            store.state.timeline.map(\.eventID) == ["seed-1", "run-1", "run-2"]
+                && store.state.clinicalTimelineEntries.map(\.title) == ["Run Paused", "Run Started", "Scenario Ready"]
+        }
     }
 
     func testStopwatchTracksRunLifecycleTransitions() async throws {
@@ -986,43 +1286,72 @@ final class RunSessionStoreTests: XCTestCase {
         )
     }
 
-    private func makeRuntimeState(status: String, stateRevision: Int = 1) throws -> TrainerRuntimeStateOut {
-        let json = """
-        {
-          "simulation_id": 420,
-          "session_id": 420,
-          "status": "\(status)",
-          "state_revision": \(stateRevision),
-          "active_elapsed_seconds": 0,
-          "tick_interval_seconds": 15,
-          "next_tick_at": null,
-          "scenario_brief": null,
-          "current_snapshot": {
-            "causes": [],
-            "problems": [],
-            "recommended_interventions": [],
-            "interventions": [],
-            "assessment_findings": [],
-            "diagnostic_results": [],
-            "resources": [],
-            "disposition": null,
-            "vitals": [],
-            "pulses": [],
-            "patient_status": {}
-          },
-          "ai_plan": null,
-          "ai_rationale_notes": [],
-          "pending_runtime_reasons": [],
-          "pending_reasons": [],
-          "currently_processing_reasons": [],
-          "last_runtime_error": "",
-          "last_ai_tick_at": null
-        }
-        """
+    private func makeRuntimeState(
+        status: String,
+        stateRevision: Int = 1,
+        scenarioBrief: [String: Any]? = nil,
+        causes: [[String: Any]] = [],
+        problems: [[String: Any]] = [],
+        vitals: [[String: Any]] = [],
+        pulses: [[String: Any]] = [],
+        recommendedInterventions: [[String: Any]] = [],
+        interventions: [[String: Any]] = [],
+        assessmentFindings: [[String: Any]] = [],
+        diagnosticResults: [[String: Any]] = [],
+        resources: [[String: Any]] = [],
+        disposition: [String: Any]? = nil,
+        patientStatus: [String: Any] = [:],
+        aiPlan: [String: Any]? = nil
+    ) throws -> TrainerRuntimeStateOut {
+        let payload: [String: Any] = [
+            "simulation_id": 420,
+            "session_id": 420,
+            "status": status,
+            "state_revision": stateRevision,
+            "active_elapsed_seconds": 0,
+            "tick_interval_seconds": 15,
+            "next_tick_at": NSNull(),
+            "scenario_brief": scenarioBrief ?? NSNull(),
+            "current_snapshot": [
+                "causes": causes,
+                "problems": problems,
+                "recommended_interventions": recommendedInterventions,
+                "interventions": interventions,
+                "assessment_findings": assessmentFindings,
+                "diagnostic_results": diagnosticResults,
+                "resources": resources,
+                "disposition": disposition ?? (NSNull() as Any),
+                "vitals": vitals,
+                "pulses": pulses,
+                "patient_status": patientStatus,
+            ],
+            "ai_plan": aiPlan ?? NSNull(),
+            "ai_rationale_notes": [],
+            "pending_runtime_reasons": [],
+            "pending_reasons": [],
+            "currently_processing_reasons": [],
+            "last_runtime_error": "",
+            "last_ai_tick_at": NSNull(),
+        ]
 
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        return try decoder.decode(TrainerRuntimeStateOut.self, from: data)
+    }
+
+    private func makeLifecycleEvent(
+        eventID: String,
+        eventType: String,
+        createdAt: Date
+    ) -> EventEnvelope {
+        EventEnvelope(
+            eventID: eventID,
+            eventType: eventType,
+            createdAt: createdAt,
+            correlationID: nil,
+            payload: [:]
+        )
     }
 
     private func waitUntil(

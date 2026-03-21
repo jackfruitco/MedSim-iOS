@@ -546,6 +546,89 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNotNil(state.lastAITickAt)
     }
 
+    func testTrainerRuntimeStateDecodesVitalWithoutLockValue() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "status": "running",
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [
+              {
+                "vital_type": "heart_rate",
+                "min_value": 80,
+                "max_value": 120
+              }
+            ],
+            "pulses": [],
+            "patient_status": {}
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.currentSnapshot.vitals.first?.vitalType, "heart_rate")
+        XCTAssertNil(state.currentSnapshot.vitals.first?.lockValue)
+    }
+
+    func testTrainerRuntimeStateDecodesSparseAIPlan() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "status": "running",
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "ai_plan": {
+            "summary": "Watch SpO2"
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.aiPlan?.summary, "Watch SpO2")
+        XCTAssertEqual(state.aiPlan?.rationale, "")
+        XCTAssertEqual(state.aiPlan?.monitoringFocus, [])
+    }
+
+    func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {
+        let json = """
+        {
+          "event_id": "rec-removed-1",
+          "event_type": "recommended_intervention.removed",
+          "created_at": "2026-03-20T13:56:34.990952+00:00",
+          "payload": {
+            "recommendation_id": 91,
+            "target_problem_id": 12
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+
+        XCTAssertEqual(event.eventType, "recommended_intervention.removed")
+        XCTAssertEqual(event.payload["recommendation_id"], .number(91))
+    }
+
     func testControlPlaneDebugDecodesCurrentBackendShape() throws {
         let json = """
         {
