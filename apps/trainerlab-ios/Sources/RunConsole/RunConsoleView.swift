@@ -216,8 +216,8 @@ public struct RunConsoleView: View {
                         ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
                         : "Waiting for vital ranges from runtime events."
                 )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } else if layoutMode == .regular {
                 HStack(spacing: 8) {
                     ForEach(orderedVitals) { vital in

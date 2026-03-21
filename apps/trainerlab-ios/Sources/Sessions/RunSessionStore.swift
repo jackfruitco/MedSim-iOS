@@ -32,6 +32,18 @@ public final class RunSessionStore: ObservableObject {
     private var stopwatchTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
 
+    private struct SessionLifecycleSnapshot {
+        let status: TrainerSessionStatus
+        let scenarioSpec: [String: JSONValue]?
+        let modifiedAt: Date
+        let runStartedAt: Date?
+        let runPausedAt: Date?
+        let runCompletedAt: Date?
+        let terminalReasonCode: String?
+        let terminalReasonText: String?
+        let retryable: Bool?
+    }
+
     public init(
         service: TrainerLabServiceProtocol,
         realtimeClient: RealtimeClientProtocol,
@@ -768,13 +780,13 @@ public final class RunSessionStore: ObservableObject {
     private func handleSessionLifecycleEvent(_ event: EventEnvelope) -> Bool {
         switch canonicalEventType(event.eventType) {
         case "session.seeding":
-            return handleSessionSeeding(event)
+            handleSessionSeeding(event)
         case "session.seeded":
-            return handleSessionSeeded(event)
+            handleSessionSeeded(event)
         case "session.failed":
-            return handleSessionFailed(event)
+            handleSessionFailed(event)
         default:
-            return false
+            false
         }
     }
 
@@ -807,15 +819,17 @@ public final class RunSessionStore: ObservableObject {
 
             let seedingSession = sessionWithLifecycleUpdate(
                 from: session,
-                status: .seeding,
-                scenarioSpec: payload.scenarioSpec,
-                modifiedAt: max(session.modifiedAt, event.createdAt),
-                runStartedAt: nil,
-                runPausedAt: nil,
-                runCompletedAt: nil,
-                terminalReasonCode: nil,
-                terminalReasonText: nil,
-                retryable: nil
+                snapshot: SessionLifecycleSnapshot(
+                    status: .seeding,
+                    scenarioSpec: payload.scenarioSpec,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: nil,
+                    runPausedAt: nil,
+                    runCompletedAt: nil,
+                    terminalReasonCode: nil,
+                    terminalReasonText: nil,
+                    retryable: nil
+                )
             )
 
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seedingSession))
@@ -859,15 +873,17 @@ public final class RunSessionStore: ObservableObject {
 
             let seededSession = sessionWithLifecycleUpdate(
                 from: session,
-                status: .seeded,
-                scenarioSpec: payload.scenarioSpec,
-                modifiedAt: max(session.modifiedAt, event.createdAt),
-                runStartedAt: nil,
-                runPausedAt: nil,
-                runCompletedAt: nil,
-                terminalReasonCode: nil,
-                terminalReasonText: nil,
-                retryable: nil
+                snapshot: SessionLifecycleSnapshot(
+                    status: .seeded,
+                    scenarioSpec: payload.scenarioSpec,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: nil,
+                    runPausedAt: nil,
+                    runCompletedAt: nil,
+                    terminalReasonCode: nil,
+                    terminalReasonText: nil,
+                    retryable: nil
+                )
             )
 
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seededSession))
@@ -919,14 +935,17 @@ public final class RunSessionStore: ObservableObject {
 
             let failedSession = sessionWithLifecycleUpdate(
                 from: session,
-                status: .failed,
-                modifiedAt: max(session.modifiedAt, event.createdAt),
-                runStartedAt: session.runStartedAt,
-                runPausedAt: session.runPausedAt,
-                runCompletedAt: event.createdAt,
-                terminalReasonCode: payload.reasonCode,
-                terminalReasonText: payload.reasonText,
-                retryable: payload.retryable
+                snapshot: SessionLifecycleSnapshot(
+                    status: .failed,
+                    scenarioSpec: nil,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: session.runStartedAt,
+                    runPausedAt: session.runPausedAt,
+                    runCompletedAt: event.createdAt,
+                    terminalReasonCode: payload.reasonCode,
+                    terminalReasonText: payload.reasonText,
+                    retryable: payload.retryable
+                )
             )
 
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
@@ -972,32 +991,24 @@ public final class RunSessionStore: ObservableObject {
 
     private func sessionWithLifecycleUpdate(
         from session: TrainerSessionDTO,
-        status: TrainerSessionStatus,
-        scenarioSpec: [String: JSONValue]? = nil,
-        modifiedAt: Date,
-        runStartedAt: Date?,
-        runPausedAt: Date?,
-        runCompletedAt: Date?,
-        terminalReasonCode: String?,
-        terminalReasonText: String?,
-        retryable: Bool?
+        snapshot: SessionLifecycleSnapshot
     ) -> TrainerSessionDTO {
         TrainerSessionDTO(
             simulationID: session.simulationID,
-            status: status,
-            scenarioSpec: scenarioSpec ?? session.scenarioSpec,
+            status: snapshot.status,
+            scenarioSpec: snapshot.scenarioSpec ?? session.scenarioSpec,
             runtimeState: session.runtimeState,
             initialDirectives: session.initialDirectives,
             tickIntervalSeconds: session.tickIntervalSeconds,
-            runStartedAt: runStartedAt,
-            runPausedAt: runPausedAt,
-            runCompletedAt: runCompletedAt,
+            runStartedAt: snapshot.runStartedAt,
+            runPausedAt: snapshot.runPausedAt,
+            runCompletedAt: snapshot.runCompletedAt,
             lastAITickAt: session.lastAITickAt,
             createdAt: session.createdAt,
-            modifiedAt: modifiedAt,
-            terminalReasonCode: terminalReasonCode,
-            terminalReasonText: terminalReasonText,
-            retryable: retryable
+            modifiedAt: snapshot.modifiedAt,
+            terminalReasonCode: snapshot.terminalReasonCode,
+            terminalReasonText: snapshot.terminalReasonText,
+            retryable: snapshot.retryable
         )
     }
 
