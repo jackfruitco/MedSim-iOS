@@ -89,13 +89,13 @@ public final class RunSessionStore: ObservableObject {
         eventTask = Task { [weak self] in
             guard let self else { return }
             for await event in realtimeClient.events {
-                let outcome = await self.handleIncomingEvent(event)
+                let outcome = await handleIncomingEvent(event)
                 if outcome.shouldRehydrateSeededSession {
-                    await self.refreshSession()
-                    await self.loadAnnotations()
+                    await refreshSession()
+                    await loadAnnotations()
                 }
                 if outcome.shouldRefreshRuntimeState {
-                    await self.scheduleRuntimeRefresh(reason: "event \(outcome.canonicalEventType)")
+                    await scheduleRuntimeRefresh(reason: "event \(outcome.canonicalEventType)")
                 }
             }
         }
@@ -136,7 +136,7 @@ public final class RunSessionStore: ObservableObject {
 
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
-            await self.bootstrapConsole(for: session)
+            await bootstrapConsole(for: session)
         }
 
         loadInterventionDictionary()
@@ -225,9 +225,9 @@ public final class RunSessionStore: ObservableObject {
         applyHistoricalEvents(historicalEvents)
 
         logger.info(
-            "Connecting realtime stream for simulation \(session.simulationID, privacy: .public) from cursor \(self.state.eventCursor ?? "nil", privacy: .public)"
+            "Connecting realtime stream for simulation \(session.simulationID, privacy: .public) from cursor \(state.eventCursor ?? "nil", privacy: .public)"
         )
-        await realtimeClient.connect(simulationID: session.simulationID, cursor: self.state.eventCursor)
+        await realtimeClient.connect(simulationID: session.simulationID, cursor: state.eventCursor)
         await loadAnnotations()
         await replayPendingCommands()
         await refreshPendingCount()
@@ -273,7 +273,7 @@ public final class RunSessionStore: ObservableObject {
 
     private func applyHistoricalEvents(_ events: [EventEnvelope]) {
         guard !events.isEmpty else {
-            logger.info("No historical events found for simulation \(self.state.session?.simulationID ?? -1, privacy: .public)")
+            logger.info("No historical events found for simulation \(state.session?.simulationID ?? -1, privacy: .public)")
             normalizeStoredTimelineEvents()
             return
         }
@@ -282,7 +282,7 @@ public final class RunSessionStore: ObservableObject {
         state.eventCursor = state.timeline.last?.eventID
         rebuildClinicalTimelineEntries(from: state.timeline)
         logger.info(
-            "Applied \(self.state.timeline.count, privacy: .public) historical events for simulation \(self.state.session?.simulationID ?? -1, privacy: .public)"
+            "Applied \(state.timeline.count, privacy: .public) historical events for simulation \(state.session?.simulationID ?? -1, privacy: .public)"
         )
     }
 
@@ -845,7 +845,7 @@ public final class RunSessionStore: ObservableObject {
         guard runtimeRefreshTask == nil else { return }
         runtimeRefreshTask = Task { [weak self] in
             guard let self else { return }
-            await self.flushScheduledRuntimeRefreshes()
+            await flushScheduledRuntimeRefreshes()
         }
     }
 
@@ -863,15 +863,15 @@ public final class RunSessionStore: ObservableObject {
     private func transportDescription(_ transport: RealtimeTransportState) -> String {
         switch transport {
         case .connectedSSE:
-            return "connected_sse"
+            "connected_sse"
         case .polling:
-            return "polling"
+            "polling"
         case let .reconnecting(attempt):
-            return "reconnecting_\(attempt)"
+            "reconnecting_\(attempt)"
         case .connecting:
-            return "connecting"
+            "connecting"
         case .disconnected:
-            return "disconnected"
+            "disconnected"
         }
     }
 
@@ -1277,11 +1277,10 @@ public final class RunSessionStore: ObservableObject {
                 ?? "vitals"
             let minValue = jsonInt(event.payload["min_value"])
             let maxValue = jsonInt(event.payload["max_value"])
-            let message: String
-            if let minValue, let maxValue {
-                message = "\(humanizedLabel(vitalType)) range \(minValue)-\(maxValue)"
+            let message: String = if let minValue, let maxValue {
+                "\(humanizedLabel(vitalType)) range \(minValue)-\(maxValue)"
             } else {
-                message = eventPrimaryLabel(from: event.payload) ?? "\(humanizedLabel(vitalType)) updated"
+                eventPrimaryLabel(from: event.payload) ?? "\(humanizedLabel(vitalType)) updated"
             }
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",

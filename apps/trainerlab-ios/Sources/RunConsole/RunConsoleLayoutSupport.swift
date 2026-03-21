@@ -237,7 +237,7 @@ enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
         from entries: [ClinicalTimelineEntry],
         matching filter: RunConsoleTimelineFilter
     ) -> [ClinicalTimelineEntry] {
-        return switch filter {
+        switch filter {
         case .all:
             entries
         case let .kind(kind):
