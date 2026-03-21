@@ -6,11 +6,13 @@ import XCTest
 
 private enum MockError: Error, LocalizedError {
     case signInFailed
+    case appleSignInFailed
     case accessMeFailed
 
     var errorDescription: String? {
         switch self {
         case .signInFailed: "Sign in failed."
+        case .appleSignInFailed: "Apple sign in failed."
         case .accessMeFailed: "Access check failed."
         }
     }
@@ -20,11 +22,35 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
     var signInResult: Result<AuthTokens, Error> = .success(
         AuthTokens(accessToken: "a", refreshToken: "r", expiresIn: 3600, tokenType: "Bearer")
     )
+    var signInWithAppleResult: Result<AppleSignInResult, Error> = .success(
+        .authenticated(
+            AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer")
+        )
+    )
+    var completeAppleSignupResult: Result<AuthTokens, Error> = .success(
+        AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer")
+    )
     var signOutCalled = false
     var hasActiveTokensValue = false
 
     func signIn(email _: String, password _: String) async throws -> AuthTokens {
         try signInResult.get()
+    }
+
+    func signInWithApple(
+        credential _: AppleSignInCredential,
+        invitationToken _: String?
+    ) async throws -> AppleSignInResult {
+        try signInWithAppleResult.get()
+    }
+
+    func completeAppleSignup(
+        pendingSignup _: PendingAppleSignup,
+        roleID _: Int,
+        givenName _: String,
+        familyName _: String
+    ) async throws -> AuthTokens {
+        try completeAppleSignupResult.get()
     }
 
     func signOut() async {
@@ -279,6 +305,105 @@ final class AuthViewModelTests: XCTestCase {
         vm.password = "secret"
         await vm.signIn()
         XCTAssertFalse(vm.isLoading)
+    }
+
+    func testAppleSignInSuccessSetsAuthenticated() async {
+        let vm = AuthViewModel(authService: MockAuthService(), trainerService: MockTrainerLabService())
+
+        await vm.signInWithApple(
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+        )
+
+        XCTAssertTrue(vm.isAuthenticated)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.pendingAppleSignup)
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    func testAppleSignInProfileCompletionSetsPendingSignup() async {
+        let authService = MockAuthService()
+        authService.signInWithAppleResult = .success(
+            .profileCompletionRequired(
+                PendingAppleSignup(
+                    signupToken: "signup-token",
+                    email: "new@example.com",
+                    givenName: "New",
+                    familyName: "User",
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
+                )
+            )
+        )
+        let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
+
+        await vm.signInWithApple(
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+        )
+
+        XCTAssertFalse(vm.isAuthenticated)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.pendingAppleSignup?.signupToken, "signup-token")
+    }
+
+    func testAppleSignInFailureSetsError() async {
+        let authService = MockAuthService()
+        authService.signInWithAppleResult = .failure(MockError.appleSignInFailed)
+        let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
+
+        await vm.signInWithApple(
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+        )
+
+        XCTAssertFalse(vm.isAuthenticated)
+        XCTAssertEqual(vm.errorMessage, MockError.appleSignInFailed.localizedDescription)
+    }
+
+    func testCompleteAppleSignupSuccessSetsAuthenticated() async {
+        let authService = MockAuthService()
+        authService.signInWithAppleResult = .success(
+            .profileCompletionRequired(
+                PendingAppleSignup(
+                    signupToken: "signup-token",
+                    email: "new@example.com",
+                    givenName: "New",
+                    familyName: "User",
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
+                )
+            )
+        )
+        let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
+
+        await vm.signInWithApple(
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+        )
+        await vm.completeAppleSignup(roleID: 1, givenName: "New", familyName: "User")
+
+        XCTAssertTrue(vm.isAuthenticated)
+        XCTAssertNil(vm.pendingAppleSignup)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    func testCompleteAppleSignupWithoutRoleSetsError() async {
+        let authService = MockAuthService()
+        authService.signInWithAppleResult = .success(
+            .profileCompletionRequired(
+                PendingAppleSignup(
+                    signupToken: "signup-token",
+                    email: "new@example.com",
+                    givenName: "New",
+                    familyName: "User",
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
+                )
+            )
+        )
+        let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
+
+        await vm.signInWithApple(
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+        )
+        await vm.completeAppleSignup(roleID: nil, givenName: "New", familyName: "User")
+
+        XCTAssertEqual(vm.errorMessage, "Role is required.")
+        XCTAssertFalse(vm.isAuthenticated)
     }
 
     func testSignOutClearsAuthState() async {

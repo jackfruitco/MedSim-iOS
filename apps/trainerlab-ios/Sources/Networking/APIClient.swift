@@ -48,6 +48,16 @@ public struct EmptyResponse: Decodable, Sendable {
     public init() {}
 }
 
+public struct HTTPResponseData: Sendable {
+    public let statusCode: Int
+    public let data: Data
+
+    public init(statusCode: Int, data: Data) {
+        self.statusCode = statusCode
+        self.data = data
+    }
+}
+
 public enum APIClientError: Error, Equatable {
     case invalidURL
     case invalidResponse
@@ -60,6 +70,7 @@ public enum APIClientError: Error, Equatable {
 public protocol APIClientProtocol: Sendable {
     func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as type: T.Type) async throws -> T
     func requestData(_ endpoint: Endpoint) async throws -> Data
+    func perform(_ endpoint: Endpoint) async throws -> HTTPResponseData
     func baseURL() async -> URL
 }
 
@@ -122,27 +133,20 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         try await execute(endpoint: endpoint, allowRefreshRetry: endpoint.requiresAuth)
     }
 
+    public func perform(_ endpoint: Endpoint) async throws -> HTTPResponseData {
+        let (data, response) = try await executeRaw(
+            endpoint: endpoint,
+            allowRefreshRetry: endpoint.requiresAuth
+        )
+        return HTTPResponseData(statusCode: response.statusCode, data: data)
+    }
+
     private func execute(endpoint: Endpoint, allowRefreshRetry: Bool, retryCount: Int = 0) async throws -> Data {
-        let request = try await buildRequest(for: endpoint)
-        logger.debug("\(endpoint.method.rawValue) \(request.url?.absoluteString ?? endpoint.path)")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw APIClientError.invalidResponse
-        }
-
-        if http.statusCode == 401, allowRefreshRetry {
-            logger.info("401 on \(endpoint.path) — attempting token refresh")
-            _ = try await refreshAccessTokenSingleFlight()
-            return try await execute(endpoint: endpoint, allowRefreshRetry: false)
-        }
-
-        if http.statusCode == 503, retryCount < 3 {
-            let delay = pow(2.0, Double(retryCount)) + Double.random(in: 0 ... 0.5)
-            logger.warning("503 on \(endpoint.path) — retrying in \(delay)s (attempt \(retryCount + 1)/3)")
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            return try await execute(endpoint: endpoint, allowRefreshRetry: allowRefreshRetry, retryCount: retryCount + 1)
-        }
-
+        let (data, http) = try await executeRaw(
+            endpoint: endpoint,
+            allowRefreshRetry: allowRefreshRetry,
+            retryCount: retryCount
+        )
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<binary>"
             logger.error("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path): \(body)")
@@ -154,6 +158,37 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
 
         logger.debug("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path)")
         return data
+    }
+
+    private func executeRaw(
+        endpoint: Endpoint,
+        allowRefreshRetry: Bool,
+        retryCount: Int = 0
+    ) async throws -> (Data, HTTPURLResponse) {
+        let request = try await buildRequest(for: endpoint)
+        logger.debug("\(endpoint.method.rawValue) \(request.url?.absoluteString ?? endpoint.path)")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIClientError.invalidResponse
+        }
+
+        if http.statusCode == 401, allowRefreshRetry {
+            logger.info("401 on \(endpoint.path) — attempting token refresh")
+            _ = try await refreshAccessTokenSingleFlight()
+            return try await executeRaw(endpoint: endpoint, allowRefreshRetry: false)
+        }
+
+        if http.statusCode == 503, retryCount < 3 {
+            let delay = pow(2.0, Double(retryCount)) + Double.random(in: 0 ... 0.5)
+            logger.warning("503 on \(endpoint.path) — retrying in \(delay)s (attempt \(retryCount + 1)/3)")
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            return try await executeRaw(
+                endpoint: endpoint,
+                allowRefreshRetry: allowRefreshRetry,
+                retryCount: retryCount + 1
+            )
+        }
+        return (data, http)
     }
 
     private func buildRequest(for endpoint: Endpoint) async throws -> URLRequest {
