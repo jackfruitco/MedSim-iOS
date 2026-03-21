@@ -133,7 +133,6 @@ public struct RunConsoleView: View {
         }
         .task {
             store.startConsole()
-            await store.loadRuntimeState()
             await store.loadControlPlaneDebug()
         }
         .onDisappear {
@@ -518,22 +517,25 @@ public struct RunConsoleView: View {
         }
     }
 
-    // MARK: - Combined Info Panel (Scenario Brief + AI Instructor)
+    // MARK: - Combined Info Panel (Scenario Brief + Patient Status + AI Instructor)
 
-    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor, annotations }
+    private enum ActiveInfoPanel: Equatable { case scenarioBrief, patientStatus, aiInstructor, annotations }
 
     private var combinedInfoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Segmented pill + collapse button
             HStack(spacing: 8) {
-                HStack(spacing: 0) {
-                    infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
-                    infoPanelSegment(.aiInstructor, label: "AI Instructor")
-                    infoPanelSegment(.annotations, label: "Annotations")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
+                        infoPanelSegment(.patientStatus, label: "Patient Status")
+                        infoPanelSegment(.aiInstructor, label: "AI Instructor")
+                        infoPanelSegment(.annotations, label: "Annotations")
+                    }
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
                 }
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
 
                 if activeInfoPanel != nil {
                     Button {
@@ -557,6 +559,8 @@ public struct RunConsoleView: View {
 
                 if activeInfoPanel == .scenarioBrief {
                     scenarioBriefContent
+                } else if activeInfoPanel == .patientStatus {
+                    patientStatusContent
                 } else if activeInfoPanel == .aiInstructor {
                     aiInstructorContent
                 } else if activeInfoPanel == .annotations {
@@ -591,7 +595,7 @@ public struct RunConsoleView: View {
                 Text(label)
                     .font(.subheadline.weight(isActive ? .semibold : .regular))
                     .frame(maxWidth: .infinity)
-                if isLoadingRuntimeState, panel == .aiInstructor {
+                if isLoadingRuntimeState, panel != .annotations {
                     ProgressView().controlSize(.mini)
                 }
             }
@@ -658,6 +662,87 @@ public struct RunConsoleView: View {
             Text("No scenario brief available.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var patientStatusContent: some View {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "Patient status and clinical findings will populate when the initial runtime snapshot is ready."
+            )
+        } else if isLoadingRuntimeState, store.runtimeState == nil {
+            ProgressView()
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+        } else {
+            let status = store.patientStatus
+            let hasStatusContent = !(status.narrative.isEmpty
+                && status.teachingFlags.isEmpty
+                && status.avpu == nil
+                && !status.respiratoryDistress
+                && !status.hemodynamicInstability
+                && !status.impendingPneumothorax
+                && !status.tensionPneumothorax
+                && store.assessmentFindings.isEmpty
+                && store.diagnosticResults.isEmpty
+                && store.resources.isEmpty
+                && store.disposition == nil)
+
+            if hasStatusContent {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let avpu = status.avpu, !avpu.isEmpty {
+                        briefRow(label: "AVPU", value: avpu.uppercased())
+                    }
+                    if !status.narrative.isEmpty {
+                        Text(status.narrative)
+                            .font(.subheadline)
+                    }
+
+                    let alertRows = patientAlertRows(status)
+                    if !alertRows.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Flags")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(alertRows, id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                    }
+
+                    if !status.teachingFlags.isEmpty {
+                        statusListSection(title: "Teaching Flags", values: status.teachingFlags)
+                    }
+                    if !store.assessmentFindings.isEmpty {
+                        statusListSection(
+                            title: "Assessment Findings",
+                            values: store.assessmentFindings.compactMap(runtimeDisplayText)
+                        )
+                    }
+                    if !store.diagnosticResults.isEmpty {
+                        statusListSection(
+                            title: "Diagnostic Results",
+                            values: store.diagnosticResults.compactMap(runtimeDisplayText)
+                        )
+                    }
+                    if !store.resources.isEmpty {
+                        statusListSection(
+                            title: "Resources",
+                            values: store.resources.compactMap(runtimeDisplayText)
+                        )
+                    }
+                    if let disposition = store.disposition,
+                       let dispositionSummary = runtimeDisplayText(disposition)
+                    {
+                        statusListSection(title: "Disposition", values: [dispositionSummary])
+                    }
+                }
+            } else {
+                Text("No patient status available.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -949,6 +1034,109 @@ public struct RunConsoleView: View {
         }
     }
 
+    private func patientStatusBadge(label: String, color: Color) -> some View {
+        Text(label)
+            .font(.caption2.bold())
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.14))
+            .clipShape(Capsule())
+    }
+
+    private func statusListSection(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            ForEach(Array(values.enumerated()), id: \.offset) { item in
+                Text("• \(item.element)")
+                    .font(.caption)
+                    .foregroundStyle(Color(white: 0.70))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func patientAlertRows(_ status: RuntimePatientStatus) -> [(label: String, color: Color)] {
+        var rows: [(label: String, color: Color)] = []
+        if status.respiratoryDistress {
+            rows.append(("Respiratory Distress", TrainerLabTheme.warning))
+        }
+        if status.hemodynamicInstability {
+            rows.append(("Hemodynamic Instability", TrainerLabTheme.danger))
+        }
+        if status.impendingPneumothorax {
+            rows.append(("Impending Pneumothorax", TrainerLabTheme.warning))
+        }
+        if status.tensionPneumothorax {
+            rows.append(("Tension Pneumothorax", TrainerLabTheme.danger))
+        }
+        return rows
+    }
+
+    private func runtimeDisplayText(_ finding: RuntimeAssessmentFindingState) -> String? {
+        runtimeDisplayText(
+            title: finding.title,
+            code: finding.code ?? finding.kind,
+            description: finding.description,
+            status: finding.status
+        )
+    }
+
+    private func runtimeDisplayText(_ result: RuntimeDiagnosticResultState) -> String? {
+        runtimeDisplayText(
+            title: result.title,
+            code: result.code ?? result.kind,
+            description: result.description,
+            status: result.status
+        )
+    }
+
+    private func runtimeDisplayText(_ resource: RuntimeResourceState) -> String? {
+        runtimeDisplayText(
+            title: resource.title,
+            code: resource.code ?? resource.kind,
+            description: resource.description,
+            status: resource.status
+        )
+    }
+
+    private func runtimeDisplayText(_ disposition: RuntimeDispositionState) -> String? {
+        runtimeDisplayText(
+            title: disposition.title,
+            code: disposition.code,
+            description: nil,
+            status: disposition.status
+        )
+    }
+
+    private func runtimeDisplayText(
+        title: String?,
+        code: String?,
+        description: String?,
+        status: String?
+    ) -> String? {
+        let candidates: [String?] = [
+            title,
+            code?.replacingOccurrences(of: "_", with: " ").capitalized,
+            description,
+        ]
+        let primary = candidates
+            .compactMap { (value: String?) -> String? in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .first
+
+        guard let primary else { return nil }
+        if let status, !status.isEmpty {
+            return "\(primary) (\(status.replacingOccurrences(of: "_", with: " ").capitalized))"
+        }
+        return primary
+    }
+
     private func fetchRuntimeState() async {
         isLoadingRuntimeState = true
         await store.loadRuntimeState()
@@ -958,7 +1146,7 @@ public struct RunConsoleView: View {
 
     private func fetchInfoPanelData(for panel: ActiveInfoPanel) async {
         switch panel {
-        case .scenarioBrief, .aiInstructor:
+        case .scenarioBrief, .patientStatus, .aiInstructor:
             await fetchRuntimeState()
         case .annotations:
             await store.loadAnnotations()
