@@ -465,12 +465,75 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertNil(store.state.terminalCard)
     }
 
-    func testRetryInitialSimulationRebindsSessionAfterFailure() async {
+    func testSessionFailedEventTransitionsSeedingSessionToFailed() async {
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .seeding))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        realtime.emit(event: makeSessionFailedEvent(
+            simulationID: 420,
+            reasonCode: "trainerlab_initial_generation_failed",
+            reasonText: "Initial scenario generation failed.",
+            retryable: true
+        ))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .failed &&
+                store.state.session?.terminalReasonCode == "trainerlab_initial_generation_failed" &&
+                store.state.session?.terminalReasonText == "Initial scenario generation failed." &&
+                store.state.session?.retryable == true &&
+                store.state.terminalCard?.status == .failed
+        }
+    }
+
+    func testSessionSeedingEventClearsTerminalFailureState() async {
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(
+            status: .failed,
+            terminalReasonCode: "trainerlab_initial_generation_failed",
+            terminalReasonText: "Initial scenario generation failed.",
+            retryable: true
+        ))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        realtime.emit(event: makeSessionSeedingEvent(
+            simulationID: 420,
+            stateRevision: 2,
+            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
+            retryCount: 1
+        ))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .seeding &&
+                store.state.session?.terminalReasonCode == nil &&
+                store.state.session?.retryable == nil &&
+                store.state.terminalCard == nil &&
+                store.state.session?.scenarioSpec["diagnosis"] == .string("Tension pneumothorax")
+        }
+    }
+
+    func testRetryInitialSimulationRebindsSeedingSessionThenCompletesAfterSeededEvent() async throws {
         let service = MockTrainerLabService()
-        service.retryInitialResult = .success(makeSession(status: .seeded))
+        service.retryInitialResult = .success(makeSession(status: .seeding))
+        service.getSessionResult = .success(makeSession(status: .seeded))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded", stateRevision: 2))
+        service.listAnnotationsResult = .success([])
+        let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: service,
-            realtimeClient: MockRealtimeClient(),
+            realtimeClient: realtime,
             commandQueue: InMemoryCommandQueueStore()
         )
         store.bind(session: makeSession(
@@ -480,16 +543,34 @@ final class RunSessionStoreTests: XCTestCase {
             terminalReasonText: "We could not start this simulation. Please try again.",
             retryable: true
         ))
+        store.startConsole()
+        defer { store.stopConsole() }
 
         XCTAssertEqual(store.state.terminalCard?.status, .failed)
+        let runtimeCallsBefore = service.getRuntimeStateCalls.count
+        let annotationCallsBefore = service.listAnnotationsCalls.count
 
         store.retryInitialSimulation()
 
         await waitUntil(timeout: 1.5) {
-            store.state.session?.status == .seeded && store.state.terminalCard == nil
+            store.state.session?.status == .seeding &&
+                store.state.terminalCard == nil &&
+                service.retryInitialCalls == [420]
         }
 
-        XCTAssertEqual(service.retryInitialCalls, [420])
+        realtime.emit(event: makeSessionSeededEvent(
+            simulationID: 420,
+            stateRevision: 2,
+            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")]
+        ))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .seeded &&
+                service.getSessionCalls == [420] &&
+                service.getRuntimeStateCalls.count > runtimeCallsBefore &&
+                service.listAnnotationsCalls.count > annotationCallsBefore
+        }
+
         XCTAssertNil(store.state.conflictBanner)
     }
 
@@ -670,7 +751,7 @@ final class RunSessionStoreTests: XCTestCase {
     func testSessionSeededEventRefreshesBoundState() async throws {
         let service = MockTrainerLabService()
         service.getSessionResult = .success(makeSession(status: .seeded))
-        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded"))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded", stateRevision: 2))
         service.listAnnotationsResult = .success([])
 
         let realtime = MockRealtimeClient()
@@ -689,7 +770,11 @@ final class RunSessionStoreTests: XCTestCase {
         let runtimeCallsBefore = service.getRuntimeStateCalls.count
         let annotationCallsBefore = service.listAnnotationsCalls.count
 
-        realtime.emit(event: makeSessionSeededEvent(simulationID: 420))
+        realtime.emit(event: makeSessionSeededEvent(
+            simulationID: 420,
+            stateRevision: 2,
+            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")]
+        ))
 
         await waitUntil(timeout: 1.5) {
             service.getSessionCalls == [420]
@@ -699,18 +784,81 @@ final class RunSessionStoreTests: XCTestCase {
         }
     }
 
+    func testDuplicateSessionSeededEventsRemainSafe() async throws {
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(status: .seeded))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded", stateRevision: 2))
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(status: .seeding))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        realtime.emit(event: makeSessionSeededEvent(simulationID: 420, stateRevision: 2))
+        realtime.emit(event: makeSessionSeededEvent(simulationID: 420, stateRevision: 2))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.session?.status == .seeded &&
+                !service.getSessionCalls.isEmpty
+        }
+
+        XCTAssertTrue(service.getSessionCalls.allSatisfy { $0 == 420 })
+        XCTAssertNil(store.state.terminalCard)
+    }
+
+    func testStaleSessionSeedingEventDoesNotRegressSeededSession() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "seeded", stateRevision: 3))
+
+        let realtime = MockRealtimeClient()
+        let existingScenarioSpec: [String: JSONValue] = ["diagnosis": .string("Existing scenario")]
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore()
+        )
+        store.bind(session: makeSession(
+            status: .seeded,
+            scenarioSpec: existingScenarioSpec
+        ))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.runtimeState?.stateRevision == 3
+        }
+
+        realtime.emit(event: makeSessionSeedingEvent(
+            simulationID: 420,
+            stateRevision: 2,
+            scenarioSpec: ["diagnosis": .string("Stale scenario")]
+        ))
+
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(store.state.session?.status, .seeded)
+        XCTAssertEqual(store.state.session?.scenarioSpec, existingScenarioSpec)
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
+        scenarioSpec: [String: JSONValue] = [:],
         runStartedAt: Date? = nil,
         runCompletedAt: Date? = nil,
         terminalReasonCode: String? = nil,
         terminalReasonText: String? = nil,
-        retryable: Bool? = nil
+        retryable: Bool? = nil,
+        modifiedAt: Date = Date()
     ) -> TrainerSessionDTO {
         TrainerSessionDTO(
             simulationID: 420,
             status: status,
-            scenarioSpec: [:],
+            scenarioSpec: scenarioSpec,
             runtimeState: [:],
             initialDirectives: nil,
             tickIntervalSeconds: 15,
@@ -719,7 +867,7 @@ final class RunSessionStoreTests: XCTestCase {
             runCompletedAt: runCompletedAt,
             lastAITickAt: nil,
             createdAt: Date(),
-            modifiedAt: Date(),
+            modifiedAt: modifiedAt,
             terminalReasonCode: terminalReasonCode,
             terminalReasonText: terminalReasonText,
             retryable: retryable
@@ -759,27 +907,92 @@ final class RunSessionStoreTests: XCTestCase {
         )
     }
 
-    private func makeSessionSeededEvent(simulationID: Int?) -> EventEnvelope {
-        var payload: [String: JSONValue] = [:]
+    private func makeSessionSeedingEvent(
+        simulationID: Int?,
+        stateRevision: Int,
+        scenarioSpec: [String: JSONValue] = [:],
+        retryCount: Int? = nil,
+        createdAt: Date = Date()
+    ) -> EventEnvelope {
+        var payload: [String: JSONValue] = [
+            "status": .string("seeding"),
+            "scenario_spec": .object(scenarioSpec),
+            "state_revision": .number(Double(stateRevision)),
+        ]
         if let simulationID {
             payload["simulation_id"] = .number(Double(simulationID))
         }
+        if let retryCount {
+            payload["retry_count"] = .number(Double(retryCount))
+        }
         return EventEnvelope(
             eventID: UUID().uuidString.lowercased(),
-            eventType: "session.seeded",
-            createdAt: Date(),
+            eventType: "session.seeding",
+            createdAt: createdAt,
             correlationID: nil,
             payload: payload
         )
     }
 
-    private func makeRuntimeState(status: String) throws -> TrainerRuntimeStateOut {
+    private func makeSessionSeededEvent(
+        simulationID: Int?,
+        stateRevision: Int,
+        scenarioSpec: [String: JSONValue] = [:],
+        callID: String? = nil,
+        createdAt: Date = Date()
+    ) -> EventEnvelope {
+        var payload: [String: JSONValue] = [
+            "status": .string("seeded"),
+            "scenario_spec": .object(scenarioSpec),
+            "state_revision": .number(Double(stateRevision)),
+        ]
+        if let simulationID {
+            payload["simulation_id"] = .number(Double(simulationID))
+        }
+        if let callID {
+            payload["call_id"] = .string(callID)
+        }
+        return EventEnvelope(
+            eventID: UUID().uuidString.lowercased(),
+            eventType: "session.seeded",
+            createdAt: createdAt,
+            correlationID: nil,
+            payload: payload
+        )
+    }
+
+    private func makeSessionFailedEvent(
+        simulationID: Int?,
+        reasonCode: String,
+        reasonText: String,
+        retryable: Bool,
+        createdAt: Date = Date()
+    ) -> EventEnvelope {
+        var payload: [String: JSONValue] = [
+            "status": .string("failed"),
+            "reason_code": .string(reasonCode),
+            "reason_text": .string(reasonText),
+            "retryable": .bool(retryable),
+        ]
+        if let simulationID {
+            payload["simulation_id"] = .number(Double(simulationID))
+        }
+        return EventEnvelope(
+            eventID: UUID().uuidString.lowercased(),
+            eventType: "session.failed",
+            createdAt: createdAt,
+            correlationID: nil,
+            payload: payload
+        )
+    }
+
+    private func makeRuntimeState(status: String, stateRevision: Int = 1) throws -> TrainerRuntimeStateOut {
         let json = """
         {
           "simulation_id": 420,
           "session_id": 420,
           "status": "\(status)",
-          "state_revision": 1,
+          "state_revision": \(stateRevision),
           "active_elapsed_seconds": 0,
           "tick_interval_seconds": 15,
           "next_tick_at": null,

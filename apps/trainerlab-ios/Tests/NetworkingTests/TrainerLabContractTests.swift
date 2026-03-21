@@ -135,6 +135,97 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(payload.terminalReasonText, "We could not start this simulation. Please try again.")
     }
 
+    func testSessionSeedingEnvelopeDecodesLifecyclePayload() throws {
+        let json = """
+        {
+          "event_id": "seed-1",
+          "event_type": "session.seeding",
+          "created_at": "2026-03-20T13:54:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "seeding",
+            "scenario_spec": {
+              "diagnosis": "Tension pneumothorax",
+              "modifiers": ["night-ops"]
+            },
+            "state_revision": 3,
+            "retry_count": 1,
+            "simulation_id": 7,
+            "extra_field": "ignored"
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionSeedingPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.seeding")
+        XCTAssertEqual(payload.status, "seeding")
+        XCTAssertEqual(payload.stateRevision, 3)
+        XCTAssertEqual(payload.retryCount, 1)
+        XCTAssertEqual(payload.simulationID, 7)
+        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
+        XCTAssertEqual(payload.scenarioSpec["modifiers"], .array([.string("night-ops")]))
+    }
+
+    func testSessionSeededEnvelopeDecodesLifecyclePayloadWithOptionalCallID() throws {
+        let json = """
+        {
+          "event_id": "seed-2",
+          "event_type": "session.seeded",
+          "created_at": "2026-03-20T13:55:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "seeded",
+            "scenario_spec": {
+              "diagnosis": "Tension pneumothorax"
+            },
+            "state_revision": 4,
+            "call_id": "call-123",
+            "simulation_id": 7
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionSeededPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.seeded")
+        XCTAssertEqual(payload.status, "seeded")
+        XCTAssertEqual(payload.stateRevision, 4)
+        XCTAssertEqual(payload.callID, "call-123")
+        XCTAssertEqual(payload.simulationID, 7)
+        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
+    }
+
+    func testSessionFailedEnvelopeDecodesLifecyclePayload() throws {
+        let json = """
+        {
+          "event_id": "seed-3",
+          "event_type": "session.failed",
+          "created_at": "2026-03-20T13:56:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "failed",
+            "reason_code": "trainerlab_initial_generation_failed",
+            "reason_text": "The initial scenario could not be generated.",
+            "retryable": false,
+            "simulation_id": 7
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionFailedPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.failed")
+        XCTAssertEqual(payload.status, "failed")
+        XCTAssertEqual(payload.reasonCode, "trainerlab_initial_generation_failed")
+        XCTAssertEqual(payload.reasonText, "The initial scenario could not be generated.")
+        XCTAssertEqual(payload.retryable, false)
+        XCTAssertEqual(payload.simulationID, 7)
+    }
+
     func testScenarioInstructionApplyEncodesSimulationID() throws {
         let request = ScenarioInstructionApplyRequest(simulationID: 77)
         let data = try JSONEncoder().encode(request)
@@ -369,14 +460,14 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
-    func testRetryInitialSimulationUsesTrainerLabRetryEndpointThenReloadsTrainerSession() async throws {
+    func testRetryInitialSimulationUsesTrainerLabRetryEndpointThenReloadsCurrentTrainerSession() async throws {
         let api = RecordingAPIClient()
         api.responseDataByPath["/api/v1/trainerlab/simulations/7/retry-initial/"] = Data()
         api.responseDataByPath["/api/v1/trainerlab/simulations/7/"] = Data(
             """
             {
               "simulation_id": 7,
-              "status": "seeded",
+              "status": "seeding",
               "scenario_spec": {},
               "runtime_state": {},
               "initial_directives": null,
@@ -395,7 +486,7 @@ final class TrainerLabContractTests: XCTestCase {
         let session = try await service.retryInitialSimulation(simulationID: 7)
 
         XCTAssertEqual(session.simulationID, 7)
-        XCTAssertEqual(session.status, .seeded)
+        XCTAssertEqual(session.status, .seeding)
         XCTAssertEqual(api.capturedEndpoints.map(\.path), [
             "/api/v1/trainerlab/simulations/7/retry-initial/",
             "/api/v1/trainerlab/simulations/7/",

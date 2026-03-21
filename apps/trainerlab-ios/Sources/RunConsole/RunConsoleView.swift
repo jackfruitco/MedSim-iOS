@@ -211,9 +211,13 @@ public struct RunConsoleView: View {
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
             if orderedVitals.isEmpty {
-                Text("Waiting for vital ranges from runtime events.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    isSeedingSession
+                        ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
+                        : "Waiting for vital ranges from runtime events."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } else if layoutMode == .regular {
                 HStack(spacing: 8) {
                     ForEach(orderedVitals) { vital in
@@ -276,6 +280,8 @@ public struct RunConsoleView: View {
                 }
             }
 
+            sessionPreparationBanner
+
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 136), spacing: 8)],
                 spacing: 8
@@ -299,6 +305,8 @@ public struct RunConsoleView: View {
         controlPresentation: RunConsoleCompactControlPresentation
     ) -> some View {
         VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
+            sessionPreparationBanner
+
             if controlPresentation == .phoneMenus {
                 compactPhoneControlPanel(compactMetrics: compactMetrics)
             } else {
@@ -604,7 +612,12 @@ public struct RunConsoleView: View {
     }
 
     @ViewBuilder private var scenarioBriefContent: some View {
-        if isLoadingRuntimeState, store.runtimeState == nil {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "The scenario brief will appear after initial generation completes."
+            )
+        } else if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
@@ -649,7 +662,12 @@ public struct RunConsoleView: View {
     }
 
     @ViewBuilder private var aiInstructorContent: some View {
-        if let rs = store.runtimeState {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "The runtime is still preparing the initial scenario. AI state will populate when the session is ready."
+            )
+        } else if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Runtime")
@@ -796,6 +814,46 @@ public struct RunConsoleView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var sessionPreparationBanner: some View {
+        Group {
+            if isSeedingSession {
+                HStack(alignment: .center, spacing: 12) {
+                    ProgressView()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Seeding scenario...")
+                            .font(.subheadline.bold())
+                        Text("TrainerLab is preparing the initial scenario. Controls will unlock when the session is ready.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(TrainerLabTheme.warning.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func sessionLoadingMessage(title: String, message: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.bold())
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
     }
 
     private var annotationsContent: some View {
@@ -1116,6 +1174,11 @@ public struct RunConsoleView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
+                } else if card.status == .failed {
+                    Text("Retry unavailable for this failure.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Button("View Run Summary") {
@@ -1150,7 +1213,9 @@ public struct RunConsoleView: View {
         }
 
         if card.status == .failed {
-            return "We could not start this simulation. Please try again."
+            return canRetryInitialSimulation
+                ? "We could not start this simulation. Please try again."
+                : "This simulation could not be started."
         }
 
         return nil
@@ -1686,19 +1751,23 @@ public struct RunConsoleView: View {
     }
 
     private var canMutate: Bool {
-        store.state.commandChannelAvailable
+        store.state.commandChannelAvailable && !isSeedingSession
     }
 
     private var canRunMutate: Bool {
-        canMutate && store.state.session?.status != .seeding
+        canMutate
     }
 
     private var canIntervene: Bool {
-        canMutate && store.state.session?.status != .seeding
+        canMutate
     }
 
     private var canRetryInitialSimulation: Bool {
         store.state.session?.status == .failed && store.state.session?.retryable == true
+    }
+
+    private var isSeedingSession: Bool {
+        store.state.session?.status == .seeding
     }
 
     private var sessionStatus: TrainerSessionStatus? {

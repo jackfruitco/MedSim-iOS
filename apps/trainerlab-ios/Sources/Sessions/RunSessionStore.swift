@@ -30,6 +30,19 @@ public final class RunSessionStore: ObservableObject {
     private var transportTask: Task<Void, Never>?
     private var vitalsTask: Task<Void, Never>?
     private var stopwatchTask: Task<Void, Never>?
+    private var lastAppliedLifecycleRevision: Int?
+
+    private struct SessionLifecycleSnapshot {
+        let status: TrainerSessionStatus
+        let scenarioSpec: [String: JSONValue]?
+        let modifiedAt: Date
+        let runStartedAt: Date?
+        let runPausedAt: Date?
+        let runCompletedAt: Date?
+        let terminalReasonCode: String?
+        let terminalReasonText: String?
+        let retryable: Bool?
+    }
 
     public init(
         service: TrainerLabServiceProtocol,
@@ -71,7 +84,7 @@ public final class RunSessionStore: ObservableObject {
                     self.captureRecommendedIntervention(from: event)
                     self.capturePulseAnnotation(from: event)
                     self.captureClinicalTimelineEntry(from: event)
-                    let shouldRehydrate = self.handleSessionSeeded(event, previousStatus: previousStatus)
+                    let shouldRehydrate = self.handleSessionLifecycleEvent(event)
                     self.syncStopwatchState(previousStatus: previousStatus)
                     return shouldRehydrate
                 }
@@ -169,6 +182,7 @@ public final class RunSessionStore: ObservableObject {
         do {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
             runtimeState = rs
+            noteLifecycleRevision(rs.stateRevision)
             hydrateHiddenClinicalState(from: rs.currentSnapshot)
             if let brief = rs.scenarioBrief {
                 scenarioBrief = brief
@@ -594,15 +608,15 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private var canMutateCommands: Bool {
-        state.commandChannelAvailable
+        state.commandChannelAvailable && state.session?.status != .seeding
     }
 
     private var canRunCommands: Bool {
-        canMutateCommands && state.session?.status != .seeding
+        canMutateCommands
     }
 
     private var canInterventionCommands: Bool {
-        canMutateCommands && state.session?.status != .seeding
+        canMutateCommands
     }
 
     private func sendRunCommand(_ command: RunCommand) async {
@@ -752,6 +766,7 @@ public final class RunSessionStore: ObservableObject {
             )
 
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
+            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
             logger.warning(
                 "Simulation \(failedSession.simulationID, privacy: .public) transitioned to failed state: \(failedSession.terminalReasonText ?? "Simulation failed.", privacy: .public)"
             )
@@ -762,39 +777,239 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func handleSessionSeeded(_ event: EventEnvelope, previousStatus _: TrainerSessionStatus?) -> Bool {
-        let eventType = canonicalEventType(event.eventType)
-        guard eventType == "session.seeded" else { return false }
+    private func handleSessionLifecycleEvent(_ event: EventEnvelope) -> Bool {
+        switch canonicalEventType(event.eventType) {
+        case "session.seeding":
+            handleSessionSeeding(event)
+        case "session.seeded":
+            handleSessionSeeded(event)
+        case "session.failed":
+            handleSessionFailed(event)
+        default:
+            false
+        }
+    }
+
+    private func handleSessionSeeding(_ event: EventEnvelope) -> Bool {
         guard let session = state.session else { return false }
 
-        if let payloadSimulationID = jsonInt(event.payload["simulation_id"]), payloadSimulationID != session.simulationID {
-            logger.warning(
-                "Ignoring session.seeded for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+        do {
+            let payload = try event.decodePayload(SessionSeedingPayload.self)
+
+            guard payload.status.lowercased() == "seeding" else {
+                logger.debug(
+                    "Ignoring session.seeding payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
+                logger.warning(
+                    "Ignoring session.seeding for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            guard shouldApplyLifecycleRevision(payload.stateRevision, expectedStatus: .seeding) else {
+                logger.debug(
+                    "Ignoring stale session.seeding revision \(payload.stateRevision, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            let seedingSession = sessionWithLifecycleUpdate(
+                from: session,
+                snapshot: SessionLifecycleSnapshot(
+                    status: .seeding,
+                    scenarioSpec: payload.scenarioSpec,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: nil,
+                    runPausedAt: nil,
+                    runCompletedAt: nil,
+                    terminalReasonCode: nil,
+                    terminalReasonText: nil,
+                    retryable: nil
+                )
             )
+
+            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seedingSession))
+            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            noteLifecycleRevision(payload.stateRevision)
+        } catch {
+            logger.error(
+                "Failed to decode session.seeding payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        return false
+    }
+
+    private func handleSessionSeeded(_ event: EventEnvelope) -> Bool {
+        guard let session = state.session else { return false }
+
+        do {
+            let payload = try event.decodePayload(SessionSeededPayload.self)
+
+            guard payload.status.lowercased() == "seeded" else {
+                logger.debug(
+                    "Ignoring session.seeded payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
+                logger.warning(
+                    "Ignoring session.seeded for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            guard shouldApplyLifecycleRevision(payload.stateRevision, expectedStatus: .seeded) else {
+                logger.debug(
+                    "Ignoring stale session.seeded revision \(payload.stateRevision, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            let seededSession = sessionWithLifecycleUpdate(
+                from: session,
+                snapshot: SessionLifecycleSnapshot(
+                    status: .seeded,
+                    scenarioSpec: payload.scenarioSpec,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: nil,
+                    runPausedAt: nil,
+                    runCompletedAt: nil,
+                    terminalReasonCode: nil,
+                    terminalReasonText: nil,
+                    retryable: nil
+                )
+            )
+
+            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seededSession))
+            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            noteLifecycleRevision(payload.stateRevision)
+            return true
+        } catch {
+            logger.error(
+                "Failed to decode session.seeded payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        return false
+    }
+
+    private func handleSessionFailed(_ event: EventEnvelope) -> Bool {
+        guard let session = state.session else { return false }
+
+        do {
+            let payload = try event.decodePayload(SessionFailedPayload.self)
+
+            guard payload.status.lowercased() == "failed" else {
+                logger.debug(
+                    "Ignoring session.failed payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
+                logger.warning(
+                    "Ignoring session.failed for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            guard session.status == .seeding || session.status == .failed else {
+                logger.debug(
+                    "Ignoring session.failed for simulation \(session.simulationID, privacy: .public) because current status is \(session.status.rawValue, privacy: .public)"
+                )
+                return false
+            }
+
+            guard event.createdAt >= session.modifiedAt else {
+                logger.debug(
+                    "Ignoring stale session.failed event for simulation \(session.simulationID, privacy: .public)"
+                )
+                return false
+            }
+
+            let failedSession = sessionWithLifecycleUpdate(
+                from: session,
+                snapshot: SessionLifecycleSnapshot(
+                    status: .failed,
+                    scenarioSpec: nil,
+                    modifiedAt: max(session.modifiedAt, event.createdAt),
+                    runStartedAt: session.runStartedAt,
+                    runPausedAt: session.runPausedAt,
+                    runCompletedAt: event.createdAt,
+                    terminalReasonCode: payload.reasonCode,
+                    terminalReasonText: payload.reasonText,
+                    retryable: payload.retryable
+                )
+            )
+
+            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
+            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            logger.warning(
+                "Simulation \(failedSession.simulationID, privacy: .public) failed initial seeding: \(failedSession.terminalReasonText ?? "Session failed.", privacy: .public)"
+            )
+        } catch {
+            logger.error(
+                "Failed to decode session.failed payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        return false
+    }
+
+    private func shouldApplyLifecycleRevision(_ revision: Int, expectedStatus: TrainerSessionStatus) -> Bool {
+        guard let lastAppliedLifecycleRevision else { return true }
+        if revision > lastAppliedLifecycleRevision {
+            return true
+        }
+        guard revision == lastAppliedLifecycleRevision else {
             return false
         }
 
-        let seededSession = TrainerSessionDTO(
+        switch expectedStatus {
+        case .seeded:
+            return true
+        case .seeding:
+            return state.session?.status == .seeding
+        default:
+            return state.session?.status == expectedStatus
+        }
+    }
+
+    private func noteLifecycleRevision(_ revision: Int) {
+        if let lastAppliedLifecycleRevision {
+            self.lastAppliedLifecycleRevision = max(lastAppliedLifecycleRevision, revision)
+        } else {
+            lastAppliedLifecycleRevision = revision
+        }
+    }
+
+    private func sessionWithLifecycleUpdate(
+        from session: TrainerSessionDTO,
+        snapshot: SessionLifecycleSnapshot
+    ) -> TrainerSessionDTO {
+        TrainerSessionDTO(
             simulationID: session.simulationID,
-            status: .seeded,
-            scenarioSpec: session.scenarioSpec,
+            status: snapshot.status,
+            scenarioSpec: snapshot.scenarioSpec ?? session.scenarioSpec,
             runtimeState: session.runtimeState,
             initialDirectives: session.initialDirectives,
             tickIntervalSeconds: session.tickIntervalSeconds,
-            runStartedAt: nil,
-            runPausedAt: nil,
-            runCompletedAt: nil,
+            runStartedAt: snapshot.runStartedAt,
+            runPausedAt: snapshot.runPausedAt,
+            runCompletedAt: snapshot.runCompletedAt,
             lastAITickAt: session.lastAITickAt,
             createdAt: session.createdAt,
-            modifiedAt: max(session.modifiedAt, event.createdAt),
-            terminalReasonCode: nil,
-            terminalReasonText: nil,
-            retryable: nil
+            modifiedAt: snapshot.modifiedAt,
+            terminalReasonCode: snapshot.terminalReasonCode,
+            terminalReasonText: snapshot.terminalReasonText,
+            retryable: snapshot.retryable
         )
-
-        state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seededSession))
-        state = RunSessionReducer.reduce(state: state, action: .clearConflict)
-        return true
     }
 
     private func captureClinicalTimelineEntry(from event: EventEnvelope) {
@@ -1851,6 +2066,12 @@ public final class RunSessionStore: ObservableObject {
 
     private func lifecycleTitle(for eventType: String) -> String? {
         switch eventType {
+        case "session.seeding":
+            "Scenario Seeding"
+        case "session.seeded":
+            "Scenario Ready"
+        case "session.failed":
+            "Scenario Failed"
         case "run.started":
             "Run Started"
         case "run.paused":
@@ -1866,6 +2087,12 @@ public final class RunSessionStore: ObservableObject {
 
     private func lifecycleMessage(for eventType: String) -> String {
         switch eventType {
+        case "session.seeding":
+            "Initial scenario generation is in progress."
+        case "session.seeded":
+            "Scenario is ready to run."
+        case "session.failed":
+            "Initial scenario generation failed."
         case "run.started":
             "Simulation active."
         case "run.paused":
