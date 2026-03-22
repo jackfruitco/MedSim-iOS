@@ -52,7 +52,7 @@ public struct RunConsoleView: View {
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void
+        onOpenSummary: @escaping () -> Void,
     ) {
         self.store = store
         self.onBack = onBack
@@ -63,15 +63,15 @@ public struct RunConsoleView: View {
         GeometryReader { proxy in
             let layoutMode = RunConsoleLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
             let compactMetrics = RunConsoleCompactMetrics.resolve(
                 width: proxy.size.width,
-                layoutMode: layoutMode
+                layoutMode: layoutMode,
             )
             let controlPresentation = RunConsoleCompactControlPresentation.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             ZStack {
@@ -83,7 +83,7 @@ public struct RunConsoleView: View {
                     } else {
                         compactConsoleLayout(
                             compactMetrics: compactMetrics,
-                            controlPresentation: controlPresentation
+                            controlPresentation: controlPresentation,
                         )
                     }
                 }
@@ -116,7 +116,7 @@ public struct RunConsoleView: View {
                 store.createDebriefAnnotation(
                     observationText: observationText,
                     learningObjective: learningObjective,
-                    outcome: outcome
+                    outcome: outcome,
                 )
                 showAnnotationSheet = false
             }
@@ -177,13 +177,13 @@ public struct RunConsoleView: View {
 
     private func compactConsoleLayout(
         compactMetrics: RunConsoleCompactMetrics,
-        controlPresentation: RunConsoleCompactControlPresentation
+        controlPresentation: RunConsoleCompactControlPresentation,
     ) -> some View {
         ScrollView {
             VStack(spacing: 8) {
                 compactCommandPanel(
                     compactMetrics: compactMetrics,
-                    controlPresentation: controlPresentation
+                    controlPresentation: controlPresentation,
                 )
                 topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 if store.state.conflictBanner != nil {
@@ -203,7 +203,7 @@ public struct RunConsoleView: View {
 
     private func topVitalsTable(
         layoutMode: RunConsoleLayoutMode,
-        compactMetrics: RunConsoleCompactMetrics
+        compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
             Text("Patient Vitals")
@@ -213,7 +213,7 @@ public struct RunConsoleView: View {
                 Text(
                     isSeedingSession
                         ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
-                        : "Waiting for vital ranges from runtime events."
+                        : "Waiting for vital ranges from runtime events.",
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -233,7 +233,7 @@ public struct RunConsoleView: View {
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     ForEach(orderedVitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
@@ -244,8 +244,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8
-            )
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
+            ),
         )
     }
 
@@ -283,13 +283,13 @@ public struct RunConsoleView: View {
 
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 136), spacing: 8)],
-                spacing: 8
+                spacing: 8,
             ) {
                 ForEach(quickControls) { control in
                     controlButton(
                         control,
                         fullWidth: true,
-                        multiline: true
+                        multiline: true,
                     )
                 }
             }
@@ -301,7 +301,7 @@ public struct RunConsoleView: View {
 
     private func compactCommandPanel(
         compactMetrics: RunConsoleCompactMetrics,
-        controlPresentation: RunConsoleCompactControlPresentation
+        controlPresentation: RunConsoleCompactControlPresentation,
     ) -> some View {
         VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
             sessionPreparationBanner
@@ -315,8 +315,8 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: compactMetrics.cardPadding
-            )
+                padding: compactMetrics.cardPadding,
+            ),
         )
     }
 
@@ -342,7 +342,7 @@ public struct RunConsoleView: View {
 
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     ForEach(sessionControls) { control in
                         controlButton(
@@ -350,7 +350,7 @@ public struct RunConsoleView: View {
                             compact: true,
                             compactMetrics: compactMetrics,
                             fullWidth: true,
-                            multiline: true
+                            multiline: true,
                         )
                     }
                 }
@@ -363,7 +363,7 @@ public struct RunConsoleView: View {
 
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     ForEach(quickControls) { control in
                         controlButton(
@@ -371,7 +371,7 @@ public struct RunConsoleView: View {
                             compact: true,
                             compactMetrics: compactMetrics,
                             fullWidth: true,
-                            multiline: true
+                            multiline: true,
                         )
                     }
                 }
@@ -398,12 +398,12 @@ public struct RunConsoleView: View {
                 compactControlMenu(
                     title: RunConsoleControlGroup.session.rawValue,
                     controls: sessionControls,
-                    compactMetrics: compactMetrics
+                    compactMetrics: compactMetrics,
                 )
                 compactControlMenu(
                     title: RunConsoleControlGroup.quick.rawValue,
                     controls: quickControls,
-                    compactMetrics: compactMetrics
+                    compactMetrics: compactMetrics,
                 )
             }
         }
@@ -444,7 +444,7 @@ public struct RunConsoleView: View {
                     if let problemID = problem.problemID {
                         store.updateProblemStatus(problemID: problemID, status: status)
                     }
-                }
+                },
             )
             .frame(minHeight: 380, maxHeight: .infinity)
 
@@ -619,7 +619,7 @@ public struct RunConsoleView: View {
         if isSeedingSession {
             sessionLoadingMessage(
                 title: "Seeding scenario...",
-                message: "The scenario brief will appear after initial generation completes."
+                message: "The scenario brief will appear after initial generation completes.",
             )
         } else if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
@@ -669,7 +669,7 @@ public struct RunConsoleView: View {
         if isSeedingSession {
             sessionLoadingMessage(
                 title: "Seeding scenario...",
-                message: "Patient status and clinical findings will populate when the initial runtime snapshot is ready."
+                message: "Patient status and clinical findings will populate when the initial runtime snapshot is ready.",
             )
         } else if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
@@ -717,19 +717,19 @@ public struct RunConsoleView: View {
                     if !store.assessmentFindings.isEmpty {
                         statusListSection(
                             title: "Assessment Findings",
-                            values: store.assessmentFindings.compactMap(runtimeDisplayText)
+                            values: store.assessmentFindings.compactMap(runtimeDisplayText),
                         )
                     }
                     if !store.diagnosticResults.isEmpty {
                         statusListSection(
                             title: "Diagnostic Results",
-                            values: store.diagnosticResults.compactMap(runtimeDisplayText)
+                            values: store.diagnosticResults.compactMap(runtimeDisplayText),
                         )
                     }
                     if !store.resources.isEmpty {
                         statusListSection(
                             title: "Resources",
-                            values: store.resources.compactMap(runtimeDisplayText)
+                            values: store.resources.compactMap(runtimeDisplayText),
                         )
                     }
                     if let disposition = store.disposition,
@@ -750,7 +750,7 @@ public struct RunConsoleView: View {
         if isSeedingSession {
             sessionLoadingMessage(
                 title: "Seeding scenario...",
-                message: "The runtime is still preparing the initial scenario. AI state will populate when the session is ready."
+                message: "The runtime is still preparing the initial scenario. AI state will populate when the session is ready.",
             )
         } else if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
@@ -920,7 +920,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1)
+                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
                 )
             }
         }
@@ -1080,7 +1080,7 @@ public struct RunConsoleView: View {
             title: finding.title,
             code: finding.code ?? finding.kind,
             description: finding.description,
-            status: finding.status
+            status: finding.status,
         )
     }
 
@@ -1089,7 +1089,7 @@ public struct RunConsoleView: View {
             title: result.title,
             code: result.code ?? result.kind,
             description: result.description,
-            status: result.status
+            status: result.status,
         )
     }
 
@@ -1098,7 +1098,7 @@ public struct RunConsoleView: View {
             title: resource.title,
             code: resource.code ?? resource.kind,
             description: resource.description,
-            status: resource.status
+            status: resource.status,
         )
     }
 
@@ -1107,7 +1107,7 @@ public struct RunConsoleView: View {
             title: disposition.title,
             code: disposition.code,
             description: nil,
-            status: disposition.status
+            status: disposition.status,
         )
     }
 
@@ -1115,7 +1115,7 @@ public struct RunConsoleView: View {
         title: String?,
         code: String?,
         description: String?,
-        status: String?
+        status: String?,
     ) -> String? {
         let candidates: [String?] = [
             title,
@@ -1223,7 +1223,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1)
+                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
                 )
                 .opacity(isSuperseded ? 0.65 : 1.0)
             }
@@ -1380,7 +1380,7 @@ public struct RunConsoleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1)
+                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
             )
             .padding(16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1443,7 +1443,7 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canIntervene
+            canMutate: canIntervene,
         ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
@@ -1452,7 +1452,7 @@ public struct RunConsoleView: View {
                 status: status,
                 effectiveness: effectiveness,
                 notes: notes,
-                tourniquetApplicationMode: tourniquetApplicationMode
+                tourniquetApplicationMode: tourniquetApplicationMode,
             )
             showInterventionSheet = false
         }
@@ -1462,7 +1462,7 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canIntervene
+            canMutate: canIntervene,
         ) { type, siteCode, status, effectiveness, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
@@ -1470,7 +1470,7 @@ public struct RunConsoleView: View {
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
                 effectiveness: effectiveness,
-                tourniquetApplicationMode: tourniquetApplicationMode
+                tourniquetApplicationMode: tourniquetApplicationMode,
             )
         }
     }
@@ -1879,7 +1879,7 @@ public struct RunConsoleView: View {
     private var filteredTimelineEntries: [ClinicalTimelineEntry] {
         RunConsoleTimelineFilter.visibleEntries(
             from: store.state.clinicalTimelineEntries,
-            matching: selectedTimelineFilter
+            matching: selectedTimelineFilter,
         )
     }
 
@@ -1921,7 +1921,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2)
+                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2),
                 )
         }
         .buttonStyle(.plain)
@@ -2137,7 +2137,7 @@ public struct RunConsoleView: View {
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
         fullWidth: Bool = false,
-        multiline: Bool = false
+        multiline: Bool = false,
     ) -> some View {
         let button = Button {
             performControl(control)
@@ -2173,7 +2173,7 @@ public struct RunConsoleView: View {
     private func compactControlMenu(
         title: String,
         controls: [RunConsoleControlItem],
-        compactMetrics: RunConsoleCompactMetrics
+        compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         Menu {
             ForEach(controls) { control in
@@ -2313,7 +2313,7 @@ private struct InterventionPickerSheet: View {
                                         .foregroundStyle(.secondary)
                                     LazyVGrid(
                                         columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8
+                                        spacing: 8,
                                     ) {
                                         ForEach(types) { group in
                                             typeChip(group)
@@ -2352,7 +2352,7 @@ private struct InterventionPickerSheet: View {
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8
+                                spacing: 8,
                             ) {
                                 ForEach(locationGroups, id: \.location) { entry in
                                     locationChip(entry.location)
@@ -2423,7 +2423,7 @@ private struct InterventionPickerSheet: View {
                             status,
                             effectiveness,
                             notes,
-                            selectedTourniquetApplicationMode
+                            selectedTourniquetApplicationMode,
                         )
                     }
                     .disabled(!canSubmit)
@@ -2694,7 +2694,7 @@ private struct RunConsoleCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
             )
     }
 }
@@ -2719,7 +2719,7 @@ private struct VitalValueCell: View {
         vital: VitalStatusSnapshot,
         valueText: String,
         font: Font = .subheadline.monospacedDigit(),
-        verticalPadding: CGFloat = 6
+        verticalPadding: CGFloat = 6,
     ) {
         self.vital = vital
         self.valueText = valueText
@@ -2755,8 +2755,8 @@ private struct VitalValueCell: View {
                             LinearGradient(
                                 colors: [.clear, Color.white.opacity(0.12), Color.white.opacity(0.35), Color.white.opacity(0.12), .clear],
                                 startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                                endPoint: .trailing,
+                            ),
                         )
                         .frame(width: width)
                         .offset(x: shimmerOffset * proxy.size.width)
@@ -2893,7 +2893,7 @@ private struct DebriefAnnotationSheet: View {
                         onSubmit(
                             observationText.trimmingCharacters(in: .whitespacesAndNewlines),
                             learningObjective,
-                            outcome
+                            outcome,
                         )
                         dismiss()
                     }
@@ -2973,7 +2973,7 @@ private struct ScenarioBriefEditSheet: View {
                             threatContext: threatContext.isEmpty ? nil : threatContext,
                             evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: parseList(from: specialConsiderations)
+                            specialConsiderations: parseList(from: specialConsiderations),
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

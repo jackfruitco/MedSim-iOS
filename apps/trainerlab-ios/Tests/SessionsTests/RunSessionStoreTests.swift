@@ -269,7 +269,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeded))
         store.startConsole()
@@ -280,7 +280,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "trainerlab.adjustment.applied",
             createdAt: Date(),
             correlationID: "corr-1",
-            payload: ["target": .string("avpu")]
+            payload: ["target": .string("avpu")],
         )
 
         realtime.emit(event: event)
@@ -297,22 +297,22 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testVitalEventsTriggerAuthoritativeRefreshAndTimelineEntries() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(
                 status: "running",
                 vitals: [[
                     "vital_type": "heart_rate",
                     "min_value": 80,
                     "max_value": 140,
-                ]]
+                ]],
             )),
         ]
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -331,7 +331,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "vital_type": .string("heart_rate"),
                 "min_value": .number(80),
                 "max_value": .number(140),
-            ]
+            ],
         ))
 
         await waitUntil(timeout: 2.0) {
@@ -346,7 +346,7 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testBootstrapLoadsAuthoritativeRuntimeStateAndHistoricalTimeline() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = .success(try makeRuntimeState(
+        service.getRuntimeStateResult = try .success(makeRuntimeState(
             status: "seeded",
             stateRevision: 4,
             scenarioBrief: [
@@ -401,7 +401,7 @@ final class RunSessionStoreTests: XCTestCase {
             aiPlan: [
                 "summary": "Escalate respiratory distress",
                 "upcoming_changes": ["Decrease SpO2"],
-            ]
+            ],
         ))
         service.listEventsResult = .success(PaginatedResponse(
             items: [
@@ -409,7 +409,7 @@ final class RunSessionStoreTests: XCTestCase {
                 makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
             ],
             nextCursor: nil,
-            hasMore: false
+            hasMore: false,
         ))
         service.listAnnotationsResult = .success([])
 
@@ -417,7 +417,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeded))
         store.startConsole()
@@ -441,24 +441,24 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testStateUpdatedAuthoritativelyReplacesVitals() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
                 status: "running",
                 stateRevision: 1,
                 vitals: [[
                     "vital_type": "heart_rate",
                     "min_value": 80,
                     "max_value": 100,
-                ]]
+                ]],
             )),
-            .success(try makeRuntimeState(
+            .success(makeRuntimeState(
                 status: "running",
                 stateRevision: 2,
                 vitals: [[
                     "vital_type": "heart_rate",
                     "min_value": 120,
                     "max_value": 150,
-                ]]
+                ]],
             )),
         ]
 
@@ -466,7 +466,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -481,7 +481,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "state.updated",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:]
+            payload: [:],
         ))
 
         await waitUntil(timeout: 2.0) {
@@ -495,14 +495,14 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testAIIntentUpdatedTriggersAuthoritativeRefresh() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(
                 status: "running",
                 aiPlan: [
                     "summary": "Reassess airway",
                     "rationale": "SpO2 is falling",
-                ]
+                ],
             )),
         ]
 
@@ -510,7 +510,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -525,7 +525,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "ai.intent.updated",
             createdAt: Date(),
             correlationID: nil,
-            payload: ["summary": .string("Reassess airway")]
+            payload: ["summary": .string("Reassess airway")],
         ))
 
         await waitUntil(timeout: 2.0) {
@@ -538,16 +538,16 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testBurstRuntimeEventsCoalesceToSingleRefresh() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResultsQueue = [
-            .success(try makeRuntimeState(status: "running")),
-            .success(try makeRuntimeState(status: "running", stateRevision: 2)),
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running")),
+            .success(makeRuntimeState(status: "running", stateRevision: 2)),
         ]
 
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -571,21 +571,21 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testHistoryAndLiveTimelineDedupesAndSortsStably() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = .success(try makeRuntimeState(status: "running"))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
         service.listEventsResult = .success(PaginatedResponse(
             items: [
                 makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
                 makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
             ],
             nextCursor: nil,
-            hasMore: false
+            hasMore: false,
         ))
 
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -598,12 +598,12 @@ final class RunSessionStoreTests: XCTestCase {
         realtime.emit(event: makeLifecycleEvent(
             eventID: "run-1",
             eventType: "run.started",
-            createdAt: Date(timeIntervalSince1970: 20)
+            createdAt: Date(timeIntervalSince1970: 20),
         ))
         realtime.emit(event: makeLifecycleEvent(
             eventID: "run-2",
             eventType: "run.paused",
-            createdAt: Date(timeIntervalSince1970: 30)
+            createdAt: Date(timeIntervalSince1970: 30),
         ))
 
         await waitUntil(timeout: 2.0) {
@@ -617,7 +617,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeded))
         store.startConsole()
@@ -628,7 +628,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "run.started",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:]
+            payload: [:],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -646,7 +646,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "run.paused",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:]
+            payload: [:],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -662,7 +662,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "trainerlab.run.resumed",
             createdAt: Date(),
             correlationID: nil,
-            payload: [:]
+            payload: [:],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -681,7 +681,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: queue
+            commandQueue: queue,
         )
         store.bind(session: makeSession(status: .running))
         store.startConsole()
@@ -706,7 +706,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running, runStartedAt: Date().addingTimeInterval(-12)))
         store.startConsole()
@@ -723,8 +723,8 @@ final class RunSessionStoreTests: XCTestCase {
                 terminalAt: Date(),
                 simulationID: 420,
                 terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
-                terminalReasonText: "We could not start this simulation. Please try again."
-            )
+                terminalReasonText: "We could not start this simulation. Please try again.",
+            ),
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -743,7 +743,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running, runStartedAt: Date().addingTimeInterval(-6)))
         store.startConsole()
@@ -756,8 +756,8 @@ final class RunSessionStoreTests: XCTestCase {
                 terminalAt: Date(),
                 simulationID: 999,
                 terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
-                terminalReasonText: "Should be ignored."
-            )
+                terminalReasonText: "Should be ignored.",
+            ),
         ))
 
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -770,7 +770,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeding))
         store.startConsole()
@@ -780,7 +780,7 @@ final class RunSessionStoreTests: XCTestCase {
             simulationID: 420,
             reasonCode: "trainerlab_initial_generation_failed",
             reasonText: "Initial scenario generation failed.",
-            retryable: true
+            retryable: true,
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -797,13 +797,13 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(
             status: .failed,
             terminalReasonCode: "trainerlab_initial_generation_failed",
             terminalReasonText: "Initial scenario generation failed.",
-            retryable: true
+            retryable: true,
         ))
         store.startConsole()
         defer { store.stopConsole() }
@@ -812,7 +812,7 @@ final class RunSessionStoreTests: XCTestCase {
             simulationID: 420,
             stateRevision: 2,
             scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
-            retryCount: 1
+            retryCount: 1,
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -834,14 +834,14 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(
             status: .failed,
             runCompletedAt: Date(),
             terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
             terminalReasonText: "We could not start this simulation. Please try again.",
-            retryable: true
+            retryable: true,
         ))
         store.startConsole()
         defer { store.stopConsole() }
@@ -861,7 +861,7 @@ final class RunSessionStoreTests: XCTestCase {
         realtime.emit(event: makeSessionSeededEvent(
             simulationID: 420,
             stateRevision: 2,
-            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")]
+            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -880,7 +880,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeding))
         store.startConsole()
@@ -894,7 +894,7 @@ final class RunSessionStoreTests: XCTestCase {
         store.addIntervention(
             interventionType: "tourniquet",
             siteCode: "LEFT_ARM",
-            targetProblemID: 99
+            targetProblemID: 99,
         )
 
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -908,7 +908,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: MockRealtimeClient(),
-            commandQueue: queue
+            commandQueue: queue,
         )
         store.bind(session: makeSession(status: .seeded))
 
@@ -916,23 +916,23 @@ final class RunSessionStoreTests: XCTestCase {
             endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         )
         let otherSimulation = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 421
+            simulationID: 421,
         )
         let legacyMatch = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         )
         let legacyMismatch = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         )
 
         try await queue.enqueue(matching)
@@ -944,7 +944,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertEqual(
             service.replayPendingCalls.map(\.endpoint),
-            [matching.endpoint, legacyMatch.endpoint]
+            [matching.endpoint, legacyMatch.endpoint],
         )
         let pendingCount = try await queue.pendingCount(simulationID: 420)
         let remainingEndpoints = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
@@ -959,7 +959,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: MockRealtimeClient(),
-            commandQueue: queue
+            commandQueue: queue,
         )
         store.bind(session: makeSession(status: .seeded))
 
@@ -967,13 +967,13 @@ final class RunSessionStoreTests: XCTestCase {
             endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         )
         try await queue.enqueue(envelope)
         service.replayPendingErrorByEndpoint[envelope.endpoint] = APIClientError.http(
             statusCode: 404,
             detail: "Not ready",
-            correlationID: nil
+            correlationID: nil,
         )
 
         await store.replayPendingCommands()
@@ -989,21 +989,21 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
             realtimeClient: MockRealtimeClient(),
-            commandQueue: queue
+            commandQueue: queue,
         )
 
         var matching = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         )
         matching.nextRetryAt = .distantFuture
 
         var legacyMatch = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         )
         legacyMatch.nextRetryAt = .distantFuture
 
@@ -1011,14 +1011,14 @@ final class RunSessionStoreTests: XCTestCase {
             endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 421
+            simulationID: 421,
         )
         persistedMismatch.nextRetryAt = .distantFuture
 
         var legacyMismatch = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         )
         legacyMismatch.nextRetryAt = .distantFuture
 
@@ -1026,7 +1026,7 @@ final class RunSessionStoreTests: XCTestCase {
             endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         )
         terminalMatch.retryCount = terminalMatch.maxRetries
         terminalMatch.nextRetryAt = .distantFuture
@@ -1058,7 +1058,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeding))
         store.startConsole()
@@ -1073,7 +1073,7 @@ final class RunSessionStoreTests: XCTestCase {
         realtime.emit(event: makeSessionSeededEvent(
             simulationID: 420,
             stateRevision: 2,
-            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")]
+            scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -1094,7 +1094,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .seeding))
         store.startConsole()
@@ -1121,11 +1121,11 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: realtime,
-            commandQueue: InMemoryCommandQueueStore()
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(
             status: .seeded,
-            scenarioSpec: existingScenarioSpec
+            scenarioSpec: existingScenarioSpec,
         ))
         store.startConsole()
         defer { store.stopConsole() }
@@ -1137,7 +1137,7 @@ final class RunSessionStoreTests: XCTestCase {
         realtime.emit(event: makeSessionSeedingEvent(
             simulationID: 420,
             stateRevision: 2,
-            scenarioSpec: ["diagnosis": .string("Stale scenario")]
+            scenarioSpec: ["diagnosis": .string("Stale scenario")],
         ))
 
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -1153,7 +1153,7 @@ final class RunSessionStoreTests: XCTestCase {
         terminalReasonCode: String? = nil,
         terminalReasonText: String? = nil,
         retryable: Bool? = nil,
-        modifiedAt: Date = Date()
+        modifiedAt: Date = Date(),
     ) -> TrainerSessionDTO {
         TrainerSessionDTO(
             simulationID: 420,
@@ -1170,12 +1170,12 @@ final class RunSessionStoreTests: XCTestCase {
             modifiedAt: modifiedAt,
             terminalReasonCode: terminalReasonCode,
             terminalReasonText: terminalReasonText,
-            retryable: retryable
+            retryable: retryable,
         )
     }
 
     private func makeSimulationStateChangedEvent(
-        payload: SimulationStateChangedPayload
+        payload: SimulationStateChangedPayload,
     ) -> EventEnvelope {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1203,7 +1203,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "simulation.state_changed",
             createdAt: terminalAt,
             correlationID: nil,
-            payload: eventPayload
+            payload: eventPayload,
         )
     }
 
@@ -1212,7 +1212,7 @@ final class RunSessionStoreTests: XCTestCase {
         stateRevision: Int,
         scenarioSpec: [String: JSONValue] = [:],
         retryCount: Int? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
     ) -> EventEnvelope {
         var payload: [String: JSONValue] = [
             "status": .string("seeding"),
@@ -1230,7 +1230,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "session.seeding",
             createdAt: createdAt,
             correlationID: nil,
-            payload: payload
+            payload: payload,
         )
     }
 
@@ -1239,7 +1239,7 @@ final class RunSessionStoreTests: XCTestCase {
         stateRevision: Int,
         scenarioSpec: [String: JSONValue] = [:],
         callID: String? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
     ) -> EventEnvelope {
         var payload: [String: JSONValue] = [
             "status": .string("seeded"),
@@ -1257,7 +1257,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "session.seeded",
             createdAt: createdAt,
             correlationID: nil,
-            payload: payload
+            payload: payload,
         )
     }
 
@@ -1266,7 +1266,7 @@ final class RunSessionStoreTests: XCTestCase {
         reasonCode: String,
         reasonText: String,
         retryable: Bool,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
     ) -> EventEnvelope {
         var payload: [String: JSONValue] = [
             "status": .string("failed"),
@@ -1282,7 +1282,7 @@ final class RunSessionStoreTests: XCTestCase {
             eventType: "session.failed",
             createdAt: createdAt,
             correlationID: nil,
-            payload: payload
+            payload: payload,
         )
     }
 
@@ -1301,7 +1301,7 @@ final class RunSessionStoreTests: XCTestCase {
         resources: [[String: Any]] = [],
         disposition: [String: Any]? = nil,
         patientStatus: [String: Any] = [:],
-        aiPlan: [String: Any]? = nil
+        aiPlan: [String: Any]? = nil,
     ) throws -> TrainerRuntimeStateOut {
         let payload: [String: Any] = [
             "simulation_id": 420,
@@ -1343,20 +1343,20 @@ final class RunSessionStoreTests: XCTestCase {
     private func makeLifecycleEvent(
         eventID: String,
         eventType: String,
-        createdAt: Date
+        createdAt: Date,
     ) -> EventEnvelope {
         EventEnvelope(
             eventID: eventID,
             eventType: eventType,
             createdAt: createdAt,
             correlationID: nil,
-            payload: [:]
+            payload: [:],
         )
     }
 
     private func waitUntil(
         timeout: TimeInterval,
-        condition: @escaping @MainActor () -> Bool
+        condition: @escaping @MainActor () -> Bool,
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

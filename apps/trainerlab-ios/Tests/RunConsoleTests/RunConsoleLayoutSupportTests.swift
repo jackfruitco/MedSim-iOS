@@ -22,26 +22,26 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     func testCompactDensityUsesNarrowPhoneAtOrBelow390Points() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 320, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 390, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
     }
 
     func testCompactDensityUsesStandardAbove390PointsOrOutsideCompactMode() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 393, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 430, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 375, layoutMode: .regular),
-            .standard
+            .standard,
         )
     }
 
@@ -77,23 +77,23 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 width: 375,
-                horizontalSizeClass: .compact
+                horizontalSizeClass: .compact,
             ),
-            .phoneMenus
+            .phoneMenus,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 width: 430,
-                horizontalSizeClass: .compact
+                horizontalSizeClass: .compact,
             ),
-            .phoneMenus
+            .phoneMenus,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
                 width: 700,
-                horizontalSizeClass: .regular
+                horizontalSizeClass: .regular,
             ),
-            .grid
+            .grid,
         )
     }
 
@@ -103,21 +103,21 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             kind: .injury,
             title: "Injury Change",
             message: "Left arm",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let lifecycleEntry = ClinicalTimelineEntry(
             dedupeKey: "run-1",
             kind: .lifecycle,
             title: "Run Started",
             message: "Run started",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let noteEntry = ClinicalTimelineEntry(
             dedupeKey: "note-1",
             kind: .note,
             title: "Anything",
             message: "Trainer note",
-            createdAt: Date()
+            createdAt: Date(),
         )
 
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .injury), "INJURY")
@@ -134,11 +134,11 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
         XCTAssertEqual(
             RunConsoleControlsCatalog.quickControls.map(\.title),
-            ["Intervention", "Event", "Annotation", "Steer", "Tick AI", "Tick Vitals"]
+            ["Intervention", "Event", "Annotation", "Steer", "Tick AI", "Tick Vitals"],
         )
         XCTAssertEqual(
             RunConsoleControlsCatalog.quickControls.map(\.systemImage),
-            ["plus.app", "plus.app", "note.text.badge.plus", "wand.and.sparkles", "timer", "heart.text.square"]
+            ["plus.app", "plus.app", "note.text.badge.plus", "wand.and.sparkles", "timer", "heart.text.square"],
         )
     }
 
@@ -148,25 +148,25 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             kind: .cause,
             title: "Cause",
             message: "Left arm injury",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let noteEntry = ClinicalTimelineEntry(
             dedupeKey: "note-1",
             kind: .note,
             title: "Trainer Note",
             message: "Internal note",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let visibleEntries = RunConsoleTimelineFilter.visibleEntries(
             from: [causeEntry, noteEntry],
-            matching: .all
+            matching: .all,
         )
 
         XCTAssertTrue(RunConsoleTimelineFilter.allCases.contains(.kind(.note)))
         XCTAssertEqual(visibleEntries, [causeEntry, noteEntry])
         XCTAssertEqual(
             RunConsoleTimelineFilter.visibleEntries(from: [causeEntry, noteEntry], matching: .kind(.note)),
-            [noteEntry]
+            [noteEntry],
         )
     }
 
@@ -185,17 +185,17 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             DebriefAnnotationCatalog.learningObjectiveOptions,
             AnnotationLearningObjective.allCases.map {
                 DebriefAnnotationOption(value: $0, label: $0.displayLabel)
-            }
+            },
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.outcomeOptions,
             AnnotationOutcome.allCases.map {
                 DebriefAnnotationOption(value: $0, label: $0.displayLabel)
-            }
+            },
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.learningObjectiveOptions.first,
-            DebriefAnnotationOption(value: .assessment, label: "Assessment")
+            DebriefAnnotationOption(value: .assessment, label: "Assessment"),
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.outcomeOptions,
@@ -205,7 +205,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 DebriefAnnotationOption(value: .missed, label: "Missed"),
                 DebriefAnnotationOption(value: .improvised, label: "Improvised"),
                 DebriefAnnotationOption(value: .pending, label: "Pending"),
-            ]
+            ],
         )
     }
 }

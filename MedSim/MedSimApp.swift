@@ -73,14 +73,14 @@ private struct ReadmeScreenshotView: View {
                 SessionHubView(
                     viewModel: SessionHubViewModel(service: ReadmeDemoTrainerService()),
                     onSelectSession: { _ in },
-                    onOpenPresets: {}
+                    onOpenPresets: {},
                 )
             }
         case .chatLab:
             NavigationStack {
                 ChatLabHomeView(
                     store: ChatLabHomeStore(service: ReadmeDemoChatService()),
-                    onOpenSimulation: { _ in }
+                    onOpenSimulation: { _ in },
                 )
             }
         }
@@ -92,12 +92,12 @@ private struct ReadmeAuthScreenshotView: View {
         AuthGateView(
             viewModel: AuthViewModel(
                 authService: ReadmeDemoAuthService(),
-                trainerService: ReadmeDemoTrainerService()
+                trainerService: ReadmeDemoTrainerService(),
             ),
             appTitle: "MedSim",
             appSubtitle: "TrainerLab + ChatLab",
             environmentLabel: "Env: staging | medsim-staging.jackfruitco.com",
-            onOpenEnvironmentSwitcher: {}
+            onOpenEnvironmentSwitcher: {},
         )
         .task {
             try? await Task.sleep(for: .milliseconds(250))
@@ -114,7 +114,7 @@ private struct ReadmeDemoAuthService: AuthServiceProtocol {
             accessToken: "demo-access-token",
             refreshToken: "demo-refresh-token",
             expiresIn: 3600,
-            tokenType: "Bearer"
+            tokenType: "Bearer",
         )
     }
 
@@ -142,7 +142,7 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
             runCompletedAt: nil,
             lastAITickAt: Date().addingTimeInterval(-30),
             createdAt: Date().addingTimeInterval(-2400),
-            modifiedAt: Date().addingTimeInterval(-20)
+            modifiedAt: Date().addingTimeInterval(-20),
         ),
         TrainerSessionDTO(
             simulationID: 4819,
@@ -159,7 +159,7 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
             runCompletedAt: nil,
             lastAITickAt: Date().addingTimeInterval(-600),
             createdAt: Date().addingTimeInterval(-5600),
-            modifiedAt: Date().addingTimeInterval(-580)
+            modifiedAt: Date().addingTimeInterval(-580),
         ),
         TrainerSessionDTO(
             simulationID: 4814,
@@ -176,7 +176,7 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
             runCompletedAt: Date().addingTimeInterval(-7200),
             lastAITickAt: Date().addingTimeInterval(-7200),
             createdAt: Date().addingTimeInterval(-9400),
-            modifiedAt: Date().addingTimeInterval(-7200)
+            modifiedAt: Date().addingTimeInterval(-7200),
         ),
     ]
 
@@ -361,7 +361,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
             terminalReasonCode: "",
             terminalReasonText: "",
             terminalAt: nil,
-            retryable: nil
+            retryable: nil,
         ),
         ChatSimulation(
             id: 894,
@@ -377,7 +377,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
             terminalReasonCode: "completed",
             terminalReasonText: "Simulation complete",
             terminalAt: Date().addingTimeInterval(-8400),
-            retryable: false
+            retryable: false,
         ),
         ChatSimulation(
             id: 887,
@@ -393,7 +393,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
             terminalReasonCode: "feedback_generation_failed",
             terminalReasonText: "Feedback generation timed out",
             terminalAt: Date().addingTimeInterval(-16900),
-            retryable: true
+            retryable: true,
         ),
     ]
 
@@ -402,7 +402,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         cursor _: String?,
         status _: String?,
         query _: String?,
-        searchMessages _: Bool
+        searchMessages _: Bool,
     ) async throws -> PaginatedResponse<ChatSimulation> {
         PaginatedResponse(items: sampleSimulations, nextCursor: nil, hasMore: false)
     }
@@ -444,7 +444,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         conversationID _: Int?,
         cursor _: String?,
         order _: String,
-        limit _: Int
+        limit _: Int,
     ) async throws -> PaginatedResponse<ChatMessage> {
         fatalError("Readme demo does not call listMessages().")
     }

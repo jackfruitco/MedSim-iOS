@@ -83,7 +83,7 @@ public struct InjuryAnnotation: Identifiable, Equatable, Sendable {
         source: String? = nil,
         supersedesEventID: String? = nil,
         hiddenAfter: Date? = nil,
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
     ) {
         self.id = id
         self.causeID = causeID
@@ -158,7 +158,7 @@ public struct InterventionAnnotation: Identifiable, Equatable, Sendable {
         y: Double,
         effectiveness: String,
         status: String,
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
     ) {
         self.id = id
         self.interventionID = interventionID
@@ -222,7 +222,7 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
         causeKind: String? = nil,
         recommendedInterventionIDs: [Int] = [],
         adjudicationReason: String? = nil,
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
     ) {
         self.id = id
         self.problemID = problemID
@@ -312,7 +312,7 @@ public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
         siteCode: String? = nil,
         siteLabel: String? = nil,
         warnings: [String] = [],
-        contraindications: [String] = []
+        contraindications: [String] = [],
     ) {
         self.recommendationID = recommendationID
         self.title = title
@@ -366,7 +366,7 @@ public struct PulseAnnotation: Identifiable, Equatable, Sendable {
         conditionDescription: String = "dry",
         temperatureNormal: Bool = true,
         temperatureDescription: String = "warm",
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
     ) {
         self.id = id
         self.location = location
@@ -420,7 +420,7 @@ public struct ClinicalTimelineEntry: Identifiable, Equatable, Sendable {
         title: String,
         message: String,
         createdAt: Date = Date(),
-        metadata: [String: String] = [:]
+        metadata: [String: String] = [:],
     ) {
         self.id = id
         self.dedupeKey = dedupeKey
@@ -476,7 +476,7 @@ public struct VitalStatusSnapshot: Identifiable, Equatable, Sendable {
         currentDiastolicValue: Int? = nil,
         trend: VitalTrendDirection = .flat,
         changeToken: Int = 0,
-        lastUpdatedAt: Date = Date()
+        lastUpdatedAt: Date = Date(),
     ) {
         self.key = key
         self.minValue = minValue
@@ -535,10 +535,10 @@ public struct RunSessionState: Equatable, Sendable {
         transportBanner: TransportBanner = TransportBanner(
             style: .error,
             message: "Disconnected",
-            visible: true
+            visible: true,
         ),
         conflictBanner: String? = nil,
-        terminalCard: TerminalCard? = nil
+        terminalCard: TerminalCard? = nil,
     ) {
         self.session = session
         self.transportState = transportState
