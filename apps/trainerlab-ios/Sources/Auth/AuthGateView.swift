@@ -1,4 +1,6 @@
+import AuthenticationServices
 import DesignSystem
+import Networking
 import SwiftUI
 
 public struct AuthGateView: View {
@@ -12,6 +14,7 @@ public struct AuthGateView: View {
     private let appSubtitle: String
     private let environmentLabel: String
     private let onOpenEnvironmentSwitcher: () -> Void
+    private let appleSignInCoordinator = AppleSignInCoordinator()
     @FocusState private var focusedField: Field?
 
     public init(
@@ -53,6 +56,24 @@ public struct AuthGateView: View {
                     .accessibilityIdentifier("auth-brand-subtitle")
 
                 VStack(spacing: 12) {
+                    SignInWithAppleButton(.signIn) { request in
+                        appleSignInCoordinator.configure(request)
+                    } onCompletion: { result in
+                        handleAppleSignIn(result)
+                    }
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 46)
+                    .disabled(!canStartAppleSignIn)
+
+                    TextField(
+                        "Invitation Token (optional for first-time Apple sign-up)",
+                        text: $viewModel.invitationToken,
+                    )
+                    .authInvitationFieldModifiers()
+                    .textFieldStyle(.roundedBorder)
+
+                    divider(label: "or use email and password")
+
                     TextField("Email", text: $viewModel.email)
                         .authEmailFieldModifiers()
                         .focused($focusedField, equals: .email)
@@ -119,6 +140,27 @@ public struct AuthGateView: View {
             )
             .frame(width: 0, height: 0),
         )
+        .sheet(isPresented: appleSignupSheetPresented) {
+            if let pendingSignup = viewModel.pendingAppleSignup {
+                AppleSignupCompletionSheet(
+                    pendingSignup: pendingSignup,
+                    isLoading: viewModel.isLoading,
+                    errorMessage: viewModel.errorMessage,
+                    onCancel: {
+                        viewModel.cancelAppleSignup()
+                    },
+                    onComplete: { roleID, givenName, familyName in
+                        Task {
+                            await viewModel.completeAppleSignup(
+                                roleID: roleID,
+                                givenName: givenName,
+                                familyName: familyName,
+                            )
+                        }
+                    },
+                )
+            }
+        }
         .onAppear {
             if focusedField == nil {
                 focusedField = .email
@@ -130,9 +172,35 @@ public struct AuthGateView: View {
         !viewModel.email.isEmpty && !viewModel.password.isEmpty && !viewModel.isLoading
     }
 
+    private var canStartAppleSignIn: Bool {
+        !viewModel.isLoading
+    }
+
+    private var appleSignupSheetPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.pendingAppleSignup != nil },
+            set: { isPresented in
+                if !isPresented {
+                    viewModel.cancelAppleSignup()
+                }
+            },
+        )
+    }
+
     private func submitIfPossible() {
         guard canSubmit else { return }
         Task { await viewModel.signIn() }
+    }
+
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        do {
+            let credential = try appleSignInCoordinator.credential(from: result)
+            Task {
+                await viewModel.signInWithApple(credential)
+            }
+        } catch {
+            viewModel.setErrorMessage(error.localizedDescription)
+        }
     }
 
     private func moveFocusForward() {
@@ -154,6 +222,99 @@ public struct AuthGateView: View {
             focusedField = .email
         }
     }
+
+    private func divider(label: String) -> some View {
+        HStack(spacing: 10) {
+            Rectangle()
+                .fill(TrainerLabTheme.tacticalBorder.opacity(0.45))
+                .frame(height: 1)
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Rectangle()
+                .fill(TrainerLabTheme.tacticalBorder.opacity(0.45))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct AppleSignupCompletionSheet: View {
+    let pendingSignup: PendingAppleSignup
+    let isLoading: Bool
+    let errorMessage: String?
+    let onCancel: () -> Void
+    let onComplete: (_ roleID: Int?, _ givenName: String, _ familyName: String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var givenName: String
+    @State private var familyName: String
+    @State private var selectedRoleID: Int?
+
+    init(
+        pendingSignup: PendingAppleSignup,
+        isLoading: Bool,
+        errorMessage: String?,
+        onCancel: @escaping () -> Void,
+        onComplete: @escaping (_ roleID: Int?, _ givenName: String, _ familyName: String) -> Void,
+    ) {
+        self.pendingSignup = pendingSignup
+        self.isLoading = isLoading
+        self.errorMessage = errorMessage
+        self.onCancel = onCancel
+        self.onComplete = onComplete
+        _givenName = State(initialValue: pendingSignup.givenName)
+        _familyName = State(initialValue: pendingSignup.familyName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account") {
+                    LabeledContent("Email", value: pendingSignup.email)
+                }
+
+                Section("Profile") {
+                    TextField("First Name", text: $givenName)
+                    TextField("Last Name", text: $familyName)
+                    Picker("Role", selection: $selectedRoleID) {
+                        Text("Select a role...").tag(Int?.none)
+                        ForEach(pendingSignup.roles) { role in
+                            Text(role.title).tag(Optional(role.id))
+                        }
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(TrainerLabTheme.danger)
+                    }
+                }
+            }
+            .navigationTitle("Complete Apple Sign-In")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        onCancel()
+                        dismiss()
+                    }
+                    .disabled(isLoading)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onComplete(selectedRoleID, givenName, familyName)
+                    } label: {
+                        if isLoading {
+                            ProgressView()
+                        } else {
+                            Text("Continue")
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+        }
+    }
 }
 
 private extension View {
@@ -162,6 +323,16 @@ private extension View {
         #if os(iOS)
             textInputAutocapitalization(.never)
                 .keyboardType(.emailAddress)
+        #else
+            self
+        #endif
+    }
+
+    @ViewBuilder
+    func authInvitationFieldModifiers() -> some View {
+        #if os(iOS)
+            textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
         #else
             self
         #endif

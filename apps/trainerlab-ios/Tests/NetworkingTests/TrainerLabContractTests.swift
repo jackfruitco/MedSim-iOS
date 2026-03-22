@@ -12,6 +12,7 @@ private enum RecordingError: Error {
 private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
     private(set) var capturedEndpoints: [Endpoint] = []
     var responseDataByPath: [String: Data] = [:]
+    var responseStatusByPath: [String: Int] = [:]
 
     func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         capturedEndpoints.append(endpoint)
@@ -25,6 +26,17 @@ private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
         capturedEndpoints.append(endpoint)
         if let data = responseDataByPath[endpoint.path] {
             return data
+        }
+        throw RecordingError.intercepted
+    }
+
+    func perform(_ endpoint: Endpoint) async throws -> HTTPResponseData {
+        capturedEndpoints.append(endpoint)
+        if let data = responseDataByPath[endpoint.path] {
+            return HTTPResponseData(
+                statusCode: responseStatusByPath[endpoint.path] ?? 200,
+                data: data,
+            )
         }
         throw RecordingError.intercepted
     }
@@ -326,6 +338,97 @@ final class TrainerLabContractTests: XCTestCase {
             "r",
         )
         XCTAssertTrue(tokenProvider.cleared)
+    }
+
+    func testAuthServiceAppleSignInPostsExpectedPayloadAndStoresTokens() async throws {
+        let api = RecordingAPIClient()
+        let tokenProvider = RecordingTokenProvider()
+        api.responseDataByPath["/api/v1/auth/apple/"] = Data(
+            #"{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer"}"#.utf8,
+        )
+        let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
+
+        let result = try await service.signInWithApple(
+            credential: AppleSignInCredential(
+                identityToken: "identity-token",
+                authorizationCode: "authorization-code",
+                givenName: "Taylor",
+                familyName: "Jones",
+                email: "taylor@example.com",
+            ),
+            invitationToken: "invite-token",
+        )
+
+        guard case let .authenticated(tokens) = result else {
+            return XCTFail("Expected authenticated result")
+        }
+        XCTAssertEqual(tokens.accessToken, "a")
+        XCTAssertEqual(tokenProvider.tokens?.accessToken, "a")
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/auth/apple/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+        XCTAssertEqual(api.capturedEndpoints.last?.requiresAuth, false)
+        let body = try decodeJSONBody(api.capturedEndpoints.last?.body)
+        XCTAssertEqual(body?["identity_token"] as? String, "identity-token")
+        XCTAssertEqual(body?["authorization_code"] as? String, "authorization-code")
+        XCTAssertEqual(body?["given_name"] as? String, "Taylor")
+        XCTAssertEqual(body?["family_name"] as? String, "Jones")
+        XCTAssertEqual(body?["invitation_token"] as? String, "invite-token")
+    }
+
+    func testAuthServiceAppleSignInReturnsPendingSignupForProfileCompletion() async throws {
+        let api = RecordingAPIClient()
+        api.responseStatusByPath["/api/v1/auth/apple/"] = 409
+        api.responseDataByPath["/api/v1/auth/apple/"] = Data(
+            #"{"type":"profile_completion_required","title":"Profile completion required","status":409,"detail":"Complete your profile to finish Apple sign-in.","signup_token":"signup-token","email":"new@example.com","given_name":"New","family_name":"User","roles":[{"id":1,"title":"Instructor"}]}"#.utf8,
+        )
+        let service = AuthService(apiClient: api, tokenProvider: RecordingTokenProvider())
+
+        let result = try await service.signInWithApple(
+            credential: AppleSignInCredential(
+                identityToken: "identity-token",
+                authorizationCode: "authorization-code",
+            ),
+            invitationToken: nil,
+        )
+
+        guard case let .profileCompletionRequired(pending) = result else {
+            return XCTFail("Expected pending signup result")
+        }
+        XCTAssertEqual(pending.signupToken, "signup-token")
+        XCTAssertEqual(pending.email, "new@example.com")
+        XCTAssertEqual(pending.roles, [AppleRoleOption(id: 1, title: "Instructor")])
+    }
+
+    func testAuthServiceCompleteAppleSignupPostsExpectedPayloadAndStoresTokens() async throws {
+        let api = RecordingAPIClient()
+        let tokenProvider = RecordingTokenProvider()
+        api.responseDataByPath["/api/v1/auth/apple/complete-signup/"] = Data(
+            #"{"access_token":"a2","refresh_token":"r2","expires_in":3600,"token_type":"Bearer"}"#.utf8,
+        )
+        let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
+        let pending = PendingAppleSignup(
+            signupToken: "signup-token",
+            email: "new@example.com",
+            givenName: "New",
+            familyName: "User",
+            roles: [AppleRoleOption(id: 2, title: "Instructor")],
+        )
+
+        let tokens = try await service.completeAppleSignup(
+            pendingSignup: pending,
+            roleID: 2,
+            givenName: "New",
+            familyName: "User",
+        )
+
+        XCTAssertEqual(tokens.accessToken, "a2")
+        XCTAssertEqual(tokenProvider.tokens?.refreshToken, "r2")
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/auth/apple/complete-signup/")
+        let body = try decodeJSONBody(api.capturedEndpoints.last?.body)
+        XCTAssertEqual(body?["signup_token"] as? String, "signup-token")
+        XCTAssertEqual(body?["role_id"] as? Int, 2)
+        XCTAssertEqual(body?["given_name"] as? String, "New")
+        XCTAssertEqual(body?["family_name"] as? String, "User")
     }
 
     func testTrainerLabServiceUsesSimulationFirstEndpoints() async throws {

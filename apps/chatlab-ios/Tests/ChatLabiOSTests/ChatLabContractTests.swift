@@ -21,6 +21,11 @@ private final class ChatRecordingAPIClient: APIClientProtocol, @unchecked Sendab
         throw ChatRecordingError.intercepted
     }
 
+    func perform(_ endpoint: Endpoint) async throws -> HTTPResponseData {
+        capturedEndpoints.append(endpoint)
+        throw ChatRecordingError.intercepted
+    }
+
     func baseURL() async -> URL {
         URL(string: "https://example.com")!
     }
