@@ -25,12 +25,19 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var diagnosticResults: [RuntimeDiagnosticResultState] = []
     @Published public private(set) var resources: [RuntimeResourceState] = []
     @Published public private(set) var disposition: RuntimeDispositionState?
+    @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
     private var vitalsTask: Task<Void, Never>?
     private var stopwatchTask: Task<Void, Never>?
+    private var bootstrapTask: Task<Void, Never>?
+    private var runtimeRefreshTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
+    private var pendingRuntimeRefresh = false
+
+    private let runtimeRefreshDebounceNanoseconds: UInt64 = 150_000_000
+    private let maxTimelineEvents = 400
 
     private struct SessionLifecycleSnapshot {
         let status: TrainerSessionStatus
@@ -42,6 +49,12 @@ public final class RunSessionStore: ObservableObject {
         let terminalReasonCode: String?
         let terminalReasonText: String?
         let retryable: Bool?
+    }
+
+    private struct EventHandlingOutcome {
+        let shouldRehydrateSeededSession: Bool
+        let shouldRefreshRuntimeState: Bool
+        let canonicalEventType: String
     }
 
     public init(
@@ -69,34 +82,20 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        bootstrapTask?.cancel()
+        runtimeRefreshTask?.cancel()
+        pendingRuntimeRefresh = false
 
         eventTask = Task { [weak self] in
             guard let self else { return }
             for await event in realtimeClient.events {
-                let shouldRehydrateSeededSession = await MainActor.run {
-                    let previousStatus = self.state.session?.status
-                    self.state = RunSessionReducer.reduce(state: self.state, action: .eventReceived(event))
-                    self.handleSimulationStateChanged(event)
-                    self.captureVitalRange(from: event)
-                    self.captureInjuryAnnotation(from: event)
-                    self.captureInterventionAnnotation(from: event)
-                    self.captureProblemAnnotation(from: event)
-                    self.captureRecommendedIntervention(from: event)
-                    self.capturePulseAnnotation(from: event)
-                    self.captureClinicalTimelineEntry(from: event)
-                    let shouldRehydrate = self.handleSessionLifecycleEvent(event)
-                    self.syncStopwatchState(previousStatus: previousStatus)
-                    return shouldRehydrate
+                let outcome = await self.handleIncomingEvent(event)
+                if outcome.shouldRehydrateSeededSession {
+                    await self.refreshSession()
+                    await self.loadAnnotations()
                 }
-                if shouldRefreshRuntimeProjection(for: event) {
-                    await loadRuntimeState()
-                    await reconcileAnnotationsFromSnapshot()
-                }
-                if shouldRehydrateSeededSession {
-                    await refreshSession()
-                    await loadRuntimeState()
-                    await reconcileAnnotationsFromSnapshot()
-                    await loadAnnotations()
+                if outcome.shouldRefreshRuntimeState {
+                    await self.scheduleRuntimeRefresh(reason: "event \(outcome.canonicalEventType)")
                 }
             }
         }
@@ -105,6 +104,9 @@ public final class RunSessionStore: ObservableObject {
             guard let self else { return }
             for await transport in realtimeClient.transportStates {
                 await MainActor.run {
+                    logger.info(
+                        "Realtime transport for simulation \(self.state.session?.simulationID ?? -1, privacy: .public) -> \(self.transportDescription(transport), privacy: .public)"
+                    )
                     self.state = RunSessionReducer.reduce(state: self.state, action: .transportChanged(transport))
                     self.syncTransportPresentation(for: transport)
                 }
@@ -132,13 +134,9 @@ public final class RunSessionStore: ObservableObject {
             }
         }
 
-        Task {
-            await realtimeClient.connect(simulationID: session.simulationID, cursor: state.eventCursor)
-            await loadRuntimeState()
-            await loadAnnotations()
-            await reconcileAnnotationsFromSnapshot()
-            await replayPendingCommands()
-            await refreshPendingCount()
+        bootstrapTask = Task { [weak self] in
+            guard let self else { return }
+            await self.bootstrapConsole(for: session)
         }
 
         loadInterventionDictionary()
@@ -149,6 +147,9 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        bootstrapTask?.cancel()
+        runtimeRefreshTask?.cancel()
+        pendingRuntimeRefresh = false
         realtimeClient.disconnect()
     }
 
@@ -177,18 +178,22 @@ public final class RunSessionStore: ObservableObject {
     }
 
     /// Loads the runtime state (scenario brief, AI plan, rationale notes) on demand.
-    public func loadRuntimeState() async {
-        guard let simulationID = state.session?.simulationID else { return }
+    @discardableResult
+    public func loadRuntimeState(reason: String = "manual") async -> TrainerRuntimeStateOut? {
+        guard let simulationID = state.session?.simulationID else { return nil }
+        logger.info("Fetching runtime state for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public))")
         do {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
-            runtimeState = rs
-            noteLifecycleRevision(rs.stateRevision)
-            hydrateHiddenClinicalState(from: rs.currentSnapshot)
-            if let brief = rs.scenarioBrief {
-                scenarioBrief = brief
-            }
+            logger.info(
+                "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)"
+            )
+            applyRuntimeState(rs, source: reason)
+            return rs
         } catch {
-            // Non-critical; caller handles nil runtimeState
+            logger.error(
+                "Runtime state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
         }
     }
 
@@ -209,6 +214,136 @@ public final class RunSessionStore: ObservableObject {
         } catch {
             // Optional UI; keep current list if fetch fails.
         }
+    }
+
+    private func bootstrapConsole(for session: TrainerSessionDTO) async {
+        logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
+
+        _ = await loadRuntimeState(reason: "bootstrap")
+
+        let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
+        applyHistoricalEvents(historicalEvents)
+
+        logger.info(
+            "Connecting realtime stream for simulation \(session.simulationID, privacy: .public) from cursor \(self.state.eventCursor ?? "nil", privacy: .public)"
+        )
+        await realtimeClient.connect(simulationID: session.simulationID, cursor: self.state.eventCursor)
+        await loadAnnotations()
+        await replayPendingCommands()
+        await refreshPendingCount()
+    }
+
+    private func loadHistoricalEvents(simulationID: Int) async -> [EventEnvelope] {
+        var events: [EventEnvelope] = []
+        var cursor: String?
+        var seenCursors = Set<String>()
+
+        while !Task.isCancelled {
+            do {
+                let page = try await service.listEvents(simulationID: simulationID, cursor: cursor, limit: maxTimelineEvents)
+                logger.info(
+                    "Fetched \(page.items.count, privacy: .public) historical events for simulation \(simulationID, privacy: .public) cursor \(cursor ?? "nil", privacy: .public)"
+                )
+                events.append(contentsOf: page.items)
+
+                guard page.hasMore else { break }
+                guard let nextCursor = page.nextCursor else {
+                    logger.warning(
+                        "Historical events for simulation \(simulationID, privacy: .public) reported more pages without a next cursor"
+                    )
+                    break
+                }
+                guard seenCursors.insert(nextCursor).inserted else {
+                    logger.warning(
+                        "Stopping historical events pagination for simulation \(simulationID, privacy: .public) because cursor \(nextCursor, privacy: .public) repeated"
+                    )
+                    break
+                }
+                cursor = nextCursor
+            } catch {
+                logger.error(
+                    "Historical events fetch failed for simulation \(simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                break
+            }
+        }
+
+        return normalizedEvents(events)
+    }
+
+    private func applyHistoricalEvents(_ events: [EventEnvelope]) {
+        guard !events.isEmpty else {
+            logger.info("No historical events found for simulation \(self.state.session?.simulationID ?? -1, privacy: .public)")
+            normalizeStoredTimelineEvents()
+            return
+        }
+
+        state.timeline = normalizedEvents(state.timeline + events)
+        state.eventCursor = state.timeline.last?.eventID
+        rebuildClinicalTimelineEntries(from: state.timeline)
+        logger.info(
+            "Applied \(self.state.timeline.count, privacy: .public) historical events for simulation \(self.state.session?.simulationID ?? -1, privacy: .public)"
+        )
+    }
+
+    private func normalizeStoredTimelineEvents() {
+        state.timeline = normalizedEvents(state.timeline)
+        state.eventCursor = state.timeline.last?.eventID
+    }
+
+    private func normalizedEvents(_ events: [EventEnvelope]) -> [EventEnvelope] {
+        let sorted = events.sorted { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            return lhs.eventID < rhs.eventID
+        }
+
+        var seenEventIDs = Set<String>()
+        var deduped: [EventEnvelope] = []
+        deduped.reserveCapacity(sorted.count)
+        for event in sorted where seenEventIDs.insert(event.eventID).inserted {
+            deduped.append(event)
+        }
+
+        if deduped.count > maxTimelineEvents {
+            deduped.removeFirst(deduped.count - maxTimelineEvents)
+        }
+        return deduped
+    }
+
+    private func rebuildClinicalTimelineEntries(from events: [EventEnvelope]) {
+        state.clinicalTimelineEntries = []
+        for event in events {
+            captureClinicalTimelineEntry(from: event)
+        }
+        state.clinicalTimelineEntries.sort { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt > rhs.createdAt
+            }
+            return lhs.dedupeKey > rhs.dedupeKey
+        }
+    }
+
+    private func handleIncomingEvent(_ event: EventEnvelope) async -> EventHandlingOutcome {
+        let eventType = canonicalEventType(event.eventType)
+        logger.info(
+            "Received runtime event \(eventType, privacy: .public) id=\(event.eventID, privacy: .public)"
+        )
+
+        state = RunSessionReducer.reduce(state: state, action: .eventReceived(event))
+        normalizeStoredTimelineEvents()
+
+        handleSimulationStateChanged(event)
+        let shouldRehydrateSeededSession = handleSessionLifecycleEvent(event)
+        captureClinicalTimelineEntry(from: event)
+        syncStopwatchState()
+
+        return EventHandlingOutcome(
+            shouldRehydrateSeededSession: shouldRehydrateSeededSession,
+            shouldRefreshRuntimeState: shouldRefreshRuntimeProjection(for: event),
+            canonicalEventType: eventType
+        )
     }
 
     public func refreshSession() async {
@@ -237,8 +372,7 @@ public final class RunSessionStore: ObservableObject {
                 state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updated))
                 state = RunSessionReducer.reduce(state: state, action: .clearConflict)
                 syncStopwatchState(previousStatus: previousStatus)
-                await loadRuntimeState()
-                await reconcileAnnotationsFromSnapshot()
+                _ = await loadRuntimeState(reason: "retry initial simulation")
             } catch {
                 state.conflictBanner = error.localizedDescription
             }
@@ -705,6 +839,42 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
+    private func scheduleRuntimeRefresh(reason: String) async {
+        pendingRuntimeRefresh = true
+        logger.debug("Queued authoritative runtime refresh (\(reason, privacy: .public))")
+        guard runtimeRefreshTask == nil else { return }
+        runtimeRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            await self.flushScheduledRuntimeRefreshes()
+        }
+    }
+
+    private func flushScheduledRuntimeRefreshes() async {
+        defer { runtimeRefreshTask = nil }
+
+        while pendingRuntimeRefresh, !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: runtimeRefreshDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            pendingRuntimeRefresh = false
+            _ = await loadRuntimeState(reason: "coalesced live refresh")
+        }
+    }
+
+    private func transportDescription(_ transport: RealtimeTransportState) -> String {
+        switch transport {
+        case .connectedSSE:
+            return "connected_sse"
+        case .polling:
+            return "polling"
+        case let .reconnecting(attempt):
+            return "reconnecting_\(attempt)"
+        case .connecting:
+            return "connecting"
+        case .disconnected:
+            return "disconnected"
+        }
+    }
+
     private func syncTransportPresentation(for transport: RealtimeTransportState) {
         switch transport {
         case .connectedSSE:
@@ -1026,6 +1196,32 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
+        if isStateUpdateEvent(eventType: eventType) {
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Runtime State Updated",
+                message: eventPrimaryLabel(from: event.payload) ?? "Authoritative runtime state refreshed.",
+                createdAt: event.createdAt
+            )
+            return
+        }
+
+        if isAIIntentEvent(eventType: eventType) {
+            let summary = jsonString(event.payload["summary"])
+                ?? jsonString(event.payload["title"])
+                ?? jsonString(event.payload["trigger"])
+                ?? "Instructor intent updated."
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "AI Instructor",
+                message: summary,
+                createdAt: event.createdAt
+            )
+            return
+        }
+
         if isCauseEvent(eventType: eventType) {
             let kindTitle = eventType.hasPrefix("injury.") ? "Injury" : "Illness"
             let summary = eventPrimaryLabel(from: event.payload) ?? kindTitle
@@ -1075,6 +1271,44 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
+        if isVitalEvent(eventType: eventType) {
+            let vitalType = jsonString(event.payload["vital_type"])
+                ?? inferVitalType(from: jsonString(event.payload["domain_event_type"]))
+                ?? "vitals"
+            let minValue = jsonInt(event.payload["min_value"])
+            let maxValue = jsonInt(event.payload["max_value"])
+            let message: String
+            if let minValue, let maxValue {
+                message = "\(humanizedLabel(vitalType)) range \(minValue)-\(maxValue)"
+            } else {
+                message = eventPrimaryLabel(from: event.payload) ?? "\(humanizedLabel(vitalType)) updated"
+            }
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .vitals,
+                title: "Vital Update",
+                message: message,
+                createdAt: event.createdAt
+            )
+            return
+        }
+
+        if isPulseEvent(eventType: eventType, payload: event.payload) {
+            let location = jsonString(event.payload["location"]).map(humanizedLabel) ?? "Pulse"
+            let present = jsonBool(event.payload["present"])
+            let quality = jsonString(event.payload["quality"]) ?? jsonString(event.payload["description"])
+            let presenceText = present.map { $0 ? "present" : "absent" } ?? "updated"
+            let message = quality.map { "\(location) \(presenceText) (\($0))" } ?? "\(location) \(presenceText)"
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .vitals,
+                title: "Pulse Update",
+                message: message,
+                createdAt: event.createdAt
+            )
+            return
+        }
+
         if isNoteEvent(eventType: eventType, payload: event.payload) {
             let content = jsonString(event.payload["content"])
                 ?? jsonString(event.payload["note"])
@@ -1111,7 +1345,7 @@ public final class RunSessionStore: ObservableObject {
                 "intervention_type": interventionType,
                 "site_code": siteCode,
                 "effectiveness": effectiveness,
-                "status": status,
+                "intervention_status": status,
             ]
             if let supersedesID { meta["superseded_by"] = supersedesID }
 
@@ -1131,6 +1365,21 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
+        if isScenarioBriefEvent(eventType: eventType, payload: event.payload) {
+            let content = jsonString(event.payload["read_aloud_brief"])
+                ?? jsonString(event.payload["title"])
+                ?? jsonString(event.payload["location_overview"])
+                ?? "Scenario brief updated."
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Scenario Brief",
+                message: content,
+                createdAt: event.createdAt
+            )
+            return
+        }
+
         if eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."),
            jsonString(event.payload["target"]) == "avpu"
         {
@@ -1145,21 +1394,57 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
-        // Scenario brief delivered via SSE — update the published brief directly
-        if eventType.contains("scenario_brief") || event.payload["read_aloud_brief"] != nil {
-            if let readAloud = jsonString(event.payload["read_aloud_brief"]) {
-                let brief = ScenarioBriefOut(
-                    readAloudBrief: readAloud,
-                    environment: jsonString(event.payload["environment"]) ?? "",
-                    locationOverview: jsonString(event.payload["location_overview"]),
-                    threatContext: jsonString(event.payload["threat_context"]),
-                    evacuationOptions: jsonStringArray(event.payload["evacuation_options"]),
-                    evacuationTime: jsonString(event.payload["evacuation_time"]),
-                    specialConsiderations: jsonStringArray(event.payload["special_considerations"])
-                )
-                scenarioBrief = brief
-            }
+        if isAssessmentFindingEvent(eventType: eventType) {
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Assessment Finding",
+                message: eventPrimaryLabel(from: event.payload) ?? "Assessment finding updated.",
+                createdAt: event.createdAt
+            )
+            return
         }
+
+        if isDiagnosticResultEvent(eventType: eventType) {
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Diagnostic Result",
+                message: eventPrimaryLabel(from: event.payload) ?? "Diagnostic result updated.",
+                createdAt: event.createdAt
+            )
+            return
+        }
+
+        if isResourceEvent(eventType: eventType) {
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Resource Update",
+                message: eventPrimaryLabel(from: event.payload) ?? "Resource state updated.",
+                createdAt: event.createdAt
+            )
+            return
+        }
+
+        if isDispositionEvent(eventType: eventType) {
+            addClinicalTimelineEntry(
+                dedupeKey: "event:\(event.eventID)",
+                kind: .note,
+                title: "Disposition",
+                message: eventPrimaryLabel(from: event.payload) ?? "Disposition updated.",
+                createdAt: event.createdAt
+            )
+            return
+        }
+
+        addClinicalTimelineEntry(
+            dedupeKey: "event:\(event.eventID)",
+            kind: .note,
+            title: humanizedEventTitle(eventType),
+            message: eventPrimaryLabel(from: event.payload) ?? "Runtime event received.",
+            createdAt: event.createdAt
+        )
     }
 
     private func addClinicalTimelineEntry(
@@ -1174,7 +1459,7 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
-        state.clinicalTimelineEntries.insert(
+        state.clinicalTimelineEntries.append(
             ClinicalTimelineEntry(
                 dedupeKey: dedupeKey,
                 kind: kind,
@@ -1182,12 +1467,18 @@ public final class RunSessionStore: ObservableObject {
                 message: message,
                 createdAt: createdAt,
                 metadata: metadata
-            ),
-            at: 0
+            )
         )
 
-        if state.clinicalTimelineEntries.count > 400 {
-            state.clinicalTimelineEntries.removeLast(state.clinicalTimelineEntries.count - 400)
+        state.clinicalTimelineEntries.sort { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt > rhs.createdAt
+            }
+            return lhs.dedupeKey > rhs.dedupeKey
+        }
+
+        if state.clinicalTimelineEntries.count > maxTimelineEvents {
+            state.clinicalTimelineEntries.removeLast(state.clinicalTimelineEntries.count - maxTimelineEvents)
         }
     }
 
@@ -1208,6 +1499,17 @@ public final class RunSessionStore: ObservableObject {
             createdAt: entry.createdAt,
             metadata: meta
         )
+    }
+
+    private func humanizedEventTitle(_ eventType: String) -> String {
+        humanizedLabel(eventType.replacingOccurrences(of: ".", with: " "))
+    }
+
+    private func humanizedLabel(_ rawValue: String) -> String {
+        rawValue
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .capitalized
     }
 
     private func captureVitalRange(from event: EventEnvelope) {
@@ -1346,6 +1648,9 @@ public final class RunSessionStore: ObservableObject {
         let maxStep = max(2, Int(Double(high - low) * 0.08))
         let stepLow = max(low, current - maxStep)
         let stepHigh = min(high, current + maxStep)
+        if stepLow > stepHigh {
+            return Int.random(in: low ... high)
+        }
         return Int.random(in: stepLow ... stepHigh)
     }
 
@@ -1792,54 +2097,8 @@ public final class RunSessionStore: ObservableObject {
     // MARK: - Reconcile annotations from runtime state on reconnect
 
     private func reconcileAnnotationsFromSnapshot() async {
-        guard let snapshot = runtimeState?.currentSnapshot else { return }
-        hydrateHiddenClinicalState(from: snapshot)
-
-        let causesByID = Dictionary(uniqueKeysWithValues: snapshot.causes.compactMap { cause in
-            cause.causeID.map { ($0, cause) }
-        })
-        let problemsByID = Dictionary(uniqueKeysWithValues: snapshot.problems.compactMap { problem in
-            problem.problemID.map { ($0, problem) }
-        })
-
-        state.causeAnnotations = snapshot.causes.compactMap { cause in
-            makeCauseAnnotation(from: cause, fallbackProblem: cause.causeID.flatMap { causeID in
-                snapshot.problems.first(where: { $0.causeID == causeID })
-            })
-        }
-
-        state.problemAnnotations = snapshot.problems.map { problem in
-            makeProblemAnnotation(from: problem, causesByID: causesByID)
-        }
-
-        state.recommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
-            makeRecommendedInterventionItem(from: recommendation, problemsByID: problemsByID)
-        }
-
-        // Reconcile vitals from snapshot so ranges are visible before the sim starts
-        for vitalState in snapshot.vitals {
-            guard state.vitals.first(where: { $0.key == vitalState.vitalType }) == nil else { continue }
-            let sampled = randomVitalNumbers(
-                key: vitalState.vitalType,
-                minValue: vitalState.minValue,
-                maxValue: vitalState.maxValue,
-                minDiastolic: vitalState.minValueDiastolic,
-                maxDiastolic: vitalState.maxValueDiastolic
-            )
-            upsertVital(VitalStatusSnapshot(
-                key: vitalState.vitalType,
-                minValue: vitalState.minValue,
-                maxValue: vitalState.maxValue,
-                minValueDiastolic: vitalState.minValueDiastolic,
-                maxValueDiastolic: vitalState.maxValueDiastolic,
-                lockValue: vitalState.lockValue,
-                currentValue: sampled.primary,
-                currentDiastolicValue: sampled.secondary
-            ))
-        }
-
-        state.interventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
-        state.pulseAnnotations = snapshot.pulses.compactMap(makePulseAnnotation)
+        guard let runtimeState else { return }
+        applyRuntimeState(runtimeState, source: "reconcile")
     }
 
     private func hydrateHiddenClinicalState(from snapshot: TrainerRuntimeSnapshot) {
@@ -1847,6 +2106,90 @@ public final class RunSessionStore: ObservableObject {
         diagnosticResults = snapshot.diagnosticResults
         resources = snapshot.resources
         disposition = snapshot.disposition
+        patientStatus = snapshot.patientStatus
+    }
+
+    private func makeVitalSnapshot(
+        from vitalState: RuntimeVitalState,
+        existing: VitalStatusSnapshot?
+    ) -> VitalStatusSnapshot? {
+        guard
+            let vitalType = vitalState.vitalType?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !vitalType.isEmpty,
+            let minValue = vitalState.minValue,
+            let maxValue = vitalState.maxValue
+        else {
+            logger.debug("Skipping invalid runtime vital payload during authoritative apply")
+            return nil
+        }
+
+        let sampled = randomVitalNumbers(
+            key: vitalType,
+            minValue: minValue,
+            maxValue: maxValue,
+            minDiastolic: vitalState.minValueDiastolic,
+            maxDiastolic: vitalState.maxValueDiastolic,
+            currentPrimary: existing?.currentValue,
+            currentSecondary: existing?.currentDiastolicValue
+        )
+
+        let trend = vitalState.trend.flatMap(VitalTrendDirection.init(rawValue:))
+            ?? existing?.trend
+            ?? .flat
+
+        return VitalStatusSnapshot(
+            key: vitalType,
+            minValue: minValue,
+            maxValue: maxValue,
+            minValueDiastolic: vitalState.minValueDiastolic,
+            maxValueDiastolic: vitalState.maxValueDiastolic,
+            lockValue: vitalState.lockValue ?? false,
+            previousValue: existing?.currentValue,
+            previousDiastolicValue: existing?.currentDiastolicValue,
+            currentValue: sampled.primary,
+            currentDiastolicValue: sampled.secondary,
+            trend: trend,
+            changeToken: existing?.changeToken ?? 0,
+            lastUpdatedAt: parseISODate(vitalState.timestamp) ?? Date()
+        )
+    }
+
+    private func applyRuntimeState(_ runtimeState: TrainerRuntimeStateOut, source: String) {
+        let snapshot = runtimeState.currentSnapshot
+        logger.info(
+            "Applying runtime state for simulation \(runtimeState.simulationID, privacy: .public) from \(source, privacy: .public): revision=\(runtimeState.stateRevision, privacy: .public)"
+        )
+
+        self.runtimeState = runtimeState
+        scenarioBrief = runtimeState.scenarioBrief
+        hydrateHiddenClinicalState(from: snapshot)
+        noteLifecycleRevision(runtimeState.stateRevision)
+
+        let causesByID = Dictionary(uniqueKeysWithValues: snapshot.causes.compactMap { cause in
+            cause.causeID.map { ($0, cause) }
+        })
+        let problemsByID = Dictionary(uniqueKeysWithValues: snapshot.problems.compactMap { problem in
+            problem.problemID.map { ($0, problem) }
+        })
+        let existingVitalsByKey = Dictionary(uniqueKeysWithValues: state.vitals.map { ($0.key, $0) })
+
+        state.causeAnnotations = snapshot.causes.compactMap { cause in
+            makeCauseAnnotation(from: cause, fallbackProblem: cause.causeID.flatMap { causeID in
+                snapshot.problems.first(where: { $0.causeID == causeID })
+            })
+        }
+        state.problemAnnotations = snapshot.problems.map { problem in
+            makeProblemAnnotation(from: problem, causesByID: causesByID)
+        }
+        state.recommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
+            makeRecommendedInterventionItem(from: recommendation, problemsByID: problemsByID)
+        }
+        state.interventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
+        state.pulseAnnotations = snapshot.pulses.compactMap(makePulseAnnotation)
+        state.vitals = snapshot.vitals.compactMap { vitalState in
+            let existing = vitalState.vitalType.flatMap { existingVitalsByKey[$0] }
+            return makeVitalSnapshot(from: vitalState, existing: existing)
+        }
     }
 
     private func makeCauseAnnotation(
@@ -2109,10 +2452,20 @@ public final class RunSessionStore: ObservableObject {
     private func shouldRefreshRuntimeProjection(for event: EventEnvelope) -> Bool {
         let eventType = canonicalEventType(event.eventType)
         return isStateUpdateEvent(eventType: eventType)
+            || isAIIntentEvent(eventType: eventType)
+            || isRunLifecycleEvent(eventType: eventType)
+            || eventType == "session.seeded"
             || isCauseEvent(eventType: eventType)
             || isProblemEvent(eventType: eventType)
             || isRecommendedInterventionEvent(eventType: eventType)
             || isInterventionEvent(eventType: eventType, payload: event.payload)
+            || isVitalEvent(eventType: eventType)
+            || isPulseEvent(eventType: eventType, payload: event.payload)
+            || isScenarioBriefEvent(eventType: eventType, payload: event.payload)
+            || isAssessmentFindingEvent(eventType: eventType)
+            || isDiagnosticResultEvent(eventType: eventType)
+            || isResourceEvent(eventType: eventType)
+            || isDispositionEvent(eventType: eventType)
     }
 
     private func canonicalEventType(_ eventType: String) -> String {
@@ -2125,6 +2478,18 @@ public final class RunSessionStore: ObservableObject {
 
     private func isStateUpdateEvent(eventType: String) -> Bool {
         eventType == "state.updated"
+    }
+
+    private func isAIIntentEvent(eventType: String) -> Bool {
+        eventType == "ai.intent.updated"
+    }
+
+    private func isRunLifecycleEvent(eventType: String) -> Bool {
+        eventType == "run.started"
+            || eventType == "run.paused"
+            || eventType == "run.resumed"
+            || eventType == "run.stopped"
+            || eventType == "run.completed"
     }
 
     private func isCauseEvent(eventType: String) -> Bool {
@@ -2145,6 +2510,46 @@ public final class RunSessionStore: ObservableObject {
         eventType == "recommended_intervention.created"
             || eventType == "recommended_intervention.updated"
             || eventType == "recommended_intervention.cleared"
+            || eventType == "recommended_intervention.removed"
+    }
+
+    private func isVitalEvent(eventType: String) -> Bool {
+        eventType == "vital.created"
+            || eventType == "vital.updated"
+    }
+
+    private func isPulseEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
+        let domainEventType = jsonString(payload["domain_event_type"])?.lowercased()
+        let eventKind = jsonString(payload["event_kind"])?.lowercased()
+        return eventType == "pulse.created"
+            || eventType == "pulse.updated"
+            || domainEventType == "pulseassessment"
+            || eventKind == "pulse_assessment"
+    }
+
+    private func isScenarioBriefEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
+        eventType == "scenario_brief.created"
+            || eventType == "scenario_brief.updated"
+            || payload["read_aloud_brief"] != nil
+    }
+
+    private func isAssessmentFindingEvent(eventType: String) -> Bool {
+        eventType == "assessment_finding.created"
+            || eventType == "assessment_finding.updated"
+            || eventType == "assessment_finding.removed"
+    }
+
+    private func isDiagnosticResultEvent(eventType: String) -> Bool {
+        eventType == "diagnostic_result.created"
+            || eventType == "diagnostic_result.updated"
+    }
+
+    private func isResourceEvent(eventType: String) -> Bool {
+        eventType == "resource.updated"
+    }
+
+    private func isDispositionEvent(eventType: String) -> Bool {
+        eventType == "disposition.updated"
     }
 
     private func isNoteEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
@@ -2253,7 +2658,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func injuryZone(for code: String) -> (side: InjuryZoneSide, x: Double, y: Double)? {
-        InjuryZoneMap.table[code]
+        InjuryZoneMap.table[code] ?? InterventionSiteMap.table[code]
     }
 
     private func resolvedAnatomicLocationCode(primary: String?, fallback: String?) -> String? {

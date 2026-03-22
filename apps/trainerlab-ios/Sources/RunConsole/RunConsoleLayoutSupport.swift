@@ -60,7 +60,7 @@ enum RunConsoleTimelinePresentation {
         case .lifecycle:
             entry.title
         case .note:
-            "Trainer Note"
+            entry.title
         case .vitals:
             entry.title
         }
@@ -194,7 +194,7 @@ enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
     case kind(ClinicalTimelineKind)
 
     static var allCases: [RunConsoleTimelineFilter] {
-        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.vitals)]
+        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.vitals), .kind(.note)]
     }
 
     var id: String {
@@ -237,12 +237,11 @@ enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
         from entries: [ClinicalTimelineEntry],
         matching filter: RunConsoleTimelineFilter
     ) -> [ClinicalTimelineEntry] {
-        let visibleEntries = entries.filter { $0.kind != .note }
         return switch filter {
         case .all:
-            visibleEntries
+            entries
         case let .kind(kind):
-            visibleEntries.filter { $0.kind == kind }
+            entries.filter { $0.kind == kind }
         }
     }
 }
