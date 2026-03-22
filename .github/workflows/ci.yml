@@ -15,12 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
   IOS_SIMULATOR_DESTINATION: platform=iOS Simulator,name=iPhone 17 Pro
   XCODE_PROJECT: MedSim.xcodeproj
   XCODE_SCHEME: MedSim
-  SWIFT_FORMAT_VERSION: 0.58.7
-  SWIFT_LINT_VERSION: 0.62.2
   COVERAGE_THRESHOLD: 70
 
 jobs:
@@ -31,150 +28,162 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install SwiftFormat
-        run: |
-          set -euo pipefail
-          src_dir="$RUNNER_TEMP/SwiftFormat-src"
-          rm -rf "$src_dir"
-          git clone --depth 1 --branch "$SWIFT_FORMAT_VERSION" \
-            https://github.com/nicklockwood/SwiftFormat.git \
-            "$src_dir"
-          swift build -c release --package-path "$src_dir"
-          binary_path="$(find "$src_dir/.build" -type f -name swiftformat | head -n 1)"
-          chmod +x "$binary_path"
-          echo "$(dirname "$binary_path")" >> "$GITHUB_PATH"
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Install SwiftFormat 0.60.1
+        run: brew install swiftformat
+
+      - name: Verify SwiftFormat version
+        run: swiftformat --version
 
       - name: Check formatting
         run: |
           set -euo pipefail
-          swiftformat --version
           swiftformat MedSim MedSimTests MedSimUITests apps \
             --config .swiftformat \
-            --lint \
-            --reporter github-actions-log
+            --lint
 
-  swiftlint:
+  swiftlint-check:
     name: SwiftLint
     runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install SwiftLint
-        run: |
-          set -euo pipefail
-          artifact_dir="$RUNNER_TEMP/swiftlint"
-          curl -fsSL \
-            -o "$RUNNER_TEMP/swiftlint.zip" \
-            "https://github.com/realm/SwiftLint/releases/download/${SWIFT_LINT_VERSION}/SwiftLintBinary.artifactbundle.zip"
-          rm -rf "$artifact_dir"
-          unzip -q "$RUNNER_TEMP/swiftlint.zip" -d "$artifact_dir"
-          binary_path="$(find "$artifact_dir" -type f -name swiftlint | head -n 1)"
-          chmod +x "$binary_path"
-          echo "$(dirname "$binary_path")" >> "$GITHUB_PATH"
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
 
-      - name: Lint Swift sources
+      - name: Install SwiftLint 0.63.2
+        run: brew install swiftlint
+
+      - name: Verify SwiftLint version
+        run: swiftlint version
+
+      - name: Lint
         run: |
           set -euo pipefail
-          swiftlint version
           swiftlint lint --strict --config .swiftlint.yml --force-exclude --no-cache
 
-  spm-package-validation:
-    name: SPM Package Validation (${{ matrix.package.name }})
+  spm-trainerlab:
+    name: SPM Package Validation TrainerLabiOS
     runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - name: TrainerLabiOS
-            path: apps/trainerlab-ios
-            command: swift test
-          - name: ChatLabiOS
-            path: apps/chatlab-ios
-            command: swift test
-          - name: MedSimShelliOS
-            path: apps/medsim-shell-ios
-            command: swift build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode 26.3
-        run: sudo xcode-select -s "$DEVELOPER_DIR"
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
 
-      - name: Show toolchain versions
+      - name: Show toolchain
         run: |
+          xcode-select -p
           xcodebuild -version
           swift --version
 
-      - name: Cache SwiftPM dependencies
-        uses: actions/cache@v4
+      - name: Resolve dependencies
+        working-directory: apps/trainerlab-ios
+        run: |
+          set -euo pipefail
+          swift package resolve
+
+      - name: Build and test package
+        working-directory: apps/trainerlab-ios
+        run: |
+          set -euo pipefail
+          swift test
+
+  spm-chatlab:
+    name: SPM Package Validation ChatLabiOS
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
         with:
-          path: |
-            ~/.swiftpm
-            ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('apps/**/Package.swift', 'MedSim.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swiftpm-
+          xcode-version: "26.3"
 
-      - name: Resolve package dependencies
-        working-directory: ${{ matrix.package.path }}
-        run: swift package resolve
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
 
-      - name: Validate package
-        working-directory: ${{ matrix.package.path }}
-        run: ${{ matrix.package.command }}
+      - name: Resolve dependencies
+        working-directory: apps/chatlab-ios
+        run: |
+          set -euo pipefail
+          swift package resolve
+
+      - name: Build and test package
+        working-directory: apps/chatlab-ios
+        run: |
+          set -euo pipefail
+          swift test
+
+  spm-shell:
+    name: SPM Package Validation MedSimShelliOS
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Show toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve dependencies
+        working-directory: apps/medsim-shell-ios
+        run: |
+          set -euo pipefail
+          swift package resolve
+
+      - name: Build package
+        working-directory: apps/medsim-shell-ios
+        run: |
+          set -euo pipefail
+          swift build
 
   ios-build:
     name: iOS Build
     runs-on: macos-15
     env:
-      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
-      DERIVED_DATA_PATH: /tmp/derived-data-build
-      RESULT_BUNDLE_PATH: /tmp/results/ios-build.xcresult
-      LOG_PATH: /tmp/logs/ios-build.log
+      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-build
+      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode 26.3
-        run: sudo xcode-select -s "$DEVELOPER_DIR"
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
 
-      - name: Preflight iOS simulator availability
+      - name: Show toolchain
         run: |
-          set -euo pipefail
-          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
           xcode-select -p
           xcodebuild -version
           swift --version
-          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
-            printf '%s\n' "$destinations_output"
-            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
-            exit 1
-          fi
-          printf '%s\n' "$destinations_output"
-          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
-            printf '%s\n' "$simctl_output"
-            echo "::error::Unable to query available iOS simulators on this runner."
-            exit 1
-          fi
-          printf '%s\n' "$simctl_output"
-          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
-            echo "::error::Configured simulator '$device_name' is not available on this runner."
-            exit 1
-          fi
-
-      - name: Cache Xcode package dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CLONED_SOURCE_PACKAGES_DIR }}
-          key: ${{ runner.os }}-xcode-packages-${{ hashFiles('apps/**/Package.swift', 'MedSim.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode-packages-
 
       - name: Resolve Xcode package dependencies
         run: |
-          mkdir -p "$(dirname "$RESULT_BUNDLE_PATH")" "$(dirname "$LOG_PATH")" "$CLONED_SOURCE_PACKAGES_DIR"
+          set -euo pipefail
+          mkdir -p "$CLONED_SOURCE_PACKAGES_DIR"
           xcodebuild -resolvePackageDependencies \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
@@ -182,171 +191,85 @@ jobs:
 
       - name: Build for testing
         run: |
-          set -o pipefail
+          set -euo pipefail
           xcodebuild build-for-testing \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "$IOS_SIMULATOR_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR" \
-            -resultBundlePath "$RESULT_BUNDLE_PATH" \
-            CODE_SIGNING_ALLOWED=NO | tee "$LOG_PATH"
-
-      - name: Upload build logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-logs
-          path: ${{ env.LOG_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload build result bundle
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-xcresult
-          path: ${{ env.RESULT_BUNDLE_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
+            CODE_SIGNING_ALLOWED=NO
 
   ios-unit-tests:
     name: iOS Unit Tests
     runs-on: macos-15
+    needs: ios-build
     env:
-      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
-      DERIVED_DATA_PATH: /tmp/derived-data-unit-tests
-      RESULT_BUNDLE_PATH: /tmp/results/ios-unit-tests.xcresult
-      LOG_PATH: /tmp/logs/ios-unit-tests.log
+      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-unit
+      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-unit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode 26.3
-        run: sudo xcode-select -s "$DEVELOPER_DIR"
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
 
-      - name: Preflight iOS simulator availability
+      - name: Show toolchain
         run: |
-          set -euo pipefail
-          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
           xcode-select -p
           xcodebuild -version
           swift --version
-          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
-            printf '%s\n' "$destinations_output"
-            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
-            exit 1
-          fi
-          printf '%s\n' "$destinations_output"
-          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
-            printf '%s\n' "$simctl_output"
-            echo "::error::Unable to query available iOS simulators on this runner."
-            exit 1
-          fi
-          printf '%s\n' "$simctl_output"
-          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
-            echo "::error::Configured simulator '$device_name' is not available on this runner."
-            exit 1
-          fi
-
-      - name: Cache Xcode package dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CLONED_SOURCE_PACKAGES_DIR }}
-          key: ${{ runner.os }}-xcode-packages-${{ hashFiles('apps/**/Package.swift', 'MedSim.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode-packages-
 
       - name: Resolve Xcode package dependencies
         run: |
-          mkdir -p "$(dirname "$RESULT_BUNDLE_PATH")" "$(dirname "$LOG_PATH")" "$CLONED_SOURCE_PACKAGES_DIR"
+          set -euo pipefail
+          mkdir -p "$CLONED_SOURCE_PACKAGES_DIR"
           xcodebuild -resolvePackageDependencies \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR"
 
-      - name: Run unit tests
+      - name: Run unit tests with coverage
         run: |
-          set -o pipefail
+          set -euo pipefail
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "$IOS_SIMULATOR_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR" \
-            -resultBundlePath "$RESULT_BUNDLE_PATH" \
             -enableCodeCoverage YES \
             -only-testing:MedSimTests \
-            CODE_SIGNING_ALLOWED=NO | tee "$LOG_PATH"
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Upload unit test logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-unit-test-logs
-          path: ${{ env.LOG_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload unit test result bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-unit-tests-xcresult
-          path: ${{ env.RESULT_BUNDLE_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-  ios-ui-smoke-tests:
+  ios-ui-smoke:
     name: iOS UI Smoke Tests
     runs-on: macos-15
+    needs: ios-build
     env:
-      CLONED_SOURCE_PACKAGES_DIR: /tmp/cloned-source-packages
-      DERIVED_DATA_PATH: /tmp/derived-data-ui-tests
-      RESULT_BUNDLE_PATH: /tmp/results/ios-ui-smoke-tests.xcresult
-      LOG_PATH: /tmp/logs/ios-ui-smoke-tests.log
+      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-ui
+      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-ui
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode 26.3
-        run: sudo xcode-select -s "$DEVELOPER_DIR"
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
 
-      - name: Preflight iOS simulator availability
+      - name: Show toolchain
         run: |
-          set -euo pipefail
-          device_name="${IOS_SIMULATOR_DESTINATION##*name=}"
           xcode-select -p
           xcodebuild -version
           swift --version
-          if ! destinations_output="$(xcodebuild -showdestinations -project "$XCODE_PROJECT" -scheme "$XCODE_SCHEME" 2>&1)"; then
-            printf '%s\n' "$destinations_output"
-            echo "::error::Unable to query Xcode destinations for scheme '$XCODE_SCHEME'."
-            exit 1
-          fi
-          printf '%s\n' "$destinations_output"
-          if ! simctl_output="$(xcrun simctl list devices available 2>&1)"; then
-            printf '%s\n' "$simctl_output"
-            echo "::error::Unable to query available iOS simulators on this runner."
-            exit 1
-          fi
-          printf '%s\n' "$simctl_output"
-          if ! grep -Fq "$device_name" <<<"$simctl_output"; then
-            echo "::error::Configured simulator '$device_name' is not available on this runner."
-            exit 1
-          fi
-
-      - name: Cache Xcode package dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CLONED_SOURCE_PACKAGES_DIR }}
-          key: ${{ runner.os }}-xcode-packages-${{ hashFiles('apps/**/Package.swift', 'MedSim.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-xcode-packages-
 
       - name: Resolve Xcode package dependencies
         run: |
-          mkdir -p "$(dirname "$RESULT_BUNDLE_PATH")" "$(dirname "$LOG_PATH")" "$CLONED_SOURCE_PACKAGES_DIR"
+          set -euo pipefail
+          mkdir -p "$CLONED_SOURCE_PACKAGES_DIR"
           xcodebuild -resolvePackageDependencies \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
@@ -354,164 +277,12 @@ jobs:
 
       - name: Run UI smoke test
         run: |
-          set -o pipefail
+          set -euo pipefail
           xcodebuild test \
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -destination "$IOS_SIMULATOR_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR" \
-            -resultBundlePath "$RESULT_BUNDLE_PATH" \
             -only-testing:MedSimUITests/testLaunchShowsMedSimBrandingOnAuthGate \
-            CODE_SIGNING_ALLOWED=NO | tee "$LOG_PATH"
-
-      - name: Upload UI smoke test logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-ui-smoke-test-logs
-          path: ${{ env.LOG_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload UI smoke test result bundle
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-ui-smoke-tests-xcresult
-          path: ${{ env.RESULT_BUNDLE_PATH }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-  coverage-report:
-    name: Coverage Report
-    runs-on: macos-15
-    if: ${{ always() }}
-    needs:
-      - ios-unit-tests
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download unit test result bundle
-        continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-unit-tests-xcresult
-          path: /tmp/coverage-input
-
-      - name: Generate coverage report
-        env:
-          XCRESULT_ROOT: /tmp/coverage-input
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/coverage
-
-          python3 - <<'PY'
-          import json
-          import os
-          import pathlib
-          import subprocess
-
-          coverage_root = pathlib.Path(os.environ["XCRESULT_ROOT"])
-          coverage_path = pathlib.Path("/tmp/coverage/coverage-report.json")
-          summary_path = pathlib.Path("/tmp/coverage/coverage-summary.md")
-          text_path = pathlib.Path("/tmp/coverage/coverage-summary.txt")
-          threshold = float(os.environ["COVERAGE_THRESHOLD"])
-
-          def find_result_bundle(root):
-              direct_bundle = root / "ios-unit-tests.xcresult"
-              if (direct_bundle / "Info.plist").exists():
-                  return direct_bundle
-              if (root / "Info.plist").exists():
-                  return root
-              bundles = sorted(
-                  path for path in root.rglob("*.xcresult") if (path / "Info.plist").exists()
-              )
-              return bundles[0] if bundles else None
-
-          status = "NEUTRAL"
-          detail = "Coverage data was unavailable."
-          line_coverage_display = "N/A"
-          covered_lines = "N/A"
-          executable_lines = "N/A"
-          report = {"targets": []}
-
-          xcresult_path = find_result_bundle(coverage_root)
-          if xcresult_path is None:
-              detail = (
-                  f"No readable .xcresult bundle was found under `{coverage_root}`. "
-                  "The coverage job is reporting neutral status."
-              )
-          else:
-              result = subprocess.run(
-                  ["xcrun", "xccov", "view", "--report", "--json", str(xcresult_path)],
-                  capture_output=True,
-                  text=True,
-              )
-              if result.returncode != 0:
-                  stderr = result.stderr.strip() or result.stdout.strip() or "unknown xccov error"
-                  detail = (
-                      f"`xccov` could not read `{xcresult_path}`: {stderr}. "
-                      "The coverage job is reporting neutral status."
-                  )
-              else:
-                  report = json.loads(result.stdout)
-                  targets = report.get("targets", [])
-                  medsim_target = next(
-                      (target for target in targets if target.get("name") == "MedSim"),
-                      None,
-                  )
-                  if medsim_target is None:
-                      detail = (
-                          "The `MedSim` target was not present in the coverage report. "
-                          "The coverage job is reporting neutral status."
-                      )
-                  else:
-                      line_coverage = float(medsim_target.get("lineCoverage", 0.0)) * 100.0
-                      covered_lines = medsim_target.get("coveredLines", 0)
-                      executable_lines = medsim_target.get("executableLines", 0)
-                      line_coverage_display = f"{line_coverage:.2f}%"
-                      status = "PASS" if line_coverage >= threshold else "NEUTRAL"
-                      if status == "PASS":
-                          detail = f"Coverage met the {threshold:.0f}% threshold."
-                      else:
-                          detail = (
-                              f"Coverage was below the {threshold:.0f}% threshold. "
-                              "Reporting neutral status instead of failing."
-                          )
-
-          coverage_path.write_text(json.dumps(report, indent=2) + "\n")
-          summary = (
-              "## Coverage Report\n\n"
-              f"- Target: `MedSim`\n"
-              f"- Line coverage: `{line_coverage_display}`\n"
-              f"- Covered lines: `{covered_lines}` / `{executable_lines}`\n"
-              f"- Threshold: `{threshold:.0f}%`\n"
-              f"- Status: `{status}`\n"
-              f"- Details: {detail}\n"
-          )
-          summary_path.write_text(summary)
-          text_path.write_text(
-              f"MedSim line coverage: {line_coverage_display} "
-              f"({covered_lines}/{executable_lines}), threshold {threshold:.0f}% -> {status}. "
-              f"{detail}\n"
-          )
-
-          github_step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if github_step_summary:
-              with open(github_step_summary, "a", encoding="utf-8") as fh:
-                  fh.write(summary)
-          PY
-
-      - name: Upload coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: |
-            /tmp/coverage/coverage-report.json
-            /tmp/coverage/coverage-summary.md
-            /tmp/coverage/coverage-summary.txt
-          if-no-files-found: error
-          retention-days: 7
+            CODE_SIGNING_ALLOWED=NO
