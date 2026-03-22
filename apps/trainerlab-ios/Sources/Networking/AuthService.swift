@@ -6,13 +6,13 @@ public protocol AuthServiceProtocol: Sendable {
     func signIn(email: String, password: String) async throws -> AuthTokens
     func signInWithApple(
         credential: AppleSignInCredential,
-        invitationToken: String?
+        invitationToken: String?,
     ) async throws -> AppleSignInResult
     func completeAppleSignup(
         pendingSignup: PendingAppleSignup,
         roleID: Int,
         givenName: String,
-        familyName: String
+        familyName: String,
     ) async throws -> AuthTokens
     func signOut() async
     func hasActiveTokens() -> Bool
@@ -44,20 +44,20 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
 
     public func signInWithApple(
         credential: AppleSignInCredential,
-        invitationToken: String?
+        invitationToken: String?,
     ) async throws -> AppleSignInResult {
         let payload = AppleTokenRequest(
             identityToken: credential.identityToken,
             authorizationCode: credential.authorizationCode,
             givenName: credential.givenName,
             familyName: credential.familyName,
-            invitationToken: invitationToken
+            invitationToken: invitationToken,
         )
         let endpoint = try Endpoint(
             path: "/api/v1/auth/apple/",
             method: .post,
             body: encoder.encode(payload),
-            requiresAuth: false
+            requiresAuth: false,
         )
         let response = try await apiClient.perform(endpoint)
 
@@ -74,8 +74,8 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
                     email: completion.email,
                     givenName: completion.givenName,
                     familyName: completion.familyName,
-                    roles: completion.roles
-                )
+                    roles: completion.roles,
+                ),
             )
         default:
             throw mapAuthError(from: response)
@@ -86,19 +86,19 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
         pendingSignup: PendingAppleSignup,
         roleID: Int,
         givenName: String,
-        familyName: String
+        familyName: String,
     ) async throws -> AuthTokens {
         let payload = AppleCompleteSignupRequest(
             signupToken: pendingSignup.signupToken,
             roleID: roleID,
             givenName: givenName,
-            familyName: familyName
+            familyName: familyName,
         )
         let endpoint = try Endpoint(
             path: "/api/v1/auth/apple/complete-signup/",
             method: .post,
             body: encoder.encode(payload),
-            requiresAuth: false
+            requiresAuth: false,
         )
         let response = try await apiClient.perform(endpoint)
 
@@ -153,7 +153,7 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
                 return .api(
                     statusCode: response.statusCode,
                     detail: payload.detail,
-                    correlationID: payload.correlationID
+                    correlationID: payload.correlationID,
                 )
             }
         }

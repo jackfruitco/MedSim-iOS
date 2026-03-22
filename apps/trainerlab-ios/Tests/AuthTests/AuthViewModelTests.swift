@@ -24,11 +24,11 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
     )
     var signInWithAppleResult: Result<AppleSignInResult, Error> = .success(
         .authenticated(
-            AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer")
-        )
+            AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer"),
+        ),
     )
     var completeAppleSignupResult: Result<AuthTokens, Error> = .success(
-        AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer")
+        AuthTokens(accessToken: "apple-a", refreshToken: "apple-r", expiresIn: 3600, tokenType: "Bearer"),
     )
     var signOutCalled = false
     var hasActiveTokensValue = false
@@ -39,7 +39,7 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
 
     func signInWithApple(
         credential _: AppleSignInCredential,
-        invitationToken _: String?
+        invitationToken _: String?,
     ) async throws -> AppleSignInResult {
         try signInWithAppleResult.get()
     }
@@ -48,7 +48,7 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
         pendingSignup _: PendingAppleSignup,
         roleID _: Int,
         givenName _: String,
-        familyName _: String
+        familyName _: String,
     ) async throws -> AuthTokens {
         try completeAppleSignupResult.get()
     }
@@ -311,7 +311,7 @@ final class AuthViewModelTests: XCTestCase {
         let vm = AuthViewModel(authService: MockAuthService(), trainerService: MockTrainerLabService())
 
         await vm.signInWithApple(
-            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code"),
         )
 
         XCTAssertTrue(vm.isAuthenticated)
@@ -329,14 +329,14 @@ final class AuthViewModelTests: XCTestCase {
                     email: "new@example.com",
                     givenName: "New",
                     familyName: "User",
-                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
-                )
-            )
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")],
+                ),
+            ),
         )
         let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
 
         await vm.signInWithApple(
-            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code"),
         )
 
         XCTAssertFalse(vm.isAuthenticated)
@@ -350,7 +350,7 @@ final class AuthViewModelTests: XCTestCase {
         let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
 
         await vm.signInWithApple(
-            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code"),
         )
 
         XCTAssertFalse(vm.isAuthenticated)
@@ -366,14 +366,14 @@ final class AuthViewModelTests: XCTestCase {
                     email: "new@example.com",
                     givenName: "New",
                     familyName: "User",
-                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
-                )
-            )
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")],
+                ),
+            ),
         )
         let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
 
         await vm.signInWithApple(
-            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code"),
         )
         await vm.completeAppleSignup(roleID: 1, givenName: "New", familyName: "User")
 
@@ -391,14 +391,14 @@ final class AuthViewModelTests: XCTestCase {
                     email: "new@example.com",
                     givenName: "New",
                     familyName: "User",
-                    roles: [AppleRoleOption(id: 1, title: "Instructor")]
-                )
-            )
+                    roles: [AppleRoleOption(id: 1, title: "Instructor")],
+                ),
+            ),
         )
         let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
 
         await vm.signInWithApple(
-            AppleSignInCredential(identityToken: "token", authorizationCode: "code")
+            AppleSignInCredential(identityToken: "token", authorizationCode: "code"),
         )
         await vm.completeAppleSignup(roleID: nil, givenName: "New", familyName: "User")
 

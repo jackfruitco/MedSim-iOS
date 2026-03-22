@@ -136,7 +136,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     public func perform(_ endpoint: Endpoint) async throws -> HTTPResponseData {
         let (data, response) = try await executeRaw(
             endpoint: endpoint,
-            allowRefreshRetry: endpoint.requiresAuth
+            allowRefreshRetry: endpoint.requiresAuth,
         )
         return HTTPResponseData(statusCode: response.statusCode, data: data)
     }
@@ -145,7 +145,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         let (data, http) = try await executeRaw(
             endpoint: endpoint,
             allowRefreshRetry: allowRefreshRetry,
-            retryCount: retryCount
+            retryCount: retryCount,
         )
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<binary>"
@@ -163,7 +163,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     private func executeRaw(
         endpoint: Endpoint,
         allowRefreshRetry: Bool,
-        retryCount: Int = 0
+        retryCount: Int = 0,
     ) async throws -> (Data, HTTPURLResponse) {
         let request = try await buildRequest(for: endpoint)
         logger.debug("\(endpoint.method.rawValue) \(request.url?.absoluteString ?? endpoint.path)")
@@ -185,7 +185,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             return try await executeRaw(
                 endpoint: endpoint,
                 allowRefreshRetry: allowRefreshRetry,
-                retryCount: retryCount + 1
+                retryCount: retryCount + 1,
             )
         }
         return (data, http)

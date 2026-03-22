@@ -13,7 +13,7 @@ public struct AppleSignInCredential: Equatable, Sendable {
         authorizationCode: String,
         givenName: String? = nil,
         familyName: String? = nil,
-        email: String? = nil
+        email: String? = nil,
     ) {
         self.identityToken = identityToken
         self.authorizationCode = authorizationCode
@@ -49,7 +49,7 @@ public struct PendingAppleSignup: Codable, Equatable, Identifiable, Sendable {
         email: String,
         givenName: String,
         familyName: String,
-        roles: [AppleRoleOption]
+        roles: [AppleRoleOption],
     ) {
         self.signupToken = signupToken
         self.email = email

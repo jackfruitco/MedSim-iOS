@@ -35,7 +35,7 @@ private final class RecordingAPIClient: APIClientProtocol, @unchecked Sendable {
         if let data = responseDataByPath[endpoint.path] {
             return HTTPResponseData(
                 statusCode: responseStatusByPath[endpoint.path] ?? 200,
-                data: data
+                data: data,
             )
         }
         throw RecordingError.intercepted
@@ -344,7 +344,7 @@ final class TrainerLabContractTests: XCTestCase {
         let api = RecordingAPIClient()
         let tokenProvider = RecordingTokenProvider()
         api.responseDataByPath["/api/v1/auth/apple/"] = Data(
-            #"{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer"}"#.utf8
+            #"{"access_token":"a","refresh_token":"r","expires_in":3600,"token_type":"Bearer"}"#.utf8,
         )
         let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
 
@@ -354,9 +354,9 @@ final class TrainerLabContractTests: XCTestCase {
                 authorizationCode: "authorization-code",
                 givenName: "Taylor",
                 familyName: "Jones",
-                email: "taylor@example.com"
+                email: "taylor@example.com",
             ),
-            invitationToken: "invite-token"
+            invitationToken: "invite-token",
         )
 
         guard case let .authenticated(tokens) = result else {
@@ -379,16 +379,16 @@ final class TrainerLabContractTests: XCTestCase {
         let api = RecordingAPIClient()
         api.responseStatusByPath["/api/v1/auth/apple/"] = 409
         api.responseDataByPath["/api/v1/auth/apple/"] = Data(
-            #"{"type":"profile_completion_required","title":"Profile completion required","status":409,"detail":"Complete your profile to finish Apple sign-in.","signup_token":"signup-token","email":"new@example.com","given_name":"New","family_name":"User","roles":[{"id":1,"title":"Instructor"}]}"#.utf8
+            #"{"type":"profile_completion_required","title":"Profile completion required","status":409,"detail":"Complete your profile to finish Apple sign-in.","signup_token":"signup-token","email":"new@example.com","given_name":"New","family_name":"User","roles":[{"id":1,"title":"Instructor"}]}"#.utf8,
         )
         let service = AuthService(apiClient: api, tokenProvider: RecordingTokenProvider())
 
         let result = try await service.signInWithApple(
             credential: AppleSignInCredential(
                 identityToken: "identity-token",
-                authorizationCode: "authorization-code"
+                authorizationCode: "authorization-code",
             ),
-            invitationToken: nil
+            invitationToken: nil,
         )
 
         guard case let .profileCompletionRequired(pending) = result else {
@@ -403,7 +403,7 @@ final class TrainerLabContractTests: XCTestCase {
         let api = RecordingAPIClient()
         let tokenProvider = RecordingTokenProvider()
         api.responseDataByPath["/api/v1/auth/apple/complete-signup/"] = Data(
-            #"{"access_token":"a2","refresh_token":"r2","expires_in":3600,"token_type":"Bearer"}"#.utf8
+            #"{"access_token":"a2","refresh_token":"r2","expires_in":3600,"token_type":"Bearer"}"#.utf8,
         )
         let service = AuthService(apiClient: api, tokenProvider: tokenProvider)
         let pending = PendingAppleSignup(
@@ -411,14 +411,14 @@ final class TrainerLabContractTests: XCTestCase {
             email: "new@example.com",
             givenName: "New",
             familyName: "User",
-            roles: [AppleRoleOption(id: 2, title: "Instructor")]
+            roles: [AppleRoleOption(id: 2, title: "Instructor")],
         )
 
         let tokens = try await service.completeAppleSignup(
             pendingSignup: pending,
             roleID: 2,
             givenName: "New",
-            familyName: "User"
+            familyName: "User",
         )
 
         XCTAssertEqual(tokens.accessToken, "a2")

@@ -44,7 +44,7 @@ public final class AuthViewModel: ObservableObject {
         do {
             let result = try await authService.signInWithApple(
                 credential: credential,
-                invitationToken: normalizedInvitationToken()
+                invitationToken: normalizedInvitationToken(),
             )
             switch result {
             case .authenticated:
@@ -83,7 +83,7 @@ public final class AuthViewModel: ObservableObject {
                 pendingSignup: pendingAppleSignup,
                 roleID: roleID,
                 givenName: givenName.trimmingCharacters(in: .whitespacesAndNewlines),
-                familyName: familyName.trimmingCharacters(in: .whitespacesAndNewlines)
+                familyName: familyName.trimmingCharacters(in: .whitespacesAndNewlines),
             )
             self.pendingAppleSignup = nil
             try await finishAuthenticatedSession()

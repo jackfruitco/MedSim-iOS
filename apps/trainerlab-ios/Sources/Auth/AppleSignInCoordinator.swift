@@ -49,7 +49,7 @@ struct AppleSignInCoordinator {
             authorizationCode: authorizationCode,
             givenName: credential.fullName?.givenName,
             familyName: credential.fullName?.familyName,
-            email: credential.email
+            email: credential.email,
         )
     }
 }

@@ -67,7 +67,7 @@ public struct AuthGateView: View {
 
                     TextField(
                         "Invitation Token (optional for first-time Apple sign-up)",
-                        text: $viewModel.invitationToken
+                        text: $viewModel.invitationToken,
                     )
                     .authInvitationFieldModifiers()
                     .textFieldStyle(.roundedBorder)
@@ -154,10 +154,10 @@ public struct AuthGateView: View {
                             await viewModel.completeAppleSignup(
                                 roleID: roleID,
                                 givenName: givenName,
-                                familyName: familyName
+                                familyName: familyName,
                             )
                         }
-                    }
+                    },
                 )
             }
         }
@@ -183,7 +183,7 @@ public struct AuthGateView: View {
                 if !isPresented {
                     viewModel.cancelAppleSignup()
                 }
-            }
+            },
         )
     }
 
@@ -255,7 +255,7 @@ private struct AppleSignupCompletionSheet: View {
         isLoading: Bool,
         errorMessage: String?,
         onCancel: @escaping () -> Void,
-        onComplete: @escaping (_ roleID: Int?, _ givenName: String, _ familyName: String) -> Void
+        onComplete: @escaping (_ roleID: Int?, _ givenName: String, _ familyName: String) -> Void,
     ) {
         self.pendingSignup = pendingSignup
         self.isLoading = isLoading
