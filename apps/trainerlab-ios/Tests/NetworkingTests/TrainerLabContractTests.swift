@@ -265,7 +265,7 @@ final class TrainerLabContractTests: XCTestCase {
             targetProblemID: 19,
             status: .applied,
             effectiveness: .effective,
-            notes: "Applied high and tight"
+            notes: "Applied high and tight",
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -284,7 +284,7 @@ final class TrainerLabContractTests: XCTestCase {
             interventionType: "tourniquet",
             siteCode: "left_arm",
             targetProblemID: 19,
-            tourniquetApplicationMode: .deliberate
+            tourniquetApplicationMode: .deliberate,
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -300,7 +300,7 @@ final class TrainerLabContractTests: XCTestCase {
         let request = SimulationNoteCreateRequest(
             content: "Observe airway",
             sendToAI: true,
-            performedByRole: "instructor"
+            performedByRole: "instructor",
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -323,7 +323,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.requiresAuth, false)
         XCTAssertEqual(
             try? decodeJSONBody(api.capturedEndpoints.last?.body)?["refresh_token"] as? String,
-            "r"
+            "r",
         )
         XCTAssertTrue(tokenProvider.cleared)
     }
@@ -348,7 +348,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/run/start/"
+            "/api/v1/trainerlab/simulations/7/run/start/",
         )
 
         do {
@@ -362,9 +362,9 @@ final class TrainerLabContractTests: XCTestCase {
                     injuryRegion: nil,
                     avpuState: "alert",
                     interventionCode: nil,
-                    note: nil
+                    note: nil,
                 ),
-                idempotencyKey: "k2"
+                idempotencyKey: "k2",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -372,7 +372,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/adjust/"
+            "/api/v1/trainerlab/simulations/7/adjust/",
         )
 
         do {
@@ -383,7 +383,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/events/"
+            "/api/v1/trainerlab/simulations/7/events/",
         )
 
         do {
@@ -391,7 +391,7 @@ final class TrainerLabContractTests: XCTestCase {
                 simulationID: 7,
                 problemID: 3,
                 request: ProblemStatusUpdateRequest(isTreated: true, isResolved: false),
-                idempotencyKey: "k3"
+                idempotencyKey: "k3",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -399,7 +399,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/problems/3/"
+            "/api/v1/trainerlab/simulations/7/problems/3/",
         )
 
         do {
@@ -430,7 +430,7 @@ final class TrainerLabContractTests: XCTestCase {
             _ = try await service.createNoteEvent(
                 simulationID: 7,
                 request: SimulationNoteCreateRequest(content: "Observe airway"),
-                idempotencyKey: "k6"
+                idempotencyKey: "k6",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -439,7 +439,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/events/notes/")
         XCTAssertEqual(
             try decodeJSONBody(api.capturedEndpoints.last?.body)?["content"] as? String,
-            "Observe airway"
+            "Observe airway",
         )
     }
 
@@ -479,7 +479,7 @@ final class TrainerLabContractTests: XCTestCase {
               "created_at": "2026-03-12T12:00:00Z",
               "modified_at": "2026-03-12T12:00:00Z"
             }
-            """.utf8
+            """.utf8,
         )
         let service = TrainerLabService(apiClient: api)
 
@@ -668,7 +668,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "triage",
                 "intervention",
                 "other",
-            ]
+            ],
         )
         XCTAssertEqual(
             AnnotationOutcome.allCases.map(\.rawValue),
@@ -678,7 +678,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "missed",
                 "improvised",
                 "pending",
-            ]
+            ],
         )
     }
 
@@ -688,7 +688,7 @@ final class TrainerLabContractTests: XCTestCase {
             learningObjective: .hemorrhageControl,
             outcome: .correct,
             linkedEventID: 99,
-            elapsedSecondsAt: 120
+            elapsedSecondsAt: 120,
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -728,35 +728,35 @@ final class TrainerLabContractTests: XCTestCase {
             endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         ))
         try await store.enqueue(CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         ))
         try await store.enqueue(CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 421
+            simulationID: 421,
         ))
         try await store.enqueue(CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         ))
         try await store.enqueue(CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/events/notes/",
             method: HTTPMethod.post.rawValue,
-            body: nil
+            body: nil,
         ))
 
         let terminal = CommandEnvelopeBuilder.make(
             endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
             method: HTTPMethod.post.rawValue,
             body: Data(),
-            simulationID: 420
+            simulationID: 420,
         )
         try await store.enqueue(terminal)
         try await store.markTerminalFailure(idempotencyKey: terminal.idempotencyKey, error: "terminal")
@@ -795,7 +795,7 @@ final class TrainerLabContractTests: XCTestCase {
               ack_state TEXT NOT NULL
             );
             INSERT INTO grdb_migrations(identifier) VALUES ('create_pending_commands');
-            """
+            """,
         )
 
         try execSQL(
@@ -807,7 +807,7 @@ final class TrainerLabContractTests: XCTestCase {
               ('old-adjust', '/api/v1/simulations/77/adjust/', 'POST', NULL, 'h1', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-session-run', '/api/v1/trainerlab/sessions/55/run/start/', 'POST', NULL, 'h2', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-sessions-root', '/api/v1/trainerlab/sessions/', 'POST', NULL, 'h3', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending');
-            """
+            """,
         )
     }
 
@@ -820,7 +820,7 @@ final class TrainerLabContractTests: XCTestCase {
             throw NSError(
                 domain: "TrainerLabContractTests",
                 code: Int(result),
-                userInfo: [NSLocalizedDescriptionKey: message]
+                userInfo: [NSLocalizedDescriptionKey: message],
             )
         }
     }

@@ -63,7 +63,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
                     try await consumeSSE(
                         simulationID: simulationID,
                         cursor: currentCursor,
-                        currentCursor: &currentCursor
+                        currentCursor: &currentCursor,
                     )
                     reconnectAttempt = 0
                 } catch {
@@ -82,7 +82,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
                         try await consumePollingUntilRetry(
                             simulationID: simulationID,
                             currentCursor: &currentCursor,
-                            retryDeadline: retryDeadline
+                            retryDeadline: retryDeadline,
                         )
                     } catch {
                         // Keep retry loop alive.
@@ -109,7 +109,7 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     private func consumeSSE(
         simulationID: Int,
         cursor: String?,
-        currentCursor: inout String?
+        currentCursor: inout String?,
     ) async throws {
         logger.info("SSE connected to simulation \(simulationID) cursor=\(cursor ?? "nil")")
         stateContinuation.yield(.connectedSSE)
@@ -128,12 +128,12 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
     private func consumePollingUntilRetry(
         simulationID: Int,
         currentCursor: inout String?,
-        retryDeadline: Date
+        retryDeadline: Date,
     ) async throws {
         while Date() < retryDeadline {
             let page = try await pollingTransport.fetch(
                 simulationID: simulationID,
-                cursor: currentCursor
+                cursor: currentCursor,
             )
             if !page.items.isEmpty {
                 for event in page.items {

@@ -45,7 +45,7 @@ public enum RunSessionReducer {
                         createdAt: session.createdAt,
                         modifiedAt: session.modifiedAt,
                         terminalReasonCode: session.terminalReasonCode,
-                        terminalReasonText: session.terminalReasonText
+                        terminalReasonText: session.terminalReasonText,
                     )
                 }
                 if eventType == "run.paused" {
@@ -63,7 +63,7 @@ public enum RunSessionReducer {
                         createdAt: session.createdAt,
                         modifiedAt: session.modifiedAt,
                         terminalReasonCode: session.terminalReasonCode,
-                        terminalReasonText: session.terminalReasonText
+                        terminalReasonText: session.terminalReasonText,
                     )
                 }
                 if eventType == "run.stopped" || eventType == "run.completed" {
@@ -81,7 +81,7 @@ public enum RunSessionReducer {
                         createdAt: session.createdAt,
                         modifiedAt: session.modifiedAt,
                         terminalReasonCode: session.terminalReasonCode,
-                        terminalReasonText: session.terminalReasonText
+                        terminalReasonText: session.terminalReasonText,
                     )
                 }
                 next.session = changed
