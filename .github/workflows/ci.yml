@@ -33,7 +33,7 @@ jobs:
         with:
           xcode-version: "26.3"
 
-      - name: Install SwiftFormat 0.60.1
+      - name: Install SwiftFormat
         run: brew install swiftformat
 
       - name: Verify SwiftFormat version
@@ -58,7 +58,7 @@ jobs:
         with:
           xcode-version: "26.3"
 
-      - name: Install SwiftLint 0.63.2
+      - name: Install SwiftLint
         run: brew install swiftlint
 
       - name: Verify SwiftLint version
@@ -162,9 +162,6 @@ jobs:
   ios-build:
     name: iOS Build
     runs-on: macos-15
-    env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-build
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -173,6 +170,11 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
+
+      - name: Set temp paths
+        run: |
+          echo "CLONED_SOURCE_PACKAGES_DIR=$RUNNER_TEMP/cloned-source-packages-build" >> "$GITHUB_ENV"
+          echo "DERIVED_DATA_PATH=$RUNNER_TEMP/derived-data-build" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: |
@@ -204,9 +206,6 @@ jobs:
     name: iOS Unit Tests
     runs-on: macos-15
     needs: ios-build
-    env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-unit
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-unit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -215,6 +214,11 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
+
+      - name: Set temp paths
+        run: |
+          echo "CLONED_SOURCE_PACKAGES_DIR=$RUNNER_TEMP/cloned-source-packages-unit" >> "$GITHUB_ENV"
+          echo "DERIVED_DATA_PATH=$RUNNER_TEMP/derived-data-unit" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: |
@@ -248,9 +252,6 @@ jobs:
     name: iOS UI Smoke Tests
     runs-on: macos-15
     needs: ios-build
-    env:
-      CLONED_SOURCE_PACKAGES_DIR: ${{ runner.temp }}/cloned-source-packages-ui
-      DERIVED_DATA_PATH: ${{ runner.temp }}/derived-data-ui
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -259,6 +260,11 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
+
+      - name: Set temp paths
+        run: |
+          echo "CLONED_SOURCE_PACKAGES_DIR=$RUNNER_TEMP/cloned-source-packages-ui" >> "$GITHUB_ENV"
+          echo "DERIVED_DATA_PATH=$RUNNER_TEMP/derived-data-ui" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: |
