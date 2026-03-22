@@ -373,33 +373,8 @@ private extension RunSummaryView {
         return df.string(from: date)
     }
 
-    func humanizeEventType(_ eventType: String, payload _: [String: JSONValue]) -> String {
-        let canonical = eventType.hasPrefix("trainerlab.")
-            ? String(eventType.dropFirst("trainerlab.".count))
-            : eventType
-
-        switch canonical {
-        case "run.started": return "Run Started"
-        case "run.paused": return "Run Paused"
-        case "run.resumed": return "Run Resumed"
-        case "run.stopped", "run.completed": return "Run Stopped"
-        case "vital.created", "vital.updated": return "Vital Range Set"
-        case "note.created", "note_updated", "note.updated": return "Trainer Note"
-        case "injury.created", "injury.updated": return "Cause Added"
-        case "illness.created", "illness.updated": return "Cause Added"
-        case "problem.created", "problem.updated", "problem.resolved", "problem.status_updated": return "Problem Updated"
-        case "recommended_intervention.created", "recommended_intervention.updated", "recommended_intervention.cleared": return "Recommendation Updated"
-        default:
-            if canonical.contains("intervention") { return "Intervention Applied" }
-            if canonical.contains("adjustment") {
-                if canonical.contains("avpu") { return "AVPU Change" }
-                return "Adjustment"
-            }
-            return canonical
-                .replacingOccurrences(of: ".", with: " ")
-                .replacingOccurrences(of: "_", with: " ")
-                .capitalized
-        }
+    func humanizeEventType(_ eventType: String, payload: [String: JSONValue]) -> String {
+        SimulationEventRegistry.displayTitle(for: eventType, payload: payload)
     }
 
     func humanizeCommandType(_ commandType: String) -> String {

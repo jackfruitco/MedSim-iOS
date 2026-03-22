@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 import OSLog
 import Persistence
 import SharedModels
@@ -159,26 +160,8 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
             throw URLError(.userAuthenticationRequired)
         }
 
-        let base = baseURLProvider()
-        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
-            throw URLError(.badURL)
-        }
-
-        components.path = "/api/v1/trainerlab/simulations/\(simulationID)/events/stream/"
-        if let cursor {
-            components.queryItems = [URLQueryItem(name: "cursor", value: cursor)]
-        }
-
-        guard let url = components.url else {
-            throw URLError(.badURL)
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
-        return request
+        let route = TrainerLabAPI.eventStream(simulationID: simulationID, cursor: cursor)
+        return try route.makeURLRequest(baseURL: baseURLProvider(), accessToken: tokens.accessToken)
     }
 
     private func parseEvent(dataString: String) throws -> EventEnvelope? {

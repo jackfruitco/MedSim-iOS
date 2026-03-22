@@ -453,6 +453,25 @@ public struct ChatEventEnvelope: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public extension ChatEventEnvelope {
+    func decodePayload<T: Decodable>(_ type: T.Type) throws -> T {
+        try payload.decodedPayload(as: type)
+    }
+
+    func canonicalized() -> ChatEventEnvelope {
+        let canonicalEventType = SimulationEventRegistry.canonicalize(eventType)
+        let normalizedPayload = SimulationEventRegistry.normalizedPayload(for: eventType, payload: payload)
+        guard canonicalEventType != eventType || normalizedPayload != payload else { return self }
+        return ChatEventEnvelope(
+            eventID: eventID,
+            eventType: canonicalEventType,
+            createdAt: createdAt,
+            correlationID: correlationID,
+            payload: normalizedPayload,
+        )
+    }
+}
+
 public enum ChatRealtimeConnectionState: Sendable, Equatable {
     case disconnected
     case connecting

@@ -296,7 +296,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func normalizedEvents(_ events: [EventEnvelope]) -> [EventEnvelope] {
-        let sorted = events.sorted { lhs, rhs in
+        let sorted = events.map { $0.canonicalized() }.sorted { lhs, rhs in
             if lhs.createdAt != rhs.createdAt {
                 return lhs.createdAt < rhs.createdAt
             }
@@ -330,22 +330,24 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func handleIncomingEvent(_ event: EventEnvelope) async -> EventHandlingOutcome {
-        let eventType = canonicalEventType(event.eventType)
+        let canonicalEvent = event.canonicalized()
+        let eventType = canonicalEvent.eventType
         logger.info(
             "Received runtime event \(eventType, privacy: .public) id=\(event.eventID, privacy: .public)",
         )
 
-        state = RunSessionReducer.reduce(state: state, action: .eventReceived(event))
+        let previousStatus = state.session?.status
+        state = RunSessionReducer.reduce(state: state, action: .eventReceived(canonicalEvent))
         normalizeStoredTimelineEvents()
 
-        handleSimulationStateChanged(event)
-        let shouldRehydrateSeededSession = handleSessionLifecycleEvent(event)
-        captureClinicalTimelineEntry(from: event)
-        syncStopwatchState()
+        let shouldRehydrateSeededSession = handleSimulationStatusUpdated(canonicalEvent, previousStatus: previousStatus)
+        applyLiveEventProjection(from: canonicalEvent)
+        captureClinicalTimelineEntry(from: canonicalEvent, previousStatus: previousStatus)
+        syncStopwatchState(previousStatus: previousStatus)
 
         return EventHandlingOutcome(
             shouldRehydrateSeededSession: shouldRehydrateSeededSession,
-            shouldRefreshRuntimeState: shouldRefreshRuntimeProjection(for: event),
+            shouldRefreshRuntimeState: shouldRefreshRuntimeProjection(for: canonicalEvent),
             canonicalEventType: eventType,
         )
     }
@@ -419,14 +421,12 @@ public final class RunSessionStore: ObservableObject {
                 note: "Set AVPU to \(avpu.rawValue)",
                 metadata: [:],
             )
-            let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/adjust/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.adjustSimulation(
                 simulationID: session.simulationID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: session.simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 let ack = try await self.service.adjustSimulation(simulationID: session.simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
                 return TrainerCommandAck(commandID: ack.commandID, status: ack.status)
@@ -464,14 +464,12 @@ public final class RunSessionStore: ObservableObject {
                 tourniquetApplicationMode: tourniquetApplicationMode,
                 supersedesEventID: supersedesEventID,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.interventions(
                 simulationID: simulationID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
 
             // Optimistic local timeline entry
             let typeLabel = interventionDictionary
@@ -513,14 +511,9 @@ public final class RunSessionStore: ObservableObject {
                 injuryDescription: description,
                 description: description,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.injuries(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
 
             addOptimisticInjury(
                 id: "pending:\(envelope.idempotencyKey)",
@@ -542,14 +535,9 @@ public final class RunSessionStore: ObservableObject {
         Task {
             guard let simulationID = state.session?.simulationID else { return }
             let request = IllnessEventRequest(name: name, description: description)
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/illnesses/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.illnesses(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectIllnessEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -590,14 +578,9 @@ public final class RunSessionStore: ObservableObject {
                 maxValueDiastolic: nil,
                 supersedesEventID: nil,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.vitals(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectVitalEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -657,13 +640,8 @@ public final class RunSessionStore: ObservableObject {
         guard canMutateCommands else { return }
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/"
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: Data(),
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.triggerRunTick(simulationID: simulationID)
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerRunTick(
                     simulationID: simulationID,
@@ -679,13 +657,8 @@ public final class RunSessionStore: ObservableObject {
         guard canMutateCommands else { return }
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/"
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: Data(),
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.triggerVitalsTick(simulationID: simulationID)
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerVitalsTick(
                     simulationID: simulationID,
@@ -757,19 +730,22 @@ public final class RunSessionStore: ObservableObject {
         canMutateCommands
     }
 
+    private func makeCommandEnvelope(endpoint: Endpoint, simulationID: Int?) -> PendingCommandEnvelope {
+        CommandEnvelopeBuilder.make(
+            endpoint: endpoint.path,
+            method: endpoint.method.rawValue,
+            body: endpoint.body,
+            simulationID: simulationID,
+        )
+    }
+
     private func sendRunCommand(_ command: RunCommand) async {
         guard let session = state.session else {
             return
         }
 
-        let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/run/\(command.rawValue)/"
-        let body = Data()
-        let envelope = CommandEnvelopeBuilder.make(
-            endpoint: path,
-            method: HTTPMethod.post.rawValue,
-            body: body,
-            simulationID: session.simulationID,
-        )
+        let endpoint = TrainerLabAPI.runCommand(simulationID: session.simulationID, command: command.rawValue)
+        let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: session.simulationID)
 
         await executeQueuedSessionCommand(envelope: envelope) {
             try await self.service.runCommand(simulationID: session.simulationID, command: command, idempotencyKey: envelope.idempotencyKey)
@@ -899,241 +875,93 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func handleSimulationStateChanged(_ event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
-        guard eventType == "simulation.state_changed" else { return }
-        guard let session = state.session else { return }
-
-        do {
-            let payload = try event.decodePayload(SimulationStateChangedPayload.self)
-
-            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
-                logger.warning(
-                    "Ignoring simulation.state_changed for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)",
-                )
-                return
-            }
-
-            guard payload.status.lowercased() == "failed" else {
-                logger.debug(
-                    "Unhandled simulation.state_changed status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
-                )
-                return
-            }
-
-            let failedSession = TrainerSessionDTO(
-                simulationID: session.simulationID,
-                status: .failed,
-                scenarioSpec: session.scenarioSpec,
-                runtimeState: session.runtimeState,
-                initialDirectives: session.initialDirectives,
-                tickIntervalSeconds: session.tickIntervalSeconds,
-                runStartedAt: session.runStartedAt,
-                runPausedAt: session.runPausedAt,
-                runCompletedAt: payload.terminalAt ?? event.createdAt,
-                lastAITickAt: session.lastAITickAt,
-                createdAt: session.createdAt,
-                modifiedAt: max(session.modifiedAt, event.createdAt),
-                terminalReasonCode: payload.terminalReasonCode ?? session.terminalReasonCode,
-                terminalReasonText: payload.terminalReasonText ?? session.terminalReasonText,
-                retryable: payload.retryable ?? session.retryable,
-            )
-
-            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
-            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
-            logger.warning(
-                "Simulation \(failedSession.simulationID, privacy: .public) transitioned to failed state: \(failedSession.terminalReasonText ?? "Simulation failed.", privacy: .public)",
-            )
-        } catch {
-            logger.error(
-                "Failed to decode simulation.state_changed payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
-            )
-        }
-    }
-
-    private func handleSessionLifecycleEvent(_ event: EventEnvelope) -> Bool {
-        switch canonicalEventType(event.eventType) {
-        case "session.seeding":
-            handleSessionSeeding(event)
-        case "session.seeded":
-            handleSessionSeeded(event)
-        case "session.failed":
-            handleSessionFailed(event)
-        default:
-            false
-        }
-    }
-
-    private func handleSessionSeeding(_ event: EventEnvelope) -> Bool {
+    private func handleSimulationStatusUpdated(
+        _ event: EventEnvelope,
+        previousStatus: TrainerSessionStatus?,
+    ) -> Bool {
+        guard event.eventType == SimulationEventType.simulationStatusUpdated else { return false }
         guard let session = state.session else { return false }
 
         do {
-            let payload = try event.decodePayload(SessionSeedingPayload.self)
-
-            guard payload.status.lowercased() == "seeding" else {
-                logger.debug(
-                    "Ignoring session.seeding payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
-                )
-                return false
-            }
+            let payload = try event.decodePayload(SimulationStatusUpdatedPayload.self)
 
             if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
                 logger.warning(
-                    "Ignoring session.seeding for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)",
+                    "Ignoring simulation.status.updated for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)",
                 )
                 return false
             }
 
-            guard shouldApplyLifecycleRevision(payload.stateRevision, expectedStatus: .seeding) else {
+            guard let nextStatus = payload.trainerSessionStatus(previousStatus: previousStatus) else {
                 logger.debug(
-                    "Ignoring stale session.seeding revision \(payload.stateRevision, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
+                    "Ignoring simulation.status.updated with unmapped status \(payload.status ?? "nil", privacy: .public) for simulation \(session.simulationID, privacy: .public)",
                 )
                 return false
             }
 
-            let seedingSession = sessionWithLifecycleUpdate(
+            if let revision = payload.stateRevision {
+                guard shouldApplyLifecycleRevision(revision, expectedStatus: nextStatus) else {
+                    logger.debug(
+                        "Ignoring stale simulation.status.updated revision \(revision, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
+                    )
+                    return false
+                }
+            } else if nextStatus != .completed, nextStatus != .failed, event.createdAt < session.modifiedAt {
+                logger.debug(
+                    "Ignoring stale simulation.status.updated for simulation \(session.simulationID, privacy: .public)",
+                )
+                return false
+            }
+
+            let semantic = payload.lifecycleSemantic(previousStatus: previousStatus)
+            let updatedSession = sessionWithLifecycleUpdate(
                 from: session,
                 snapshot: SessionLifecycleSnapshot(
-                    status: .seeding,
+                    status: nextStatus,
                     scenarioSpec: payload.scenarioSpec,
                     modifiedAt: max(session.modifiedAt, event.createdAt),
-                    runStartedAt: nil,
-                    runPausedAt: nil,
-                    runCompletedAt: nil,
-                    terminalReasonCode: nil,
-                    terminalReasonText: nil,
-                    retryable: nil,
+                    runStartedAt: resolvedRunStartedAt(
+                        for: nextStatus,
+                        semantic: semantic,
+                        session: session,
+                        event: event,
+                    ),
+                    runPausedAt: resolvedRunPausedAt(
+                        for: nextStatus,
+                        session: session,
+                        event: event,
+                    ),
+                    runCompletedAt: resolvedRunCompletedAt(
+                        for: nextStatus,
+                        payload: payload,
+                        session: session,
+                        event: event,
+                    ),
+                    terminalReasonCode: nextStatus == .failed || nextStatus == .completed ? payload.effectiveReasonCode : nil,
+                    terminalReasonText: nextStatus == .failed || nextStatus == .completed ? payload.effectiveReasonText : nil,
+                    retryable: nextStatus == .failed || nextStatus == .completed ? payload.retryable : nil,
                 ),
             )
 
-            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seedingSession))
+            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updatedSession))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
-            noteLifecycleRevision(payload.stateRevision)
-        } catch {
-            logger.error(
-                "Failed to decode session.seeding payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
-            )
-        }
-
-        return false
-    }
-
-    private func handleSessionSeeded(_ event: EventEnvelope) -> Bool {
-        guard let session = state.session else { return false }
-
-        do {
-            let payload = try event.decodePayload(SessionSeededPayload.self)
-
-            guard payload.status.lowercased() == "seeded" else {
-                logger.debug(
-                    "Ignoring session.seeded payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
-                )
-                return false
+            if let revision = payload.stateRevision {
+                noteLifecycleRevision(revision)
             }
 
-            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
+            if nextStatus == .failed {
                 logger.warning(
-                    "Ignoring session.seeded for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)",
+                    "Simulation \(updatedSession.simulationID, privacy: .public) transitioned to failed state: \(updatedSession.terminalReasonText ?? "Simulation failed.", privacy: .public)",
                 )
-                return false
             }
 
-            guard shouldApplyLifecycleRevision(payload.stateRevision, expectedStatus: .seeded) else {
-                logger.debug(
-                    "Ignoring stale session.seeded revision \(payload.stateRevision, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
-                )
-                return false
-            }
-
-            let seededSession = sessionWithLifecycleUpdate(
-                from: session,
-                snapshot: SessionLifecycleSnapshot(
-                    status: .seeded,
-                    scenarioSpec: payload.scenarioSpec,
-                    modifiedAt: max(session.modifiedAt, event.createdAt),
-                    runStartedAt: nil,
-                    runPausedAt: nil,
-                    runCompletedAt: nil,
-                    terminalReasonCode: nil,
-                    terminalReasonText: nil,
-                    retryable: nil,
-                ),
-            )
-
-            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(seededSession))
-            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
-            noteLifecycleRevision(payload.stateRevision)
-            return true
+            return semantic == .seeded
         } catch {
             logger.error(
-                "Failed to decode session.seeded payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
+                "Failed to decode simulation.status.updated payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
             )
+            return false
         }
-
-        return false
-    }
-
-    private func handleSessionFailed(_ event: EventEnvelope) -> Bool {
-        guard let session = state.session else { return false }
-
-        do {
-            let payload = try event.decodePayload(SessionFailedPayload.self)
-
-            guard payload.status.lowercased() == "failed" else {
-                logger.debug(
-                    "Ignoring session.failed payload with status \(payload.status, privacy: .public) for simulation \(session.simulationID, privacy: .public)",
-                )
-                return false
-            }
-
-            if let payloadSimulationID = payload.simulationID, payloadSimulationID != session.simulationID {
-                logger.warning(
-                    "Ignoring session.failed for simulation \(payloadSimulationID, privacy: .public); bound simulation is \(session.simulationID, privacy: .public)",
-                )
-                return false
-            }
-
-            guard session.status == .seeding || session.status == .failed else {
-                logger.debug(
-                    "Ignoring session.failed for simulation \(session.simulationID, privacy: .public) because current status is \(session.status.rawValue, privacy: .public)",
-                )
-                return false
-            }
-
-            guard event.createdAt >= session.modifiedAt else {
-                logger.debug(
-                    "Ignoring stale session.failed event for simulation \(session.simulationID, privacy: .public)",
-                )
-                return false
-            }
-
-            let failedSession = sessionWithLifecycleUpdate(
-                from: session,
-                snapshot: SessionLifecycleSnapshot(
-                    status: .failed,
-                    scenarioSpec: nil,
-                    modifiedAt: max(session.modifiedAt, event.createdAt),
-                    runStartedAt: session.runStartedAt,
-                    runPausedAt: session.runPausedAt,
-                    runCompletedAt: event.createdAt,
-                    terminalReasonCode: payload.reasonCode,
-                    terminalReasonText: payload.reasonText,
-                    retryable: payload.retryable,
-                ),
-            )
-
-            state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(failedSession))
-            state = RunSessionReducer.reduce(state: state, action: .clearConflict)
-            logger.warning(
-                "Simulation \(failedSession.simulationID, privacy: .public) failed initial seeding: \(failedSession.terminalReasonText ?? "Session failed.", privacy: .public)",
-            )
-        } catch {
-            logger.error(
-                "Failed to decode session.failed payload for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
-            )
-        }
-
-        return false
     }
 
     private func shouldApplyLifecycleRevision(_ revision: Int, expectedStatus: TrainerSessionStatus) -> Bool {
@@ -1186,21 +1014,75 @@ public final class RunSessionStore: ObservableObject {
         )
     }
 
-    private func captureClinicalTimelineEntry(from event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
+    private func resolvedRunStartedAt(
+        for nextStatus: TrainerSessionStatus,
+        semantic: SimulationLifecycleSemantic,
+        session: TrainerSessionDTO,
+        event: EventEnvelope,
+    ) -> Date? {
+        switch nextStatus {
+        case .seeding, .seeded:
+            return nil
+        case .running:
+            if semantic == .resumed {
+                return session.runStartedAt
+            }
+            return session.runStartedAt ?? event.createdAt
+        case .paused, .completed, .failed:
+            return session.runStartedAt
+        }
+    }
 
-        if let lifecycleTitle = lifecycleTitle(for: eventType) {
+    private func resolvedRunPausedAt(
+        for nextStatus: TrainerSessionStatus,
+        session: TrainerSessionDTO,
+        event: EventEnvelope,
+    ) -> Date? {
+        switch nextStatus {
+        case .paused:
+            event.createdAt
+        case .completed, .failed:
+            session.runPausedAt
+        case .seeding, .seeded, .running:
+            nil
+        }
+    }
+
+    private func resolvedRunCompletedAt(
+        for nextStatus: TrainerSessionStatus,
+        payload: SimulationStatusUpdatedPayload,
+        session _: TrainerSessionDTO,
+        event: EventEnvelope,
+    ) -> Date? {
+        switch nextStatus {
+        case .completed, .failed:
+            payload.terminalAt ?? event.createdAt
+        case .seeding, .seeded, .running, .paused:
+            nil
+        }
+    }
+
+    private func captureClinicalTimelineEntry(
+        from event: EventEnvelope,
+        previousStatus: TrainerSessionStatus? = nil,
+    ) {
+        let eventType = event.eventType
+
+        if eventType == SimulationEventType.simulationStatusUpdated,
+           let payload = try? event.decodePayload(SimulationStatusUpdatedPayload.self)
+        {
+            let display = SimulationEventRegistry.lifecycleDisplay(for: payload, previousStatus: previousStatus)
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
                 kind: .lifecycle,
-                title: lifecycleTitle,
-                message: lifecycleMessage(for: eventType),
+                title: display.title,
+                message: display.message,
                 createdAt: event.createdAt,
             )
             return
         }
 
-        if isStateUpdateEvent(eventType: eventType) {
+        if eventType == SimulationEventType.simulationSnapshotUpdated {
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
                 kind: .note,
@@ -1211,7 +1093,7 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
-        if isAIIntentEvent(eventType: eventType) {
+        if eventType == SimulationEventType.simulationPlanUpdated {
             let summary = jsonString(event.payload["summary"])
                 ?? jsonString(event.payload["title"])
                 ?? jsonString(event.payload["trigger"])
@@ -1227,7 +1109,9 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if isCauseEvent(eventType: eventType) {
-            let kindTitle = eventType.hasPrefix("injury.") ? "Injury" : "Illness"
+            let kindTitle = eventType == SimulationEventType.patientInjuryCreated || eventType == SimulationEventType.patientInjuryUpdated
+                ? "Injury"
+                : "Illness"
             let summary = eventPrimaryLabel(from: event.payload) ?? kindTitle
             let location = jsonString(event.payload["anatomical_location"])
                 ?? jsonString(event.payload["injury_location"])
@@ -1282,9 +1166,9 @@ public final class RunSessionStore: ObservableObject {
             let minValue = jsonInt(event.payload["min_value"])
             let maxValue = jsonInt(event.payload["max_value"])
             let message: String = if let minValue, let maxValue {
-                "\(humanizedLabel(vitalType)) range \(minValue)-\(maxValue)"
+                "\(SimulationEventRegistry.humanizedLabel(vitalType)) range \(minValue)-\(maxValue)"
             } else {
-                eventPrimaryLabel(from: event.payload) ?? "\(humanizedLabel(vitalType)) updated"
+                eventPrimaryLabel(from: event.payload) ?? "\(SimulationEventRegistry.humanizedLabel(vitalType)) updated"
             }
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
@@ -1297,7 +1181,7 @@ public final class RunSessionStore: ObservableObject {
         }
 
         if isPulseEvent(eventType: eventType, payload: event.payload) {
-            let location = jsonString(event.payload["location"]).map(humanizedLabel) ?? "Pulse"
+            let location = jsonString(event.payload["location"]).map(SimulationEventRegistry.humanizedLabel) ?? "Pulse"
             let present = jsonBool(event.payload["present"])
             let quality = jsonString(event.payload["quality"]) ?? jsonString(event.payload["description"])
             let presenceText = present.map { $0 ? "present" : "absent" } ?? "updated"
@@ -1383,7 +1267,7 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
-        if eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."),
+        if eventType == SimulationEventType.simulationAdjustmentUpdated,
            jsonString(event.payload["target"]) == "avpu"
         {
             let stateText = jsonString(event.payload["avpu_state"]) ?? "unknown"
@@ -1444,7 +1328,7 @@ public final class RunSessionStore: ObservableObject {
         addClinicalTimelineEntry(
             dedupeKey: "event:\(event.eventID)",
             kind: .note,
-            title: humanizedEventTitle(eventType),
+            title: SimulationEventRegistry.displayTitle(for: eventType, payload: event.payload, previousStatus: previousStatus),
             message: eventPrimaryLabel(from: event.payload) ?? "Runtime event received.",
             createdAt: event.createdAt,
         )
@@ -1504,24 +1388,98 @@ public final class RunSessionStore: ObservableObject {
         )
     }
 
-    private func humanizedEventTitle(_ eventType: String) -> String {
-        humanizedLabel(eventType.replacingOccurrences(of: ".", with: " "))
+    private func applyLiveEventProjection(from event: EventEnvelope) {
+        switch event.eventType {
+        case SimulationEventType.simulationBriefCreated, SimulationEventType.simulationBriefUpdated:
+            if let decoded = try? event.payload.decodedPayload(as: ScenarioBriefOut.self) {
+                scenarioBrief = decoded
+            }
+
+        case SimulationEventType.patientAssessmentFindingCreated, SimulationEventType.patientAssessmentFindingUpdated:
+            upsertAssessmentFinding(from: event)
+
+        case SimulationEventType.patientAssessmentFindingRemoved:
+            removeAssessmentFinding(from: event)
+
+        case SimulationEventType.patientDiagnosticResultCreated, SimulationEventType.patientDiagnosticResultUpdated:
+            upsertDiagnosticResult(from: event)
+
+        case SimulationEventType.patientResourceUpdated:
+            upsertResourceState(from: event)
+
+        case SimulationEventType.patientDispositionUpdated:
+            if let decoded = try? event.payload.decodedPayload(as: RuntimeDispositionState.self) {
+                disposition = decoded
+            }
+
+        default:
+            break
+        }
+
+        captureVitalRange(from: event)
+        captureInjuryAnnotation(from: event)
+        captureProblemAnnotation(from: event)
+        captureRecommendedIntervention(from: event)
+        captureInterventionAnnotation(from: event)
+        capturePulseAnnotation(from: event)
     }
 
-    private func humanizedLabel(_ rawValue: String) -> String {
-        rawValue
-            .replacingOccurrences(of: "_", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .capitalized
+    private func upsertAssessmentFinding(from event: EventEnvelope) {
+        guard let finding = try? event.payload.decodedPayload(as: RuntimeAssessmentFindingState.self) else { return }
+        guard let findingID = finding.findingID else {
+            assessmentFindings.append(finding)
+            return
+        }
+
+        if let idx = assessmentFindings.firstIndex(where: { $0.findingID == findingID }) {
+            assessmentFindings[idx] = finding
+        } else {
+            assessmentFindings.append(finding)
+        }
+    }
+
+    private func removeAssessmentFinding(from event: EventEnvelope) {
+        guard let findingID = jsonInt(event.payload["finding_id"]) else { return }
+        assessmentFindings.removeAll { $0.findingID == findingID }
+    }
+
+    private func upsertDiagnosticResult(from event: EventEnvelope) {
+        guard let result = try? event.payload.decodedPayload(as: RuntimeDiagnosticResultState.self) else { return }
+        guard let resultID = result.resultID else {
+            diagnosticResults.append(result)
+            return
+        }
+
+        if let idx = diagnosticResults.firstIndex(where: { $0.resultID == resultID }) {
+            diagnosticResults[idx] = result
+        } else {
+            diagnosticResults.append(result)
+        }
+    }
+
+    private func upsertResourceState(from event: EventEnvelope) {
+        guard let resource = try? event.payload.decodedPayload(as: RuntimeResourceState.self) else { return }
+        guard let resourceID = resource.resourceID else {
+            resources.append(resource)
+            return
+        }
+
+        if let idx = resources.firstIndex(where: { $0.resourceID == resourceID }) {
+            resources[idx] = resource
+        } else {
+            resources.append(resource)
+        }
     }
 
     private func captureVitalRange(from event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
+        let eventType = event.eventType
         let resolvedVitalType = jsonString(event.payload["vital_type"])
             ?? inferVitalType(from: jsonString(event.payload["domain_event_type"]))
 
         guard
-            eventType == "vital.created" || eventType == "vital.updated" || resolvedVitalType != nil
+            eventType == SimulationEventType.patientVitalCreated
+            || eventType == SimulationEventType.patientVitalUpdated
+            || resolvedVitalType != nil
         else {
             return
         }
@@ -1737,7 +1695,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func captureInjuryAnnotation(from event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
+        let eventType = event.eventType
         guard isCauseEvent(eventType: eventType) else {
             return
         }
@@ -1759,7 +1717,7 @@ public final class RunSessionStore: ObservableObject {
         let category = jsonString(event.payload["march_category"])
         let kind = jsonString(event.payload["kind"])
             ?? jsonString(event.payload["injury_kind"])
-            ?? (eventType.hasPrefix("injury.") ? "injury" : "illness")
+            ?? (eventType == SimulationEventType.patientInjuryCreated || eventType == SimulationEventType.patientInjuryUpdated ? "injury" : "illness")
         let title = eventPrimaryLabel(from: event.payload) ?? "Cause"
         let summary = jsonString(event.payload["description"])
             ?? jsonString(event.payload["injury_description"])
@@ -1770,7 +1728,7 @@ public final class RunSessionStore: ObservableObject {
             markInjuryInactive(id: supersedes)
         }
 
-        if eventType.hasPrefix("injury.") {
+        if eventType == SimulationEventType.patientInjuryCreated || eventType == SimulationEventType.patientInjuryUpdated {
             reconcilePendingInjury(locationCode: locationCode, kind: kind, summary: summary)
         }
 
@@ -1917,7 +1875,7 @@ public final class RunSessionStore: ObservableObject {
     // MARK: - Problem Annotations
 
     private func captureProblemAnnotation(from event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
+        let eventType = event.eventType
         guard isProblemEvent(eventType: eventType) else { return }
 
         let problemID = jsonInt(event.payload["problem_id"])
@@ -1966,10 +1924,15 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func captureRecommendedIntervention(from event: EventEnvelope) {
-        let eventType = canonicalEventType(event.eventType)
+        let eventType = event.eventType
         guard isRecommendedInterventionEvent(eventType: eventType) else { return }
 
         guard let recommendationID = jsonInt(event.payload["recommendation_id"]) else { return }
+        if eventType == SimulationEventType.patientRecommendedInterventionRemoved {
+            state.recommendedInterventions.removeAll { $0.recommendationID == recommendationID }
+            return
+        }
+
         let item = RecommendedInterventionItem(
             recommendationID: recommendationID,
             title: eventPrimaryLabel(from: event.payload) ?? "Recommendation",
@@ -2057,14 +2020,13 @@ public final class RunSessionStore: ObservableObject {
                 isTreated: status == .active ? false : true,
                 isResolved: status == .resolved,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.patch.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.problemStatus(
                 simulationID: simulationID,
+                problemID: problemID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.updateProblemStatus(
                     simulationID: simulationID,
@@ -2354,11 +2316,12 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func makePulseAnnotation(from event: EventEnvelope) -> PulseAnnotation? {
-        let eventType = canonicalEventType(event.eventType)
+        let eventType = event.eventType
         let domainEventType = jsonString(event.payload["domain_event_type"])?.lowercased()
         let eventKind = jsonString(event.payload["event_kind"])?.lowercased()
         guard
-            eventType.hasPrefix("pulse.")
+            eventType == SimulationEventType.patientPulseCreated
+            || eventType == SimulationEventType.patientPulseUpdated
             || domainEventType == "pulseassessment"
             || eventKind == "pulse_assessment"
         else {
@@ -2410,155 +2373,70 @@ public final class RunSessionStore: ObservableObject {
         return statusCode == 400 || statusCode == 404 || statusCode == 422
     }
 
-    private func lifecycleTitle(for eventType: String) -> String? {
-        switch eventType {
-        case "session.seeding":
-            "Scenario Seeding"
-        case "session.seeded":
-            "Scenario Ready"
-        case "session.failed":
-            "Scenario Failed"
-        case "run.started":
-            "Run Started"
-        case "run.paused":
-            "Run Paused"
-        case "run.resumed":
-            "Run Resumed"
-        case "run.stopped", "run.completed":
-            "Run Stopped"
-        default:
-            nil
-        }
-    }
-
-    private func lifecycleMessage(for eventType: String) -> String {
-        switch eventType {
-        case "session.seeding":
-            "Initial scenario generation is in progress."
-        case "session.seeded":
-            "Scenario is ready to run."
-        case "session.failed":
-            "Initial scenario generation failed."
-        case "run.started":
-            "Simulation active."
-        case "run.paused":
-            "Simulation paused."
-        case "run.resumed":
-            "Simulation resumed."
-        case "run.stopped", "run.completed":
-            "Simulation completed."
-        default:
-            "Lifecycle update."
-        }
-    }
-
     private func shouldRefreshRuntimeProjection(for event: EventEnvelope) -> Bool {
-        let eventType = canonicalEventType(event.eventType)
-        return isStateUpdateEvent(eventType: eventType)
-            || isAIIntentEvent(eventType: eventType)
-            || isRunLifecycleEvent(eventType: eventType)
-            || eventType == "session.seeded"
-            || isCauseEvent(eventType: eventType)
-            || isProblemEvent(eventType: eventType)
-            || isRecommendedInterventionEvent(eventType: eventType)
-            || isInterventionEvent(eventType: eventType, payload: event.payload)
-            || isVitalEvent(eventType: eventType)
-            || isPulseEvent(eventType: eventType, payload: event.payload)
-            || isScenarioBriefEvent(eventType: eventType, payload: event.payload)
-            || isAssessmentFindingEvent(eventType: eventType)
-            || isDiagnosticResultEvent(eventType: eventType)
-            || isResourceEvent(eventType: eventType)
-            || isDispositionEvent(eventType: eventType)
-    }
-
-    private func canonicalEventType(_ eventType: String) -> String {
-        let lowered = eventType.lowercased()
-        if lowered.hasPrefix("trainerlab.") {
-            return String(lowered.dropFirst("trainerlab.".count))
-        }
-        return lowered
-    }
-
-    private func isStateUpdateEvent(eventType: String) -> Bool {
-        eventType == "state.updated"
-    }
-
-    private func isAIIntentEvent(eventType: String) -> Bool {
-        eventType == "ai.intent.updated"
-    }
-
-    private func isRunLifecycleEvent(eventType: String) -> Bool {
-        eventType == "run.started"
-            || eventType == "run.paused"
-            || eventType == "run.resumed"
-            || eventType == "run.stopped"
-            || eventType == "run.completed"
+        SimulationEventRegistry.isRuntimeRefreshTrigger(event.eventType)
     }
 
     private func isCauseEvent(eventType: String) -> Bool {
-        eventType == "injury.created"
-            || eventType == "injury.updated"
-            || eventType == "illness.created"
-            || eventType == "illness.updated"
+        eventType == SimulationEventType.patientInjuryCreated
+            || eventType == SimulationEventType.patientInjuryUpdated
+            || eventType == SimulationEventType.patientIllnessCreated
+            || eventType == SimulationEventType.patientIllnessUpdated
     }
 
     private func isProblemEvent(eventType: String) -> Bool {
-        eventType == "problem.created"
-            || eventType == "problem.updated"
-            || eventType == "problem.resolved"
-            || eventType == "problem.status_updated"
+        eventType == SimulationEventType.patientProblemCreated
+            || eventType == SimulationEventType.patientProblemUpdated
     }
 
     private func isRecommendedInterventionEvent(eventType: String) -> Bool {
-        eventType == "recommended_intervention.created"
-            || eventType == "recommended_intervention.updated"
-            || eventType == "recommended_intervention.cleared"
-            || eventType == "recommended_intervention.removed"
+        eventType == SimulationEventType.patientRecommendedInterventionCreated
+            || eventType == SimulationEventType.patientRecommendedInterventionUpdated
+            || eventType == SimulationEventType.patientRecommendedInterventionRemoved
     }
 
     private func isVitalEvent(eventType: String) -> Bool {
-        eventType == "vital.created"
-            || eventType == "vital.updated"
+        eventType == SimulationEventType.patientVitalCreated
+            || eventType == SimulationEventType.patientVitalUpdated
     }
 
     private func isPulseEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
         let domainEventType = jsonString(payload["domain_event_type"])?.lowercased()
         let eventKind = jsonString(payload["event_kind"])?.lowercased()
-        return eventType == "pulse.created"
-            || eventType == "pulse.updated"
+        return eventType == SimulationEventType.patientPulseCreated
+            || eventType == SimulationEventType.patientPulseUpdated
             || domainEventType == "pulseassessment"
             || eventKind == "pulse_assessment"
     }
 
     private func isScenarioBriefEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
-        eventType == "scenario_brief.created"
-            || eventType == "scenario_brief.updated"
+        eventType == SimulationEventType.simulationBriefCreated
+            || eventType == SimulationEventType.simulationBriefUpdated
             || payload["read_aloud_brief"] != nil
     }
 
     private func isAssessmentFindingEvent(eventType: String) -> Bool {
-        eventType == "assessment_finding.created"
-            || eventType == "assessment_finding.updated"
-            || eventType == "assessment_finding.removed"
+        eventType == SimulationEventType.patientAssessmentFindingCreated
+            || eventType == SimulationEventType.patientAssessmentFindingUpdated
+            || eventType == SimulationEventType.patientAssessmentFindingRemoved
     }
 
     private func isDiagnosticResultEvent(eventType: String) -> Bool {
-        eventType == "diagnostic_result.created"
-            || eventType == "diagnostic_result.updated"
+        eventType == SimulationEventType.patientDiagnosticResultCreated
+            || eventType == SimulationEventType.patientDiagnosticResultUpdated
     }
 
     private func isResourceEvent(eventType: String) -> Bool {
-        eventType == "resource.updated"
+        eventType == SimulationEventType.patientResourceUpdated
     }
 
     private func isDispositionEvent(eventType: String) -> Bool {
-        eventType == "disposition.updated"
+        eventType == SimulationEventType.patientDispositionUpdated
     }
 
     private func isNoteEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
-        eventType == "note.created"
-            || eventType == "trainerlab.note_created"
-            || ((eventType.hasPrefix("adjustment.") || eventType.hasPrefix("trainerlab.adjustment."))
+        eventType == SimulationEventType.simulationNoteCreated
+            || (eventType == SimulationEventType.simulationAdjustmentUpdated
                 && jsonString(payload["target"]) == "note")
     }
 
@@ -2649,8 +2527,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func isInterventionEvent(eventType: String, payload: [String: JSONValue]) -> Bool {
-        let canonicalType = canonicalEventType(eventType)
-        if canonicalType.contains("intervention") {
+        if eventType == SimulationEventType.patientInterventionCreated
+            || eventType == SimulationEventType.patientInterventionUpdated
+        {
             return true
         }
 
@@ -2658,6 +2537,8 @@ public final class RunSessionStore: ObservableObject {
             return false
         }
         return domainType.contains("intervention")
+            && !domainType.contains("recommended")
+            && !domainType.contains("recommendationevaluation")
     }
 
     private func injuryZone(for code: String) -> (side: InjuryZoneSide, x: Double, y: Double)? {

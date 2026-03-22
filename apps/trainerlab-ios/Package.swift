@@ -44,6 +44,13 @@ let package = Package(
                 "SharedModels",
                 "Persistence",
             ],
+            sources: [
+                "APIClient.swift",
+                "AuthService.swift",
+                "EnvironmentStore.swift",
+                "MutableBaseURLProvider.swift",
+                "TrainerLabService.swift",
+            ],
         ),
         .target(
             name: "Realtime",
@@ -106,6 +113,10 @@ let package = Package(
         .testTarget(
             name: "RealtimeTests",
             dependencies: ["Realtime", "SharedModels"],
+        ),
+        .testTarget(
+            name: "SharedModelsTests",
+            dependencies: ["SharedModels"],
         ),
         .testTarget(
             name: "RunConsoleTests",

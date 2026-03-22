@@ -166,130 +166,6 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-public struct SimulationStateChangedPayload: Codable, Equatable, Sendable {
-    public let status: String
-    public let retryable: Bool?
-    public let terminalAt: Date?
-    public let simulationID: Int?
-    public let terminalReasonCode: String?
-    public let terminalReasonText: String?
-
-    public init(
-        status: String,
-        retryable: Bool? = nil,
-        terminalAt: Date? = nil,
-        simulationID: Int? = nil,
-        terminalReasonCode: String? = nil,
-        terminalReasonText: String? = nil,
-    ) {
-        self.status = status
-        self.retryable = retryable
-        self.terminalAt = terminalAt
-        self.simulationID = simulationID
-        self.terminalReasonCode = terminalReasonCode
-        self.terminalReasonText = terminalReasonText
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case retryable
-        case terminalAt = "terminal_at"
-        case simulationID = "simulation_id"
-        case terminalReasonCode = "terminal_reason_code"
-        case terminalReasonText = "terminal_reason_text"
-    }
-}
-
-public struct SessionSeedingPayload: Codable, Equatable, Sendable {
-    public let status: String
-    public let scenarioSpec: [String: JSONValue]
-    public let stateRevision: Int
-    public let retryCount: Int?
-    public let simulationID: Int?
-
-    public init(
-        status: String,
-        scenarioSpec: [String: JSONValue],
-        stateRevision: Int,
-        retryCount: Int? = nil,
-        simulationID: Int? = nil,
-    ) {
-        self.status = status
-        self.scenarioSpec = scenarioSpec
-        self.stateRevision = stateRevision
-        self.retryCount = retryCount
-        self.simulationID = simulationID
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case scenarioSpec = "scenario_spec"
-        case stateRevision = "state_revision"
-        case retryCount = "retry_count"
-        case simulationID = "simulation_id"
-    }
-}
-
-public struct SessionSeededPayload: Codable, Equatable, Sendable {
-    public let status: String
-    public let scenarioSpec: [String: JSONValue]
-    public let stateRevision: Int
-    public let callID: String?
-    public let simulationID: Int?
-
-    public init(
-        status: String,
-        scenarioSpec: [String: JSONValue],
-        stateRevision: Int,
-        callID: String? = nil,
-        simulationID: Int? = nil,
-    ) {
-        self.status = status
-        self.scenarioSpec = scenarioSpec
-        self.stateRevision = stateRevision
-        self.callID = callID
-        self.simulationID = simulationID
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case scenarioSpec = "scenario_spec"
-        case stateRevision = "state_revision"
-        case callID = "call_id"
-        case simulationID = "simulation_id"
-    }
-}
-
-public struct SessionFailedPayload: Codable, Equatable, Sendable {
-    public let status: String
-    public let reasonCode: String
-    public let reasonText: String
-    public let retryable: Bool
-    public let simulationID: Int?
-
-    public init(
-        status: String,
-        reasonCode: String,
-        reasonText: String,
-        retryable: Bool,
-        simulationID: Int? = nil,
-    ) {
-        self.status = status
-        self.reasonCode = reasonCode
-        self.reasonText = reasonText
-        self.retryable = retryable
-        self.simulationID = simulationID
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case reasonCode = "reason_code"
-        case reasonText = "reason_text"
-        case retryable
-        case simulationID = "simulation_id"
-    }
-}
-
 public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let eventID: String
     public let eventType: String
@@ -324,30 +200,7 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     }
 
     public func decodePayload<T: Decodable>(_ type: T.Type) throws -> T {
-        let rawPayload = payload.mapValues(\.rawValue)
-        let data = try JSONSerialization.data(withJSONObject: rawPayload)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let value = try container.decode(String.self)
-            if let date = Self.parseISO8601(value) {
-                return date
-            }
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(value)")
-        }
-        return try decoder.decode(type, from: data)
-    }
-
-    private static func parseISO8601(_ value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: value) {
-            return date
-        }
-
-        let standard = ISO8601DateFormatter()
-        standard.formatOptions = [.withInternetDateTime]
-        return standard.date(from: value)
+        try payload.decodedPayload(as: type)
     }
 }
 
@@ -1175,6 +1028,7 @@ public struct RuntimeAssessmentFindingState: Codable, Sendable {
     public let kind: String?
     public let code: String?
     public let title: String?
+    public let displayName: String?
     public let description: String?
     public let status: String?
     public let metadata: [String: JSONValue]?
@@ -1184,9 +1038,22 @@ public struct RuntimeAssessmentFindingState: Codable, Sendable {
         case kind
         case code
         case title
+        case displayName = "display_name"
         case description
         case status
         case metadata
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        findingID = try container.decodeIfPresent(Int.self, forKey: .findingID)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
     }
 }
 
@@ -1195,6 +1062,7 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
     public let kind: String?
     public let code: String?
     public let title: String?
+    public let displayName: String?
     public let description: String?
     public let status: String?
     public let metadata: [String: JSONValue]?
@@ -1204,9 +1072,29 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
         case kind
         case code
         case title
+        case displayName = "display_name"
         case description
         case status
         case metadata
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case diagnosticID = "diagnostic_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let primaryResultID = try container.decodeIfPresent(Int.self, forKey: .resultID)
+        let legacyResultID = try legacyContainer.decodeIfPresent(Int.self, forKey: .diagnosticID)
+        resultID = primaryResultID ?? legacyResultID
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
     }
 }
 
@@ -1215,8 +1103,11 @@ public struct RuntimeResourceState: Codable, Sendable {
     public let kind: String?
     public let code: String?
     public let title: String?
+    public let displayName: String?
     public let description: String?
     public let status: String?
+    public let quantityAvailable: Int?
+    public let quantityUnit: String?
     public let metadata: [String: JSONValue]?
 
     enum CodingKeys: String, CodingKey {
@@ -1224,17 +1115,70 @@ public struct RuntimeResourceState: Codable, Sendable {
         case kind
         case code
         case title
+        case displayName = "display_name"
         case description
         case status
+        case quantityAvailable = "quantity_available"
+        case quantityUnit = "quantity_unit"
         case metadata
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        resourceID = try container.decodeIfPresent(Int.self, forKey: .resourceID)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        quantityAvailable = try container.decodeIfPresent(Int.self, forKey: .quantityAvailable)
+        quantityUnit = try container.decodeIfPresent(String.self, forKey: .quantityUnit)
+        metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
     }
 }
 
 public struct RuntimeDispositionState: Codable, Sendable {
+    public let dispositionID: Int?
+    public let active: Bool?
     public let code: String?
     public let title: String?
     public let status: String?
+    public let transportMode: String?
+    public let destination: String?
+    public let etaMinutes: Int?
+    public let handoffReady: Bool?
+    public let sceneConstraints: [String]
     public let metadata: [String: JSONValue]?
+
+    enum CodingKeys: String, CodingKey {
+        case dispositionID = "disposition_id"
+        case active
+        case code
+        case title
+        case status
+        case transportMode = "transport_mode"
+        case destination
+        case etaMinutes = "eta_minutes"
+        case handoffReady = "handoff_ready"
+        case sceneConstraints = "scene_constraints"
+        case metadata
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dispositionID = try container.decodeIfPresent(Int.self, forKey: .dispositionID)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        transportMode = try container.decodeIfPresent(String.self, forKey: .transportMode)
+        destination = try container.decodeIfPresent(String.self, forKey: .destination)
+        etaMinutes = try container.decodeIfPresent(Int.self, forKey: .etaMinutes)
+        handoffReady = try container.decodeIfPresent(Bool.self, forKey: .handoffReady)
+        sceneConstraints = try container.decodeIfPresent([String].self, forKey: .sceneConstraints) ?? []
+        metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
+    }
 }
 
 public struct RuntimeVitalState: Codable, Sendable {

@@ -208,4 +208,39 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             ],
         )
     }
+
+    func testOperationalLogPresentationUsesCanonicalLifecycleTitleAndDetail() {
+        let event = EventEnvelope(
+            eventID: "evt-1",
+            eventType: "simulation.state_changed",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "status": .string("failed"),
+                "terminal_reason_text": .string("Runtime provider timed out."),
+            ],
+        )
+
+        let row = RunConsoleOperationalLogPresentation.row(for: event)
+
+        XCTAssertEqual(row.title, "Scenario Failed")
+        XCTAssertEqual(row.detail, "Runtime provider timed out.")
+        XCTAssertEqual(row.canonicalEventType, SimulationEventType.simulationStatusUpdated)
+    }
+
+    func testOperationalLogPresentationCanonicalizesLegacyAliases() {
+        let event = EventEnvelope(
+            eventID: "evt-2",
+            eventType: "summary.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        )
+
+        let row = RunConsoleOperationalLogPresentation.row(for: event)
+
+        XCTAssertEqual(row.title, "Summary Updated")
+        XCTAssertNil(row.detail)
+        XCTAssertEqual(row.canonicalEventType, SimulationEventType.simulationSummaryUpdated)
+    }
 }

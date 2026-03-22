@@ -53,6 +53,7 @@ enum ChatRunChromeMode: Equatable {
 }
 
 enum ChatToolsSection: String, CaseIterable {
+    case activity
     case patientHistory
     case patientResults
     case simulationFeedback
@@ -61,6 +62,8 @@ enum ChatToolsSection: String, CaseIterable {
 
     var title: String {
         switch self {
+        case .activity:
+            "Activity"
         case .patientHistory:
             "Patient History"
         case .patientResults:
@@ -79,7 +82,7 @@ enum ChatToolsSection: String, CaseIterable {
         case .padWorkspace:
             true
         case .widePhoneMessenger:
-            self == .patientResults || self == .requestLabs
+            self == .activity || self == .patientResults || self == .requestLabs
         case .compactMessenger:
             self == .requestLabs
         }
