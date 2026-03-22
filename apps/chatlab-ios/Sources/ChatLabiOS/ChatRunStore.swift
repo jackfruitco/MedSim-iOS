@@ -653,13 +653,13 @@ public final class ChatRunStore: ObservableObject {
     private var lifecyclePresentationStatus: TrainerSessionStatus? {
         switch simulation.status {
         case .inProgress:
-            return .running
+            .running
         case .completed, .timedOut, .canceled:
-            return .completed
+            .completed
         case .failed:
-            return .failed
+            .failed
         case .unknown:
-            return nil
+            nil
         }
     }
 

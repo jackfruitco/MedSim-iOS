@@ -57,7 +57,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         query: String?,
         searchMessages: Bool,
     ) async throws -> PaginatedResponse<ChatSimulation> {
-        return try await apiClient.request(
+        try await apiClient.request(
             ChatLabAPI.listSimulations(
                 limit: limit,
                 cursor: cursor,
@@ -132,7 +132,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         order: String = "asc",
         limit: Int = 50,
     ) async throws -> PaginatedResponse<ChatMessage> {
-        return try await apiClient.request(
+        try await apiClient.request(
             ChatLabAPI.listMessages(
                 simulationID: simulationID,
                 conversationID: conversationID,
@@ -174,14 +174,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     }
 
     public func listEvents(simulationID: Int, cursor: String?, limit: Int = 50) async throws -> PaginatedResponse<ChatEventEnvelope> {
-        return try await apiClient.request(
+        try await apiClient.request(
             ChatLabAPI.listEvents(simulationID: simulationID, cursor: cursor, limit: limit),
             as: PaginatedResponse<ChatEventEnvelope>.self,
         )
     }
 
     public func listTools(simulationID: Int, names: [String]? = nil) async throws -> ChatToolListResponse {
-        return try await apiClient.request(
+        try await apiClient.request(
             ChatLabAPI.listTools(simulationID: simulationID, names: names),
             as: ChatToolListResponse.self,
         )
@@ -211,7 +211,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     }
 
     public func listModifierGroups(groups: [String]? = nil) async throws -> [ModifierGroup] {
-        return try await apiClient.request(
+        try await apiClient.request(
             ChatLabAPI.listModifierGroups(groups: groups),
             as: [ModifierGroup].self,
         )

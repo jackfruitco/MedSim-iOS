@@ -109,10 +109,11 @@ final class BackendRoutesTests: XCTestCase {
     }
 
     func testEventStreamRoutesBuildExpectedSSERequests() throws {
+        let trainerBaseURL = try XCTUnwrap(URL(string: "https://example.com"))
         let trainerRequest = try TrainerLabAPI
             .eventStream(simulationID: 12, cursor: "evt-9")
             .makeURLRequest(
-                baseURL: URL(string: "https://example.com")!,
+                baseURL: trainerBaseURL,
                 accessToken: "trainer-token",
             )
 
@@ -122,10 +123,11 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(trainerRequest.value(forHTTPHeaderField: "Authorization"), "Bearer trainer-token")
         XCTAssertNotNil(trainerRequest.value(forHTTPHeaderField: "X-Correlation-ID"))
 
+        let chatBaseURL = try XCTUnwrap(URL(string: "https://example.com"))
         let chatRequest = try ChatLabAPI
             .eventStream(simulationID: 7, cursor: "evt-4")
             .makeURLRequest(
-                baseURL: URL(string: "https://example.com")!,
+                baseURL: chatBaseURL,
                 accessToken: "chat-token",
             )
 

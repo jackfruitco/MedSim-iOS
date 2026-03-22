@@ -316,19 +316,19 @@ public struct SimulationStatusUpdatedPayload: Codable, Equatable, Sendable {
     private static func mapTrainerStatus(_ value: String?) -> TrainerSessionStatus? {
         switch value {
         case "seeding":
-            return .seeding
+            .seeding
         case "seeded", "ready":
-            return .seeded
+            .seeded
         case "running", "started", "resumed":
-            return .running
+            .running
         case "paused":
-            return .paused
+            .paused
         case "completed", "stopped", "ended":
-            return .completed
+            .completed
         case "failed":
-            return .failed
+            .failed
         default:
-            return nil
+            nil
         }
     }
 }
@@ -337,7 +337,7 @@ public enum SimulationEventRegistry {
     private typealias AuditDescriptor = (
         hydrationTargets: [String],
         refreshTargets: [String],
-        presentationTargets: [SimulationEventPresentationTarget]
+        presentationTargets: [SimulationEventPresentationTarget],
     )
 
     public static let aliasToCanonicalMap: [String: String] = [
@@ -422,262 +422,262 @@ public enum SimulationEventRegistry {
         SimulationEventType.messageItemCreated: (
             ["chat.messages"],
             ["chat.tools.refresh"],
-            [.chatMessageTimeline]
+            [.chatMessageTimeline],
         ),
         SimulationEventType.messageDeliveryUpdated: (
             ["chat.message_delivery"],
             [],
-            [.chatMessageTimeline]
+            [.chatMessageTimeline],
         ),
         SimulationEventType.patientMetadataCreated: (
             ["trainer.runtime.state", "chat.tools"],
             ["trainer.runtime.refresh", "chat.tools.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity]
+            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity],
         ),
         SimulationEventType.patientResultsUpdated: (
             ["trainer.runtime.state", "chat.tools"],
             ["trainer.runtime.refresh", "chat.tools.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity]
+            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity],
         ),
         SimulationEventType.feedbackItemCreated: (
             ["chat.feedback.state"],
             ["chat.tools.refresh"],
-            [.chatToolsPane, .chatActivity]
+            [.chatToolsPane, .chatActivity],
         ),
         SimulationEventType.feedbackGenerationFailed: (
             ["chat.feedback.state"],
             [],
-            [.chatStatusBanner, .chatActivity]
+            [.chatStatusBanner, .chatActivity],
         ),
         SimulationEventType.feedbackGenerationUpdated: (
             ["chat.feedback.state"],
             ["chat.tools.refresh"],
-            [.chatToolsPane, .chatActivity]
+            [.chatToolsPane, .chatActivity],
         ),
         SimulationEventType.simulationStatusUpdated: (
             ["trainer.session.lifecycle", "chat.simulation.status"],
             ["trainer.seeded.rehydrate", "trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary, .chatStatusBanner, .chatActivity]
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary, .chatStatusBanner, .chatActivity],
         ),
         SimulationEventType.simulationBriefCreated: (
             ["trainer.scenario_brief"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationBriefUpdated: (
             ["trainer.scenario_brief"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationSnapshotUpdated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationPlanUpdated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationPatchCompleted: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationTickTriggered: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationSummaryUpdated: (
             ["trainer.runtime.state"],
             [],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationRuntimeFailed: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationPresetUpdated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationCommandUpdated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationAdjustmentUpdated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationNoteCreated: (
             ["trainer.runtime.state"],
             [],
-            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.simulationAnnotationCreated: (
             ["trainer.annotations"],
             [],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientInjuryCreated: (
             ["trainer.cause_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientInjuryUpdated: (
             ["trainer.cause_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientIllnessCreated: (
             ["trainer.cause_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientIllnessUpdated: (
             ["trainer.cause_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientProblemCreated: (
             ["trainer.problem_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientProblemUpdated: (
             ["trainer.problem_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientRecommendedInterventionCreated: (
             ["trainer.recommended_interventions"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientRecommendedInterventionUpdated: (
             ["trainer.recommended_interventions"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientRecommendedInterventionRemoved: (
             ["trainer.recommended_interventions"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientInterventionCreated: (
             ["trainer.intervention_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientInterventionUpdated: (
             ["trainer.intervention_annotations"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientAssessmentFindingCreated: (
             ["trainer.assessment_findings"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientAssessmentFindingUpdated: (
             ["trainer.assessment_findings"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientAssessmentFindingRemoved: (
             ["trainer.assessment_findings"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientDiagnosticResultCreated: (
             ["trainer.diagnostic_results"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientDiagnosticResultUpdated: (
             ["trainer.diagnostic_results"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientResourceUpdated: (
             ["trainer.resources"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientDispositionUpdated: (
             ["trainer.disposition"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientRecommendationEvaluationCreated: (
             ["trainer.runtime.state"],
             ["trainer.runtime.refresh"],
-            [.trainerOperationalLog, .trainerRunSummary]
+            [.trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientVitalCreated: (
             ["trainer.vitals"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientVitalUpdated: (
             ["trainer.vitals"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientPulseCreated: (
             ["trainer.pulses"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.patientPulseUpdated: (
             ["trainer.pulses"],
             ["trainer.runtime.refresh"],
-            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
         ),
         SimulationEventType.connected: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
         SimulationEventType.disconnected: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
         SimulationEventType.initMessage: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
         SimulationEventType.error: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
         SimulationEventType.typing: (
             ["chat.typing"],
             [],
-            [.chatTypingIndicator]
+            [.chatTypingIndicator],
         ),
         SimulationEventType.stoppedTyping: (
             ["chat.typing"],
             [],
-            [.chatTypingIndicator]
+            [.chatTypingIndicator],
         ),
         SimulationEventType.simulationFeedbackContinueConversation: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
         SimulationEventType.simulationHotwashContinueConversation: (
             ["none"],
             [],
-            [.explicitNoOp]
+            [.explicitNoOp],
         ),
     ]
 
@@ -1050,7 +1050,7 @@ public enum SimulationEventRegistry {
     }
 }
 
-public extension Dictionary where Key == String, Value == JSONValue {
+public extension [String: JSONValue] {
     func decodedPayload<T: Decodable>(as type: T.Type) throws -> T {
         let data = try JSONSerialization.data(withJSONObject: mapValues(\.rawValue))
         let decoder = JSONDecoder()

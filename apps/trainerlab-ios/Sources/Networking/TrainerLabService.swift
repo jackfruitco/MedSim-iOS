@@ -74,7 +74,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     }
 
     public func listSessions(limit: Int = 20, cursor: String? = nil, status: String? = nil, query searchQuery: String? = nil) async throws -> PaginatedResponse<TrainerSessionDTO> {
-        return try await apiClient.request(
+        try await apiClient.request(
             TrainerLabAPI.listSessions(limit: limit, cursor: cursor, status: status, query: searchQuery),
             as: PaginatedResponse<TrainerSessionDTO>.self,
         )
@@ -148,7 +148,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         cursor: String?,
         limit: Int,
     ) async throws -> PaginatedResponse<EventEnvelope> {
-        return try await apiClient.request(
+        try await apiClient.request(
             TrainerLabAPI.listEvents(simulationID: simulationID, cursor: cursor, limit: limit),
             as: PaginatedResponse<EventEnvelope>.self,
         )
@@ -301,14 +301,14 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     }
 
     private func injectEvent(_ endpoint: Endpoint) async throws -> TrainerCommandAck {
-        return try await apiClient.request(
+        try await apiClient.request(
             endpoint,
             as: TrainerCommandAck.self,
         )
     }
 
     public func listPresets(limit: Int, cursor: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
-        return try await apiClient.request(
+        try await apiClient.request(
             TrainerLabAPI.listPresets(limit: limit, cursor: cursor),
             as: PaginatedResponse<ScenarioInstruction>.self,
         )
@@ -378,7 +378,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     }
 
     public func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> {
-        return try await apiClient.request(
+        try await apiClient.request(
             TrainerLabAPI.listAccounts(query: query, cursor: cursor, limit: limit),
             as: PaginatedResponse<AccountListUser>.self,
         )

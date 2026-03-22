@@ -1040,25 +1040,25 @@ public final class RunSessionStore: ObservableObject {
     ) -> Date? {
         switch nextStatus {
         case .paused:
-            return event.createdAt
+            event.createdAt
         case .completed, .failed:
-            return session.runPausedAt
+            session.runPausedAt
         case .seeding, .seeded, .running:
-            return nil
+            nil
         }
     }
 
     private func resolvedRunCompletedAt(
         for nextStatus: TrainerSessionStatus,
         payload: SimulationStatusUpdatedPayload,
-        session: TrainerSessionDTO,
+        session _: TrainerSessionDTO,
         event: EventEnvelope,
     ) -> Date? {
         switch nextStatus {
         case .completed, .failed:
-            return payload.terminalAt ?? event.createdAt
+            payload.terminalAt ?? event.createdAt
         case .seeding, .seeded, .running, .paused:
-            return nil
+            nil
         }
     }
 
@@ -1478,8 +1478,8 @@ public final class RunSessionStore: ObservableObject {
 
         guard
             eventType == SimulationEventType.patientVitalCreated
-                || eventType == SimulationEventType.patientVitalUpdated
-                || resolvedVitalType != nil
+            || eventType == SimulationEventType.patientVitalUpdated
+            || resolvedVitalType != nil
         else {
             return
         }

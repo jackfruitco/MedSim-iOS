@@ -3,7 +3,7 @@ import XCTest
 
 final class SimulationEventRegistryTests: XCTestCase {
     func testCanonicalDurableEventTypesMatchBackendRegistry() {
-        let expected: Set<String> = [
+        let expected = Set([
             "message.item.created",
             "message.delivery.updated",
             "patient.metadata.created",
@@ -48,7 +48,7 @@ final class SimulationEventRegistryTests: XCTestCase {
             "patient.vital.updated",
             "patient.pulse.created",
             "patient.pulse.updated",
-        ]
+        ])
 
         XCTAssertEqual(Set(SimulationEventType.allCanonicalDurable), expected)
         XCTAssertEqual(SimulationEventRegistry.knownCanonicalDurableEventTypes, expected)
@@ -61,7 +61,7 @@ final class SimulationEventRegistryTests: XCTestCase {
     }
 
     func testTransientSocketEventTypesMatchBackendRegistry() {
-        let expected: Set<String> = [
+        let expected = Set([
             "connected",
             "disconnected",
             "init_message",
@@ -70,7 +70,7 @@ final class SimulationEventRegistryTests: XCTestCase {
             "stopped_typing",
             "simulation.feedback.continue_conversation",
             "simulation.hotwash.continue_conversation",
-        ]
+        ])
 
         XCTAssertEqual(Set(SimulationEventType.transientSocketOnly), expected)
         XCTAssertEqual(SimulationEventRegistry.knownTransientEventTypes, expected)
