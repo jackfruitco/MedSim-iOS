@@ -440,6 +440,97 @@ final class ChatRunStoreTests: XCTestCase {
         }
     }
 
+    func testNonMessageCanonicalEventsCreateChatActivityItems() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("Feedback timed out"),
+            "retryable": .bool(true),
+        ]))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.patientResultsUpdated, payload: [:]))
+
+        try await waitUntil {
+            store.activityItems.count == 2 &&
+                store.activityItems.map(\.eventType).contains(SimulationEventType.feedbackGenerationFailed) &&
+                store.activityItems.map(\.eventType).contains(SimulationEventType.patientResultsUpdated)
+        }
+
+        XCTAssertEqual(store.activityItems.first?.title, "Patient Results Updated")
+        XCTAssertTrue(store.activityItems.contains(where: {
+            $0.eventType == SimulationEventType.feedbackGenerationFailed &&
+                $0.message == "Feedback timed out"
+        }))
+    }
+
+    func testMessageEventsStayInMessageTimelineAndDoNotCreateActivityItems() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(
+            makeEvent(
+                type: SimulationEventType.messageItemCreated,
+                payload: [
+                    "id": .number(301),
+                    "message_id": .number(301),
+                    "conversation_id": .number(Double(patientConversation.id)),
+                    "content": .string("Hello again"),
+                    "is_from_ai": .bool(true),
+                    "display_name": .string(patientConversation.displayName),
+                    "timestamp": .string(isoTimestamp()),
+                    "delivery_status": .string("sent"),
+                ],
+            ),
+        )
+
+        try await waitUntil { store.activeMessages.contains(where: { $0.serverID == 301 }) }
+        XCTAssertTrue(store.activityItems.isEmpty)
+    }
+
+    func testTransientNoOpEventsDoNotCreateActivityItems() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(makeEvent(type: SimulationEventType.connected, payload: [:]))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.error, payload: ["message": .string("ignored")]))
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(store.activityItems.isEmpty)
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
         condition: @escaping @MainActor () -> Bool,

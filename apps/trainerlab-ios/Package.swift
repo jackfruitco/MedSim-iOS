@@ -44,6 +44,13 @@ let package = Package(
                 "SharedModels",
                 "Persistence",
             ],
+            sources: [
+                "APIClient.swift",
+                "AuthService.swift",
+                "EnvironmentStore.swift",
+                "MutableBaseURLProvider.swift",
+                "TrainerLabService.swift",
+            ],
         ),
         .target(
             name: "Realtime",

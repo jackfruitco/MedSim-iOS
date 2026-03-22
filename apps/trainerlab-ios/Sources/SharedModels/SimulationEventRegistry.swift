@@ -127,6 +127,41 @@ public enum SimulationEventDomain: String, Sendable {
     case unknown
 }
 
+public enum SimulationEventPresentationTarget: String, CaseIterable, Sendable {
+    case trainerClinicalTimeline = "trainer.clinical_timeline"
+    case trainerInfoPanel = "trainer.info_panel"
+    case trainerOperationalLog = "trainer.operational_log"
+    case trainerRunSummary = "trainer.run_summary"
+    case chatMessageTimeline = "chat.message_timeline"
+    case chatToolsPane = "chat.tools_pane"
+    case chatActivity = "chat.activity"
+    case chatStatusBanner = "chat.status_banner"
+    case chatTypingIndicator = "chat.typing_indicator"
+    case explicitNoOp = "explicit.no_op"
+}
+
+public struct SimulationEventAuditEntry: Equatable, Sendable {
+    public let canonicalEventType: String
+    public let legacyAliases: [String]
+    public let hydrationTargets: [String]
+    public let refreshTargets: [String]
+    public let presentationTargets: [SimulationEventPresentationTarget]
+
+    public init(
+        canonicalEventType: String,
+        legacyAliases: [String],
+        hydrationTargets: [String],
+        refreshTargets: [String],
+        presentationTargets: [SimulationEventPresentationTarget],
+    ) {
+        self.canonicalEventType = canonicalEventType
+        self.legacyAliases = legacyAliases
+        self.hydrationTargets = hydrationTargets
+        self.refreshTargets = refreshTargets
+        self.presentationTargets = presentationTargets
+    }
+}
+
 public enum SimulationLifecycleSemantic: String, Sendable {
     case seeding
     case seeded
@@ -299,6 +334,12 @@ public struct SimulationStatusUpdatedPayload: Codable, Equatable, Sendable {
 }
 
 public enum SimulationEventRegistry {
+    private typealias AuditDescriptor = (
+        hydrationTargets: [String],
+        refreshTargets: [String],
+        presentationTargets: [SimulationEventPresentationTarget]
+    )
+
     public static let aliasToCanonicalMap: [String: String] = [
         "chat.message_created": SimulationEventType.messageItemCreated,
         "message_status_update": SimulationEventType.messageDeliveryUpdated,
@@ -376,6 +417,269 @@ public enum SimulationEventRegistry {
     public static let knownCanonicalDurableEventTypes = Set(SimulationEventType.allCanonicalDurable)
     public static let knownTransientEventTypes = Set(SimulationEventType.transientSocketOnly)
     public static let knownCanonicalEventTypes = knownCanonicalDurableEventTypes.union(knownTransientEventTypes)
+
+    private static let auditDescriptorMap: [String: AuditDescriptor] = [
+        SimulationEventType.messageItemCreated: (
+            ["chat.messages"],
+            ["chat.tools.refresh"],
+            [.chatMessageTimeline]
+        ),
+        SimulationEventType.messageDeliveryUpdated: (
+            ["chat.message_delivery"],
+            [],
+            [.chatMessageTimeline]
+        ),
+        SimulationEventType.patientMetadataCreated: (
+            ["trainer.runtime.state", "chat.tools"],
+            ["trainer.runtime.refresh", "chat.tools.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity]
+        ),
+        SimulationEventType.patientResultsUpdated: (
+            ["trainer.runtime.state", "chat.tools"],
+            ["trainer.runtime.refresh", "chat.tools.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity]
+        ),
+        SimulationEventType.feedbackItemCreated: (
+            ["chat.feedback.state"],
+            ["chat.tools.refresh"],
+            [.chatToolsPane, .chatActivity]
+        ),
+        SimulationEventType.feedbackGenerationFailed: (
+            ["chat.feedback.state"],
+            [],
+            [.chatStatusBanner, .chatActivity]
+        ),
+        SimulationEventType.feedbackGenerationUpdated: (
+            ["chat.feedback.state"],
+            ["chat.tools.refresh"],
+            [.chatToolsPane, .chatActivity]
+        ),
+        SimulationEventType.simulationStatusUpdated: (
+            ["trainer.session.lifecycle", "chat.simulation.status"],
+            ["trainer.seeded.rehydrate", "trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary, .chatStatusBanner, .chatActivity]
+        ),
+        SimulationEventType.simulationBriefCreated: (
+            ["trainer.scenario_brief"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationBriefUpdated: (
+            ["trainer.scenario_brief"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationSnapshotUpdated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationPlanUpdated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationPatchCompleted: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationTickTriggered: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationSummaryUpdated: (
+            ["trainer.runtime.state"],
+            [],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationRuntimeFailed: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationPresetUpdated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationCommandUpdated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationAdjustmentUpdated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationNoteCreated: (
+            ["trainer.runtime.state"],
+            [],
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.simulationAnnotationCreated: (
+            ["trainer.annotations"],
+            [],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientInjuryCreated: (
+            ["trainer.cause_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientInjuryUpdated: (
+            ["trainer.cause_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientIllnessCreated: (
+            ["trainer.cause_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientIllnessUpdated: (
+            ["trainer.cause_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientProblemCreated: (
+            ["trainer.problem_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientProblemUpdated: (
+            ["trainer.problem_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientRecommendedInterventionCreated: (
+            ["trainer.recommended_interventions"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientRecommendedInterventionUpdated: (
+            ["trainer.recommended_interventions"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientRecommendedInterventionRemoved: (
+            ["trainer.recommended_interventions"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientInterventionCreated: (
+            ["trainer.intervention_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientInterventionUpdated: (
+            ["trainer.intervention_annotations"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientAssessmentFindingCreated: (
+            ["trainer.assessment_findings"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientAssessmentFindingUpdated: (
+            ["trainer.assessment_findings"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientAssessmentFindingRemoved: (
+            ["trainer.assessment_findings"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientDiagnosticResultCreated: (
+            ["trainer.diagnostic_results"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientDiagnosticResultUpdated: (
+            ["trainer.diagnostic_results"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientResourceUpdated: (
+            ["trainer.resources"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientDispositionUpdated: (
+            ["trainer.disposition"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientRecommendationEvaluationCreated: (
+            ["trainer.runtime.state"],
+            ["trainer.runtime.refresh"],
+            [.trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientVitalCreated: (
+            ["trainer.vitals"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientVitalUpdated: (
+            ["trainer.vitals"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientPulseCreated: (
+            ["trainer.pulses"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.patientPulseUpdated: (
+            ["trainer.pulses"],
+            ["trainer.runtime.refresh"],
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary]
+        ),
+        SimulationEventType.connected: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+        SimulationEventType.disconnected: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+        SimulationEventType.initMessage: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+        SimulationEventType.error: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+        SimulationEventType.typing: (
+            ["chat.typing"],
+            [],
+            [.chatTypingIndicator]
+        ),
+        SimulationEventType.stoppedTyping: (
+            ["chat.typing"],
+            [],
+            [.chatTypingIndicator]
+        ),
+        SimulationEventType.simulationFeedbackContinueConversation: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+        SimulationEventType.simulationHotwashContinueConversation: (
+            ["none"],
+            [],
+            [.explicitNoOp]
+        ),
+    ]
 
     public static let runtimeRefreshTriggerEventTypes: Set<String> = [
         SimulationEventType.simulationStatusUpdated,
@@ -542,6 +846,44 @@ public enum SimulationEventRegistry {
         domain(for: rawEventType) == .feedback
     }
 
+    public static var auditEntries: [SimulationEventAuditEntry] {
+        (SimulationEventType.allCanonicalDurable + SimulationEventType.transientSocketOnly)
+            .compactMap { auditEntry(for: $0) }
+    }
+
+    public static func auditEntry(for rawEventType: String) -> SimulationEventAuditEntry? {
+        let canonical = canonicalize(rawEventType)
+        guard let descriptor = auditDescriptorMap[canonical] else { return nil }
+        let legacyAliases = aliasToCanonicalMap
+            .compactMap { alias, mappedCanonical in
+                mappedCanonical == canonical ? alias : nil
+            }
+            .sorted()
+        return SimulationEventAuditEntry(
+            canonicalEventType: canonical,
+            legacyAliases: legacyAliases,
+            hydrationTargets: descriptor.hydrationTargets,
+            refreshTargets: descriptor.refreshTargets,
+            presentationTargets: descriptor.presentationTargets,
+        )
+    }
+
+    public static func presentationTargets(for rawEventType: String) -> [SimulationEventPresentationTarget] {
+        auditEntry(for: rawEventType)?.presentationTargets ?? []
+    }
+
+    public static func shouldPresentInTrainerOperationalLog(_ rawEventType: String) -> Bool {
+        presentationTargets(for: rawEventType).contains(.trainerOperationalLog)
+    }
+
+    public static func shouldPresentInChatActivity(_ rawEventType: String) -> Bool {
+        presentationTargets(for: rawEventType).contains(.chatActivity)
+    }
+
+    public static func shouldPresentInChatStatusBanner(_ rawEventType: String) -> Bool {
+        presentationTargets(for: rawEventType).contains(.chatStatusBanner)
+    }
+
     public static func lifecycleDisplay(
         for payload: SimulationStatusUpdatedPayload,
         previousStatus: TrainerSessionStatus? = nil,
@@ -639,12 +981,72 @@ public enum SimulationEventRegistry {
         }
     }
 
+    public static func displayMessage(
+        for rawEventType: String,
+        payload: [String: JSONValue] = [:],
+        previousStatus: TrainerSessionStatus? = nil,
+    ) -> String {
+        let canonical = canonicalize(rawEventType)
+        switch canonical {
+        case SimulationEventType.simulationStatusUpdated:
+            if let decoded = try? SimulationStatusUpdatedPayload.decode(from: payload) {
+                return lifecycleDisplay(for: decoded, previousStatus: previousStatus).message
+            }
+            return "Simulation lifecycle updated."
+        case SimulationEventType.feedbackGenerationFailed:
+            return payloadString(payload, keys: ["error_text", "reason_text", "terminal_reason_text"])
+                ?? "Feedback generation failed."
+        case SimulationEventType.feedbackGenerationUpdated:
+            return "Feedback generation updated."
+        case SimulationEventType.feedbackItemCreated:
+            return payloadPrimaryText(payload) ?? "Simulation feedback available."
+        case SimulationEventType.patientMetadataCreated:
+            return "Patient metadata refreshed."
+        case SimulationEventType.patientResultsUpdated:
+            return "Patient results refreshed."
+        case SimulationEventType.messageItemCreated:
+            return payloadString(payload, keys: ["content"]) ?? "New message received."
+        case SimulationEventType.messageDeliveryUpdated:
+            if let status = payloadString(payload, keys: ["status"]) {
+                return "Message marked \(humanizedLabel(status).lowercased())."
+            }
+            return "Message delivery updated."
+        default:
+            return payloadPrimaryText(payload) ?? "\(displayTitle(for: canonical, payload: payload, previousStatus: previousStatus)) received."
+        }
+    }
+
     public static func humanizedLabel(_ rawValue: String) -> String {
         rawValue
             .replacingOccurrences(of: ".", with: " ")
             .replacingOccurrences(of: "_", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .capitalized
+    }
+
+    private static func payloadPrimaryText(_ payload: [String: JSONValue]) -> String? {
+        payloadString(payload, keys: [
+            "summary",
+            "title",
+            "content",
+            "description",
+            "error_text",
+            "reason_text",
+            "terminal_reason_text",
+            "trigger",
+            "status",
+        ])
+    }
+
+    private static func payloadString(_ payload: [String: JSONValue], keys: [String]) -> String? {
+        for key in keys {
+            guard case let .string(value)? = payload[key] else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
     }
 }
 

@@ -498,6 +498,9 @@ public struct ChatRunView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 14 : 12) {
                 toolsHeader(layoutMode: layoutMode)
+                toolSection(.activity, layoutMode: layoutMode) {
+                    ChatActivityRows(items: store.activityItems)
+                }
                 toolSection(.patientHistory, layoutMode: layoutMode) {
                     PatientHistoryRows(rows: toolsStore.toolData("patient_history"))
                 }
@@ -891,6 +894,46 @@ private struct ChatBubble: View {
             .green
         case .failed:
             .red
+        }
+    }
+}
+
+private struct ChatActivityRows: View {
+    let items: [ChatActivityItem]
+
+    var body: some View {
+        if items.isEmpty {
+            Text("Lifecycle, feedback, and patient refresh updates will show up here.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(items.prefix(12)) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(item.title)
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(item.message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        Text(item.eventType)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
         }
     }
 }

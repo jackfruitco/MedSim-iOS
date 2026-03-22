@@ -29,6 +29,14 @@ public struct ChatMessageItem: Identifiable, Sendable, Equatable {
     public var mediaList: [ChatMessageMedia]
 }
 
+public struct ChatActivityItem: Identifiable, Sendable, Equatable {
+    public let id: String
+    public let eventType: String
+    public let title: String
+    public let message: String
+    public let timestamp: Date
+}
+
 @MainActor
 public final class ChatRunStore: ObservableObject {
     @Published public private(set) var simulation: ChatSimulation
@@ -36,6 +44,7 @@ public final class ChatRunStore: ObservableObject {
     @Published public var activeConversationID: Int?
     @Published public private(set) var unreadByConversation: [Int: Int] = [:]
     @Published public private(set) var messagesByConversation: [Int: [ChatMessageItem]] = [:]
+    @Published public private(set) var activityItems: [ChatActivityItem] = []
     @Published public private(set) var typingUsersByConversation: [Int: [String]] = [:]
     @Published public private(set) var hasMoreByConversation: [Int: Bool] = [:]
 
@@ -67,6 +76,7 @@ public final class ChatRunStore: ObservableObject {
     private var awaitingReplyTasks: [Int: Task<Void, Never>] = [:]
     private var lastConnectionState: ChatRealtimeConnectionState = .disconnected
     private let awaitingReplyTimeoutNanoseconds: UInt64 = 20_000_000_000
+    private let maxActivityItems = 30
     private var markReadInFlight = Set<Int>()
 
     public init(
@@ -405,6 +415,7 @@ public final class ChatRunStore: ObservableObject {
 
     private func handleEvent(_ event: ChatEventEnvelope) {
         let event = event.canonicalized()
+        captureActivity(from: event)
         switch event.eventType {
         case SimulationEventType.messageItemCreated:
             handleMessageCreated(event.payload)
@@ -447,6 +458,31 @@ public final class ChatRunStore: ObservableObject {
         default:
             break
         }
+    }
+
+    private func captureActivity(from event: ChatEventEnvelope) {
+        guard SimulationEventRegistry.shouldPresentInChatActivity(event.eventType) else {
+            return
+        }
+
+        let previousStatus = lifecyclePresentationStatus
+        let canonicalEventType = SimulationEventRegistry.canonicalize(event.eventType)
+        let item = ChatActivityItem(
+            id: event.eventID,
+            eventType: canonicalEventType,
+            title: SimulationEventRegistry.displayTitle(
+                for: canonicalEventType,
+                payload: event.payload,
+                previousStatus: previousStatus,
+            ),
+            message: SimulationEventRegistry.displayMessage(
+                for: canonicalEventType,
+                payload: event.payload,
+                previousStatus: previousStatus,
+            ),
+            timestamp: event.createdAt,
+        )
+        upsertActivity(item)
     }
 
     public func refreshAfterForegroundOrReconnect() {
@@ -614,6 +650,19 @@ public final class ChatRunStore: ObservableObject {
         }
     }
 
+    private var lifecyclePresentationStatus: TrainerSessionStatus? {
+        switch simulation.status {
+        case .inProgress:
+            return .running
+        case .completed, .timedOut, .canceled:
+            return .completed
+        case .failed:
+            return .failed
+        case .unknown:
+            return nil
+        }
+    }
+
     private func mapMessage(_ message: ChatMessage) -> ChatMessageItem {
         ChatMessageItem(
             id: "server-\(message.id)",
@@ -683,6 +732,14 @@ public final class ChatRunStore: ObservableObject {
             ordered.append(item)
         }
         return ordered.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private func upsertActivity(_ item: ChatActivityItem) {
+        activityItems.removeAll(where: { $0.id == item.id })
+        activityItems.insert(item, at: 0)
+        if activityItems.count > maxActivityItems {
+            activityItems.removeLast(activityItems.count - maxActivityItems)
+        }
     }
 
     private func reconcilePending(localID: String, with message: ChatMessage) {

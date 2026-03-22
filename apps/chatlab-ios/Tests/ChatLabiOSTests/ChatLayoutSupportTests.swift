@@ -22,6 +22,7 @@ final class ChatLayoutSupportTests: XCTestCase {
     func testToolSectionDefaultsMatchLayoutMode() {
         XCTAssertTrue(ChatToolsSection.requestLabs.defaultExpanded(for: .compactMessenger))
         XCTAssertFalse(ChatToolsSection.patientHistory.defaultExpanded(for: .compactMessenger))
+        XCTAssertTrue(ChatToolsSection.activity.defaultExpanded(for: .widePhoneMessenger))
         XCTAssertTrue(ChatToolsSection.patientResults.defaultExpanded(for: .widePhoneMessenger))
         XCTAssertTrue(ChatToolsSection.simulationMetadata.defaultExpanded(for: .padWorkspace))
     }

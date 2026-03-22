@@ -205,4 +205,69 @@ final class SimulationEventRegistryTests: XCTestCase {
             "Recommendation",
         )
     }
+
+    func testAuditEntriesCoverEveryKnownEventAndDeclarePresentationTargets() {
+        let auditEntries = SimulationEventRegistry.auditEntries
+        let expectedEventTypes = Set(
+            SimulationEventType.allCanonicalDurable + SimulationEventType.transientSocketOnly,
+        )
+
+        XCTAssertEqual(auditEntries.count, expectedEventTypes.count)
+        XCTAssertEqual(Set(auditEntries.map(\.canonicalEventType)), expectedEventTypes)
+        XCTAssertTrue(auditEntries.allSatisfy { !$0.presentationTargets.isEmpty })
+    }
+
+    func testAuditEntriesCaptureRepresentativePresentationPolicies() {
+        let lifecycle = SimulationEventRegistry.auditEntry(for: SimulationEventType.simulationStatusUpdated)
+        XCTAssertEqual(
+            lifecycle?.presentationTargets,
+            [.trainerClinicalTimeline, .trainerOperationalLog, .trainerRunSummary, .chatStatusBanner, .chatActivity],
+        )
+        XCTAssertEqual(
+            lifecycle?.refreshTargets,
+            ["trainer.seeded.rehydrate", "trainer.runtime.refresh"],
+        )
+
+        let assessmentFinding = SimulationEventRegistry.auditEntry(for: SimulationEventType.patientAssessmentFindingCreated)
+        XCTAssertEqual(
+            assessmentFinding?.hydrationTargets,
+            ["trainer.assessment_findings"],
+        )
+        XCTAssertEqual(
+            assessmentFinding?.presentationTargets,
+            [.trainerClinicalTimeline, .trainerInfoPanel, .trainerOperationalLog, .trainerRunSummary],
+        )
+
+        let feedbackFailure = SimulationEventRegistry.auditEntry(for: "feedback.failed")
+        XCTAssertEqual(feedbackFailure?.canonicalEventType, SimulationEventType.feedbackGenerationFailed)
+        XCTAssertEqual(feedbackFailure?.presentationTargets, [.chatStatusBanner, .chatActivity])
+
+        let patientResults = SimulationEventRegistry.auditEntry(for: SimulationEventType.patientResultsUpdated)
+        XCTAssertEqual(
+            patientResults?.presentationTargets,
+            [.trainerOperationalLog, .trainerRunSummary, .chatToolsPane, .chatActivity],
+        )
+
+        let typing = SimulationEventRegistry.auditEntry(for: SimulationEventType.typing)
+        XCTAssertEqual(typing?.presentationTargets, [.chatTypingIndicator])
+
+        let connected = SimulationEventRegistry.auditEntry(for: SimulationEventType.connected)
+        XCTAssertEqual(connected?.presentationTargets, [.explicitNoOp])
+    }
+
+    func testDisplayMessageUsesRepresentativeCanonicalMessages() {
+        XCTAssertEqual(
+            SimulationEventRegistry.displayMessage(
+                for: SimulationEventType.patientResultsUpdated,
+            ),
+            "Patient results refreshed.",
+        )
+        XCTAssertEqual(
+            SimulationEventRegistry.displayMessage(
+                for: SimulationEventType.feedbackGenerationFailed,
+                payload: ["error_text": .string("Feedback pipeline timed out")],
+            ),
+            "Feedback pipeline timed out",
+        )
+    }
 }

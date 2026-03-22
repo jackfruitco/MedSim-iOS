@@ -44,6 +44,490 @@ public struct Endpoint: Sendable {
     }
 }
 
+public struct EventStreamRoute: Sendable, Equatable {
+    public let path: String
+    public let query: [URLQueryItem]
+
+    public init(path: String, query: [URLQueryItem] = []) {
+        self.path = path
+        self.query = query
+    }
+
+    public func makeURLRequest(baseURL: URL, accessToken: String) throws -> URLRequest {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        components.path = path
+        if !query.isEmpty {
+            components.queryItems = query
+        }
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = HTTPMethod.get.rawValue
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
+        return request
+    }
+}
+
+public enum AuthAPI {
+    public static func signIn(body: Data) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/auth/token/",
+            method: .post,
+            body: body,
+            requiresAuth: false,
+        )
+    }
+
+    public static func signOut(body: Data) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/auth/logout/",
+            method: .post,
+            body: body,
+            requiresAuth: false,
+        )
+    }
+
+    public static func refresh(body: Data) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/auth/token/refresh/",
+            method: .post,
+            body: body,
+            requiresAuth: false,
+        )
+    }
+}
+
+public enum TrainerLabAPI {
+    public static func accessMe() -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/access/me/")
+    }
+
+    public static func listSessions(limit: Int, cursor: String?, status: String?, query searchQuery: String?) -> Endpoint {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        if let status {
+            queryItems.append(URLQueryItem(name: "status", value: status))
+        }
+        if let searchQuery, !searchQuery.isEmpty {
+            queryItems.append(URLQueryItem(name: "q", value: searchQuery))
+        }
+        return Endpoint(path: "/api/v1/trainerlab/simulations/", query: queryItems)
+    }
+
+    public static func createSession(body: Data, idempotencyKey: String) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func session(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/")
+    }
+
+    public static func retryInitial(simulationID: Int) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/retry-initial/",
+            method: .post,
+            body: Data(),
+        )
+    }
+
+    public static func runtimeState(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/state/")
+    }
+
+    public static func controlPlaneDebug(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/control-plane/")
+    }
+
+    public static func runCommand(simulationID: Int, command: String, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/run/\(command)/",
+            method: .post,
+            body: Data(),
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func triggerRunTick(simulationID: Int, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/",
+            method: .post,
+            body: Data(),
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func triggerVitalsTick(simulationID: Int, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/",
+            method: .post,
+            body: Data(),
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func listEvents(simulationID: Int, cursor: String?, limit: Int) -> Endpoint {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/events/", query: queryItems)
+    }
+
+    public static func eventStream(simulationID: Int, cursor: String?) -> EventStreamRoute {
+        let query = cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []
+        return EventStreamRoute(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/stream/",
+            query: query,
+        )
+    }
+
+    public static func runSummary(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/summary/")
+    }
+
+    public static func adjustSimulation(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/adjust/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func steerPrompt(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/steer/prompt/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func injuries(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func illnesses(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/illnesses/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func problems(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/problems/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func assessmentFindings(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/assessment-findings/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func diagnosticResults(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/diagnostic-results/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func resources(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/resources/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func disposition(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/disposition/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func vitals(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func interventions(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        eventMutation(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/",
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func listPresets(limit: Int, cursor: String?) -> Endpoint {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return Endpoint(path: "/api/v1/trainerlab/presets/", query: queryItems)
+    }
+
+    public static func presets(body: Data? = nil, method: HTTPMethod = .get) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/presets/", method: method, body: body)
+    }
+
+    public static func preset(presetID: Int, body: Data? = nil, method: HTTPMethod = .get) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/", method: method, body: body)
+    }
+
+    public static func duplicatePreset(presetID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/duplicate/", method: .post, body: Data())
+    }
+
+    public static func sharePreset(presetID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/share/", method: .post, body: body)
+    }
+
+    public static func unsharePreset(presetID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/unshare/", method: .post, body: body)
+    }
+
+    public static func applyPreset(presetID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/presets/\(presetID)/apply/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func injuryDictionary() -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/dictionaries/injuries/")
+    }
+
+    public static func interventionDictionary() -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/dictionaries/interventions/")
+    }
+
+    public static func listAccounts(query: String, cursor: String?, limit: Int) -> Endpoint {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return Endpoint(path: "/api/v1/account/list/", query: queryItems)
+    }
+
+    public static func problemStatus(simulationID: Int, problemID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/",
+            method: .patch,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func notes(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/notes/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func annotations(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/annotations/")
+    }
+
+    public static func createAnnotation(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/annotations/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func scenarioBrief(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/scenario-brief/",
+            method: .patch,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    private static func eventMutation(path: String, body: Data, idempotencyKey: String?) -> Endpoint {
+        Endpoint(
+            path: path,
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+}
+
+public enum ChatLabAPI {
+    public static func listSimulations(
+        limit: Int,
+        cursor: String?,
+        status: String?,
+        query: String?,
+        searchMessages: Bool,
+    ) -> Endpoint {
+        var queryItems: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        if let status, !status.isEmpty {
+            queryItems.append(URLQueryItem(name: "status", value: status))
+        }
+        if let query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "q", value: query))
+        }
+        if searchMessages {
+            queryItems.append(URLQueryItem(name: "search_messages", value: "true"))
+        }
+        return Endpoint(path: "/api/v1/simulations/", query: queryItems)
+    }
+
+    public static func quickCreateSimulation(body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/quick-create/", method: .post, body: body)
+    }
+
+    public static func simulation(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/")
+    }
+
+    public static func endSimulation(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/end/", method: .post, body: Data())
+    }
+
+    public static func retryInitial(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-initial/", method: .post, body: Data())
+    }
+
+    public static func retryFeedback(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-feedback/", method: .post, body: Data())
+    }
+
+    public static func conversations(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/")
+    }
+
+    public static func createConversation(simulationID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/", method: .post, body: body)
+    }
+
+    public static func conversation(simulationID: Int, conversationUUID: String) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/\(conversationUUID)/")
+    }
+
+    public static func listMessages(
+        simulationID: Int,
+        conversationID: Int?,
+        cursor: String?,
+        order: String,
+        limit: Int,
+    ) -> Endpoint {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "order", value: order),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let conversationID {
+            queryItems.append(URLQueryItem(name: "conversation_id", value: String(conversationID)))
+        }
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/", query: queryItems)
+    }
+
+    public static func createMessage(simulationID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/", method: .post, body: body)
+    }
+
+    public static func retryMessage(simulationID: Int, messageID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/retry/", method: .post, body: Data())
+    }
+
+    public static func message(simulationID: Int, messageID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/")
+    }
+
+    public static func markMessageRead(simulationID: Int, messageID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/read/", method: .patch, body: Data())
+    }
+
+    public static func listEvents(simulationID: Int, cursor: String?, limit: Int) -> Endpoint {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/events/", query: queryItems)
+    }
+
+    public static func eventStream(simulationID: Int, cursor: String?) -> EventStreamRoute {
+        let query = cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []
+        return EventStreamRoute(path: "/api/v1/simulations/\(simulationID)/events/stream/", query: query)
+    }
+
+    public static func listTools(simulationID: Int, names: [String]?) -> Endpoint {
+        var queryItems: [URLQueryItem] = []
+        if let names {
+            queryItems.append(contentsOf: names.map { URLQueryItem(name: "names", value: $0) })
+        }
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/", query: queryItems)
+    }
+
+    public static func tool(simulationID: Int, toolName: String) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/\(toolName)/")
+    }
+
+    public static func signOrders(simulationID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/patient_results/orders/", method: .post, body: body)
+    }
+
+    public static func submitLabOrders(simulationID: Int, body: Data) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/lab-orders/", method: .post, body: body)
+    }
+
+    public static func listModifierGroups(groups: [String]?) -> Endpoint {
+        var queryItems: [URLQueryItem] = []
+        if let groups {
+            queryItems.append(contentsOf: groups.map { URLQueryItem(name: "groups", value: $0) })
+        }
+        return Endpoint(path: "/api/v1/config/modifier-groups/", query: queryItems)
+    }
+}
+
 public struct EmptyResponse: Decodable, Sendable {
     public init() {}
 }
@@ -226,12 +710,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             }
 
             let payload = try encoder.encode(["refresh_token": current.refreshToken])
-            let endpoint = Endpoint(
-                path: "/api/v1/auth/token/refresh/",
-                method: .post,
-                body: payload,
-                requiresAuth: false,
-            )
+            let endpoint = AuthAPI.refresh(body: payload)
 
             let data = try await execute(endpoint: endpoint, allowRefreshRetry: false)
             let refresh = try decoder.decode(RefreshTokenResponse.self, from: data)

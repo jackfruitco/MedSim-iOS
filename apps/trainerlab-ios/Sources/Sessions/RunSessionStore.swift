@@ -421,14 +421,12 @@ public final class RunSessionStore: ObservableObject {
                 note: "Set AVPU to \(avpu.rawValue)",
                 metadata: [:],
             )
-            let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/adjust/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.adjustSimulation(
                 simulationID: session.simulationID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: session.simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 let ack = try await self.service.adjustSimulation(simulationID: session.simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
                 return TrainerCommandAck(commandID: ack.commandID, status: ack.status)
@@ -466,14 +464,12 @@ public final class RunSessionStore: ObservableObject {
                 tourniquetApplicationMode: tourniquetApplicationMode,
                 supersedesEventID: supersedesEventID,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.interventions(
                 simulationID: simulationID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
 
             // Optimistic local timeline entry
             let typeLabel = interventionDictionary
@@ -515,14 +511,9 @@ public final class RunSessionStore: ObservableObject {
                 injuryDescription: description,
                 description: description,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.injuries(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
 
             addOptimisticInjury(
                 id: "pending:\(envelope.idempotencyKey)",
@@ -544,14 +535,9 @@ public final class RunSessionStore: ObservableObject {
         Task {
             guard let simulationID = state.session?.simulationID else { return }
             let request = IllnessEventRequest(name: name, description: description)
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/illnesses/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.illnesses(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectIllnessEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -592,14 +578,9 @@ public final class RunSessionStore: ObservableObject {
                 maxValueDiastolic: nil,
                 supersedesEventID: nil,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: body,
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.vitals(simulationID: simulationID, body: body ?? Data())
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectVitalEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
@@ -659,13 +640,8 @@ public final class RunSessionStore: ObservableObject {
         guard canMutateCommands else { return }
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/"
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: Data(),
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.triggerRunTick(simulationID: simulationID)
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerRunTick(
                     simulationID: simulationID,
@@ -681,13 +657,8 @@ public final class RunSessionStore: ObservableObject {
         guard canMutateCommands else { return }
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/"
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.post.rawValue,
-                body: Data(),
-                simulationID: simulationID,
-            )
+            let endpoint = TrainerLabAPI.triggerVitalsTick(simulationID: simulationID)
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.triggerVitalsTick(
                     simulationID: simulationID,
@@ -759,19 +730,22 @@ public final class RunSessionStore: ObservableObject {
         canMutateCommands
     }
 
+    private func makeCommandEnvelope(endpoint: Endpoint, simulationID: Int?) -> PendingCommandEnvelope {
+        CommandEnvelopeBuilder.make(
+            endpoint: endpoint.path,
+            method: endpoint.method.rawValue,
+            body: endpoint.body,
+            simulationID: simulationID,
+        )
+    }
+
     private func sendRunCommand(_ command: RunCommand) async {
         guard let session = state.session else {
             return
         }
 
-        let path = "/api/v1/trainerlab/simulations/\(session.simulationID)/run/\(command.rawValue)/"
-        let body = Data()
-        let envelope = CommandEnvelopeBuilder.make(
-            endpoint: path,
-            method: HTTPMethod.post.rawValue,
-            body: body,
-            simulationID: session.simulationID,
-        )
+        let endpoint = TrainerLabAPI.runCommand(simulationID: session.simulationID, command: command.rawValue)
+        let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: session.simulationID)
 
         await executeQueuedSessionCommand(envelope: envelope) {
             try await self.service.runCommand(simulationID: session.simulationID, command: command, idempotencyKey: envelope.idempotencyKey)
@@ -2046,14 +2020,13 @@ public final class RunSessionStore: ObservableObject {
                 isTreated: status == .active ? false : true,
                 isResolved: status == .resolved,
             )
-            let path = "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/"
             let body = try? JSONEncoder().encode(request)
-            let envelope = CommandEnvelopeBuilder.make(
-                endpoint: path,
-                method: HTTPMethod.patch.rawValue,
-                body: body,
+            let endpoint = TrainerLabAPI.problemStatus(
                 simulationID: simulationID,
+                problemID: problemID,
+                body: body ?? Data(),
             )
+            let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.updateProblemStatus(
                     simulationID: simulationID,
