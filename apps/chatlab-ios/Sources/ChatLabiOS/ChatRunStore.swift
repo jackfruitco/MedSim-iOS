@@ -404,35 +404,45 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func handleEvent(_ event: ChatEventEnvelope) {
+        let event = event.canonicalized()
         switch event.eventType {
-        case "chat.message_created":
+        case SimulationEventType.messageItemCreated:
             handleMessageCreated(event.payload)
             toolRefreshToken = UUID()
 
-        case "message_status_update":
+        case SimulationEventType.messageDeliveryUpdated:
             handleMessageStatusUpdate(event.payload)
 
-        case "typing", "typing.started":
+        case SimulationEventType.typing:
             setTyping(event.payload, started: true)
 
-        case "stopped_typing", "typing.stopped":
+        case SimulationEventType.stoppedTyping:
             setTyping(event.payload, started: false)
 
-        case "simulation.state_changed":
-            handleSimulationStateChanged(event.payload)
+        case SimulationEventType.simulationStatusUpdated:
+            handleSimulationStatusUpdated(event.payload)
 
-        case "feedback.failed":
+        case SimulationEventType.feedbackGenerationFailed:
             feedbackFailureText = string(event.payload, keys: ["error_text"]) ?? "Feedback generation failed."
             feedbackRetryable = bool(event.payload, key: "retryable") ?? true
 
-        case "feedback.retrying":
+        case SimulationEventType.feedbackGenerationUpdated:
             feedbackFailureText = nil
-
-        case "simulation.metadata.results_created",
-             "simulation.feedback_created",
-             "feedback.created",
-             "simulation.hotwash.created":
             toolRefreshToken = UUID()
+
+        case SimulationEventType.feedbackItemCreated,
+             SimulationEventType.patientMetadataCreated,
+             SimulationEventType.patientResultsUpdated:
+            feedbackFailureText = nil
+            toolRefreshToken = UUID()
+
+        case SimulationEventType.connected,
+             SimulationEventType.disconnected,
+             SimulationEventType.initMessage,
+             SimulationEventType.error,
+             SimulationEventType.simulationFeedbackContinueConversation,
+             SimulationEventType.simulationHotwashContinueConversation:
+            break
 
         default:
             break
@@ -551,31 +561,56 @@ public final class ChatRunStore: ObservableObject {
         typingUsersByConversation[conversationID] = users
     }
 
-    private func handleSimulationStateChanged(_ payload: [String: JSONValue]) {
-        if let raw = string(payload, keys: ["status"]),
-           let status = SimulationTerminalState(rawValue: raw)
-        {
-            let updated = ChatSimulation(
-                id: simulation.id,
-                userID: simulation.userID,
-                startTimestamp: simulation.startTimestamp,
-                endTimestamp: simulation.endTimestamp,
-                timeLimitSeconds: simulation.timeLimitSeconds,
-                diagnosis: simulation.diagnosis,
-                chiefComplaint: simulation.chiefComplaint,
-                patientDisplayName: simulation.patientDisplayName,
-                patientInitials: simulation.patientInitials,
-                status: status,
-                terminalReasonCode: string(payload, keys: ["terminal_reason_code"]) ?? simulation.terminalReasonCode,
-                terminalReasonText: string(payload, keys: ["terminal_reason_text"]) ?? simulation.terminalReasonText,
-                terminalAt: date(payload, keys: ["terminal_at"]) ?? simulation.terminalAt,
-                retryable: bool(payload, key: "retryable") ?? simulation.retryable,
-            )
-            applySimulation(updated)
+    private func handleSimulationStatusUpdated(_ payload: [String: JSONValue]) {
+        guard let statusPayload = try? payload.decodedPayload(as: SimulationStatusUpdatedPayload.self),
+              let status = simulationStatus(from: statusPayload)
+        else {
+            return
         }
 
-        if simulation.status == .inProgress {
+        let isTerminal = status != .inProgress
+        let updated = ChatSimulation(
+            id: simulation.id,
+            userID: simulation.userID,
+            startTimestamp: simulation.startTimestamp,
+            endTimestamp: isTerminal ? (statusPayload.terminalAt ?? simulation.endTimestamp ?? Date()) : nil,
+            timeLimitSeconds: simulation.timeLimitSeconds,
+            diagnosis: simulation.diagnosis,
+            chiefComplaint: simulation.chiefComplaint,
+            patientDisplayName: simulation.patientDisplayName,
+            patientInitials: simulation.patientInitials,
+            status: status,
+            terminalReasonCode: isTerminal ? (statusPayload.effectiveReasonCode ?? simulation.terminalReasonCode) : "",
+            terminalReasonText: isTerminal ? (statusPayload.effectiveReasonText ?? simulation.terminalReasonText) : "",
+            terminalAt: isTerminal ? (statusPayload.terminalAt ?? simulation.terminalAt ?? Date()) : nil,
+            retryable: isTerminal ? (statusPayload.retryable ?? simulation.retryable) : nil,
+        )
+        applySimulation(updated)
+
+        if updated.status == .inProgress {
             startInitialAwaitingReplyIfNeeded()
+        }
+    }
+
+    private func simulationStatus(from payload: SimulationStatusUpdatedPayload) -> SimulationTerminalState? {
+        switch payload.normalizedStatus {
+        case "timed_out":
+            return .timedOut
+        case "canceled", "cancelled":
+            return .canceled
+        default:
+            break
+        }
+
+        switch payload.trainerSessionStatus() {
+        case .completed:
+            return .completed
+        case .failed:
+            return .failed
+        case .seeding, .seeded, .running, .paused:
+            return .inProgress
+        case nil:
+            return nil
         }
     }
 

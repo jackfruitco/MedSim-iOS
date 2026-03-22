@@ -217,7 +217,7 @@ final class ChatRunStoreTests: XCTestCase {
 
         realtime.pushEvent(
             makeEvent(
-                type: "chat.message_created",
+                type: SimulationEventType.messageItemCreated,
                 payload: [
                     "id": .number(200),
                     "message_id": .number(200),
@@ -271,7 +271,7 @@ final class ChatRunStoreTests: XCTestCase {
 
         realtime.pushEvent(
             makeEvent(
-                type: "message_status_update",
+                type: SimulationEventType.messageDeliveryUpdated,
                 payload: [
                     "id": .number(10),
                     "status": .string("failed"),
@@ -312,7 +312,7 @@ final class ChatRunStoreTests: XCTestCase {
 
         realtime.pushEvent(
             makeEvent(
-                type: "simulation.state_changed",
+                type: SimulationEventType.simulationStatusUpdated,
                 payload: [
                     "status": .string("failed"),
                     "terminal_reason_code": .string("provider_timeout"),
@@ -380,6 +380,63 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil {
             service.markReadCalls.contains(where: { $0.messageID == 99 }) &&
                 store.activeMessages.first?.isRead == true
+        }
+    }
+
+    func testCanonicalFeedbackAndPatientRefreshEventsUpdateToolRefreshState() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let initialToken = store.toolRefreshToken
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("Feedback failed"),
+            "retryable": .bool(true),
+        ]))
+
+        try await waitUntil { store.feedbackFailureText == "Feedback failed" }
+
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationUpdated, payload: [:]))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackItemCreated, payload: [:]))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.patientMetadataCreated, payload: [:]))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.patientResultsUpdated, payload: [:]))
+
+        try await waitUntil {
+            store.feedbackFailureText == nil && store.toolRefreshToken != initialToken
+        }
+    }
+
+    func testRepresentativeLegacyAliasesStillCanonicalizeAcrossFamilies() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let initialToken = store.toolRefreshToken
+        realtime.pushEvent(makeEvent(type: "feedback.created", payload: [:]))
+        realtime.pushEvent(makeEvent(type: "simulation.metadata.results_created", payload: [:]))
+
+        try await waitUntil {
+            store.toolRefreshToken != initialToken
         }
     }
 

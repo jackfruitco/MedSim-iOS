@@ -69,7 +69,7 @@ final class ChatLabContractTests: XCTestCase {
         let data = """
         {
           "event_id": "evt-1",
-          "event_type": "chat.message_created",
+          "event_type": "message.item.created",
           "created_at": "2026-03-12T12:00:00Z",
           "correlation_id": null,
           "payload": {
@@ -81,7 +81,19 @@ final class ChatLabContractTests: XCTestCase {
 
         let event = try ChatSSEParser.parseEvent(dataString: data, decoder: decoder)
         XCTAssertEqual(event?.eventID, "evt-1")
-        XCTAssertEqual(event?.eventType, "chat.message_created")
+        XCTAssertEqual(event?.eventType, SimulationEventType.messageItemCreated)
+    }
+
+    func testLegacyChatAliasCanonicalizesForIngressHandling() {
+        let legacy = ChatEventEnvelope(
+            eventID: "evt-legacy",
+            eventType: "chat.message_created",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        )
+
+        XCTAssertEqual(legacy.canonicalized().eventType, SimulationEventType.messageItemCreated)
     }
 
     func testChatSimulationDecodesTerminalFields() throws {

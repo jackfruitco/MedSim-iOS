@@ -108,6 +108,10 @@ let package = Package(
             dependencies: ["Realtime", "SharedModels"],
         ),
         .testTarget(
+            name: "SharedModelsTests",
+            dependencies: ["SharedModels"],
+        ),
+        .testTarget(
             name: "RunConsoleTests",
             dependencies: ["RunConsole", "SharedModels"],
         ),
