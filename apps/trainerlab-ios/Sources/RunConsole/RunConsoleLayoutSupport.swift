@@ -27,17 +27,19 @@ enum RunConsoleCompactDensity: Equatable {
 }
 
 enum RunConsoleCompactControlPresentation: Equatable {
-    case labeled
-    case iconOnly
+    case grid
+    case phoneMenus
 
     static func resolve(
-        layoutMode: RunConsoleLayoutMode,
-        horizontalSizeClass: UserInterfaceSizeClass?
+        width: CGFloat,
+        horizontalSizeClass: UserInterfaceSizeClass?,
     ) -> Self {
-        guard layoutMode == .compact, horizontalSizeClass == .compact else {
-            return .labeled
+        switch TrainerLabLayoutMode.resolve(width: width, horizontalSizeClass: horizontalSizeClass) {
+        case .pad:
+            .grid
+        case .phone, .narrowPhone:
+            .phoneMenus
         }
-        return .iconOnly
     }
 }
 
@@ -58,9 +60,188 @@ enum RunConsoleTimelinePresentation {
         case .lifecycle:
             entry.title
         case .note:
-            "Trainer Note"
+            entry.title
         case .vitals:
             entry.title
+        }
+    }
+}
+
+enum RunConsoleControlGroup: String {
+    case session = "Session Controls"
+    case quick = "Quick Controls"
+}
+
+enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
+    case intervention
+    case event
+    case annotation
+    case steer
+    case tickAI
+    case tickVitals
+
+    var id: Self {
+        self
+    }
+
+    var title: String {
+        switch self {
+        case .intervention:
+            "Intervention"
+        case .event:
+            "Event"
+        case .annotation:
+            "Annotation"
+        case .steer:
+            "Steer"
+        case .tickAI:
+            "Tick AI"
+        case .tickVitals:
+            "Tick Vitals"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .intervention, .event:
+            "plus.app"
+        case .annotation:
+            "note.text.badge.plus"
+        case .steer:
+            "wand.and.sparkles"
+        case .tickAI:
+            "timer"
+        case .tickVitals:
+            "heart.text.square"
+        }
+    }
+}
+
+enum RunConsoleControlItem: Hashable, Identifiable {
+    case exit
+    case lifecycle(RunConsoleLifecycleAction)
+    case summary
+    case quick(RunConsoleQuickAction)
+
+    var id: String {
+        switch self {
+        case .exit:
+            "exit"
+        case let .lifecycle(action):
+            "lifecycle-\(action.rawValue)"
+        case .summary:
+            "summary"
+        case let .quick(action):
+            "quick-\(action.rawValue)"
+        }
+    }
+
+    var group: RunConsoleControlGroup {
+        switch self {
+        case .exit, .lifecycle, .summary:
+            .session
+        case .quick:
+            .quick
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .exit:
+            "Exit"
+        case let .lifecycle(action):
+            action.title
+        case .summary:
+            "Summary"
+        case let .quick(action):
+            action.title
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .exit:
+            "xmark"
+        case let .lifecycle(action):
+            action.systemImage
+        case .summary:
+            "doc.text"
+        case let .quick(action):
+            action.systemImage
+        }
+    }
+
+    var requiresCommandChannel: Bool {
+        switch self {
+        case .exit, .summary:
+            false
+        case .lifecycle, .quick:
+            true
+        }
+    }
+}
+
+enum RunConsoleControlsCatalog {
+    static func sessionControls(lifecycleActions: [RunConsoleLifecycleAction]) -> [RunConsoleControlItem] {
+        [.exit] + lifecycleActions.map(RunConsoleControlItem.lifecycle) + [.summary]
+    }
+
+    static let quickControls = RunConsoleQuickAction.allCases.map(RunConsoleControlItem.quick)
+}
+
+enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
+    case all
+    case kind(ClinicalTimelineKind)
+
+    static var allCases: [RunConsoleTimelineFilter] {
+        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.vitals), .kind(.note)]
+    }
+
+    var id: String {
+        switch self {
+        case .all:
+            "all"
+        case let .kind(kind):
+            kind.rawValue
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all:
+            "All Events"
+        case .kind(.lifecycle):
+            "Lifecycle"
+        case .kind(.cause):
+            "Causes"
+        case .kind(.problem):
+            "Problems"
+        case .kind(.recommendation):
+            "Recommendations"
+        case .kind(.intervention):
+            "Intervention"
+        case .kind(.loc):
+            "LOC"
+        case .kind(.vitals):
+            "Vitals"
+        case .kind(.injury):
+            "Injury"
+        case .kind(.illness):
+            "Illness"
+        case .kind(.note):
+            "Notes"
+        }
+    }
+
+    static func visibleEntries(
+        from entries: [ClinicalTimelineEntry],
+        matching filter: RunConsoleTimelineFilter,
+    ) -> [ClinicalTimelineEntry] {
+        switch filter {
+        case .all:
+            entries
+        case let .kind(kind):
+            entries.filter { $0.kind == kind }
         }
     }
 }
@@ -106,7 +287,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 40,
         vitalCellPadding: 7,
-        vitalValueVerticalPadding: 3
+        vitalValueVerticalPadding: 3,
     )
 
     static let narrowPhone = Self(
@@ -124,7 +305,7 @@ struct RunConsoleCompactMetrics {
         buttonControlSize: .small,
         buttonMinHeight: 38,
         vitalCellPadding: 6,
-        vitalValueVerticalPadding: 3
+        vitalValueVerticalPadding: 3,
     )
 }
 
@@ -188,6 +369,8 @@ enum RunConsoleLifecycleAction: String, CaseIterable {
 
     static func visibleActions(for status: TrainerSessionStatus?) -> [Self] {
         switch status {
+        case .seeding:
+            []
         case .seeded:
             [.start]
         case .running:
@@ -329,7 +512,7 @@ struct PatientDiagramPanel: View {
         injury: InjuryAnnotation,
         interventions: [InterventionAnnotation],
         problems: [ProblemAnnotation],
-        size: CGSize
+        size: CGSize,
     ) -> some View {
         let cx = injury.x * size.width
         let cy = injury.y * size.height
@@ -513,7 +696,7 @@ struct PatientDiagramPanel: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08))
+                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08)),
                 )
             }
         }
@@ -673,7 +856,7 @@ struct PatientDiagramPanel: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
-                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15))
+                    Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15)),
                 )
         }
         .padding(.vertical, 3)
@@ -850,11 +1033,11 @@ struct PatientDiagramPanel: View {
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(TrainerLabTheme.tacticalSurfaceElevated)
+                .fill(TrainerLabTheme.tacticalSurfaceElevated),
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
         )
     }
 
@@ -884,7 +1067,7 @@ struct PatientDiagramPanel: View {
     private func problemStatusButton(
         _ title: String,
         status: ProblemLifecycleState,
-        for problem: ProblemAnnotation
+        for problem: ProblemAnnotation,
     ) -> some View {
         Button(title) {
             onUpdateProblemStatus?(problem, status)
@@ -982,7 +1165,7 @@ struct PulsingModifier: ViewModifier {
             .scaleEffect(active && isPulsing ? 1.25 : 1.0)
             .animation(
                 active ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true) : .default,
-                value: isPulsing
+                value: isPulsing,
             )
             .onAppear {
                 if active { isPulsing = true }

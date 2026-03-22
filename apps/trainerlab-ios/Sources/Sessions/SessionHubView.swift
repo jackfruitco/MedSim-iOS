@@ -12,7 +12,7 @@ public struct SessionHubView: View {
     public init(
         viewModel: SessionHubViewModel,
         onSelectSession: @escaping (TrainerSessionDTO) -> Void,
-        onOpenPresets: @escaping () -> Void
+        onOpenPresets: @escaping () -> Void,
     ) {
         self.viewModel = viewModel
         self.onSelectSession = onSelectSession
@@ -23,7 +23,7 @@ public struct SessionHubView: View {
         GeometryReader { proxy in
             let layoutMode = SessionHubLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             ScrollView {
@@ -129,7 +129,7 @@ public struct SessionHubView: View {
             ContentUnavailableView(
                 "No Sessions",
                 systemImage: "waveform.path.ecg.rectangle",
-                description: Text("Create a session to start TrainerLab.")
+                description: Text("Create a session to start TrainerLab."),
             )
             .frame(maxWidth: .infinity, minHeight: 260)
         } else if layoutMode == .pad {
@@ -251,6 +251,8 @@ private struct SessionCard: View {
 
     private var statusColor: Color {
         switch session.status {
+        case .seeding:
+            TrainerLabTheme.warning
         case .seeded:
             TrainerLabTheme.accentBlue
         case .running:

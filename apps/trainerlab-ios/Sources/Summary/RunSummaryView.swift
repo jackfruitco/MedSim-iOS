@@ -17,7 +17,7 @@ public struct RunSummaryView: View {
         GeometryReader { proxy in
             let layoutMode = RunSummaryLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             ScrollView {
@@ -28,6 +28,9 @@ public struct RunSummaryView: View {
                     if viewModel.isLoading {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 220)
+                    } else if let notReadyMessage = viewModel.notReadyMessage {
+                        Text(notReadyMessage)
+                            .foregroundStyle(.secondary)
                     } else if let error = viewModel.errorMessage {
                         Text(error)
                             .foregroundStyle(TrainerLabTheme.danger)
@@ -88,7 +91,7 @@ public struct RunSummaryView: View {
 
         return LazyVGrid(
             columns: summaryMetricColumns(for: layoutMode),
-            spacing: 12
+            spacing: 12,
         ) {
             ForEach(items) { item in
                 VStack(alignment: .leading, spacing: 6) {
@@ -111,7 +114,7 @@ public struct RunSummaryView: View {
         _ section: RunSummarySection,
         title: String,
         layoutMode _: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> some View
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -141,7 +144,7 @@ public struct RunSummaryView: View {
         title: String,
         expanded: Bool,
         layoutMode: RunSummaryLayoutMode,
-        @ViewBuilder content: () -> some View
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -299,7 +302,7 @@ public struct RunSummaryView: View {
     private func syncExpandedSections(for layoutMode: RunSummaryLayoutMode) {
         guard lastLayoutMode != layoutMode || expandedSections.isEmpty else { return }
         expandedSections = Set(
-            RunSummarySection.allCases.filter { $0.defaultExpanded(for: layoutMode) }
+            RunSummarySection.allCases.filter { $0.defaultExpanded(for: layoutMode) },
         )
         lastLayoutMode = layoutMode
     }

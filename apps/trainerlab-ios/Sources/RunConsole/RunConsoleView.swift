@@ -13,14 +13,11 @@ public struct RunConsoleView: View {
     @State private var showInterventionSheet = false
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
-    @State private var showNoteSheet = false
     @State private var showAnnotationSheet = false
 
-    /// Injury detail
     @State private var quickActionInjury: InjuryAnnotation?
 
-    /// Timeline filter
-    @State private var selectedTimelineFilter: TimelineFilter = .all
+    @State private var selectedTimelineFilter: RunConsoleTimelineFilter = .all
 
     // Collapsible panels
     @State private var isOperationalLogExpanded = false
@@ -29,15 +26,8 @@ public struct RunConsoleView: View {
     @State private var showScenarioBriefEditSheet = false
     @Namespace private var segmentNS
 
-    // Intervention sheet state
-    @State private var selectedInterventionType: String?
-    @State private var selectedLocationLabel: String?
-    @State private var selectedLaterality: String?
-    @State private var selectedInterventionStatus: InterventionStatus = .applied
-    @State private var interventionNotes = ""
     @State private var interventionTargetProblemID: Int?
 
-    /// Steer sheet state
     @State private var steerDraft = ""
 
     // Event sheet state
@@ -55,19 +45,14 @@ public struct RunConsoleView: View {
     @State private var vitalMax = "100"
     @State private var eventMode = "injury"
 
-    /// Note composer
-    @State private var trainerNoteDraft = ""
-
-    /// AVPU
     @State private var selectedAVPU: AVPUState = .alert
 
-    /// Terminal card dismissed
     @State private var terminalCardDismissed = false
 
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
-        onOpenSummary: @escaping () -> Void
+        onOpenSummary: @escaping () -> Void,
     ) {
         self.store = store
         self.onBack = onBack
@@ -78,11 +63,15 @@ public struct RunConsoleView: View {
         GeometryReader { proxy in
             let layoutMode = RunConsoleLayoutMode.resolve(
                 width: proxy.size.width,
-                horizontalSizeClass: horizontalSizeClass
+                horizontalSizeClass: horizontalSizeClass,
             )
             let compactMetrics = RunConsoleCompactMetrics.resolve(
                 width: proxy.size.width,
-                layoutMode: layoutMode
+                layoutMode: layoutMode,
+            )
+            let controlPresentation = RunConsoleCompactControlPresentation.resolve(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
             )
 
             ZStack {
@@ -92,7 +81,10 @@ public struct RunConsoleView: View {
                     if layoutMode == .regular {
                         regularConsoleLayout
                     } else {
-                        compactConsoleLayout(compactMetrics: compactMetrics)
+                        compactConsoleLayout(
+                            compactMetrics: compactMetrics,
+                            controlPresentation: controlPresentation,
+                        )
                     }
                 }
 
@@ -119,23 +111,12 @@ public struct RunConsoleView: View {
             steerSheet
                 .presentationDetents([.fraction(0.35)])
         }
-        .sheet(isPresented: $showNoteSheet) {
-            NoteComposerSheet(
-                draft: $trainerNoteDraft,
-                onSubmit: {
-                    addTrainerNote()
-                    showNoteSheet = false
-                }
-            )
-            .presentationDetents([.height(180)])
-            .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showAnnotationSheet) {
             DebriefAnnotationSheet { observationText, learningObjective, outcome in
                 store.createDebriefAnnotation(
                     observationText: observationText,
                     learningObjective: learningObjective,
-                    outcome: outcome
+                    outcome: outcome,
                 )
                 showAnnotationSheet = false
             }
@@ -152,7 +133,6 @@ public struct RunConsoleView: View {
         }
         .task {
             store.startConsole()
-            await store.loadRuntimeState()
             await store.loadControlPlaneDebug()
         }
         .onDisappear {
@@ -195,10 +175,16 @@ public struct RunConsoleView: View {
         .padding(12)
     }
 
-    private func compactConsoleLayout(compactMetrics: RunConsoleCompactMetrics) -> some View {
+    private func compactConsoleLayout(
+        compactMetrics: RunConsoleCompactMetrics,
+        controlPresentation: RunConsoleCompactControlPresentation,
+    ) -> some View {
         ScrollView {
             VStack(spacing: 8) {
-                compactCommandPanel(compactMetrics: compactMetrics)
+                compactCommandPanel(
+                    compactMetrics: compactMetrics,
+                    controlPresentation: controlPresentation,
+                )
                 topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 if store.state.conflictBanner != nil {
                     conflictBanner
@@ -217,16 +203,20 @@ public struct RunConsoleView: View {
 
     private func topVitalsTable(
         layoutMode: RunConsoleLayoutMode,
-        compactMetrics: RunConsoleCompactMetrics
+        compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
             Text("Patient Vitals")
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
             if orderedVitals.isEmpty {
-                Text("Waiting for vital ranges from runtime events.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    isSeedingSession
+                        ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
+                        : "Waiting for vital ranges from runtime events.",
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } else if layoutMode == .regular {
                 HStack(spacing: 8) {
                     ForEach(orderedVitals) { vital in
@@ -243,7 +233,7 @@ public struct RunConsoleView: View {
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
+                    spacing: compactMetrics.gridSpacing,
                 ) {
                     ForEach(orderedVitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
@@ -254,181 +244,169 @@ public struct RunConsoleView: View {
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8
-            )
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
+            ),
         )
     }
 
     // MARK: - Command bars
 
     private var regularCommandBar: some View {
-        HStack(spacing: 10) {
-            Button("Exit") { onBack() }
-                .buttonStyle(.bordered)
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(sessionControls) { control in
+                        controlButton(control)
+                    }
 
-            ForEach(lifecycleActions, id: \.self) { action in
-                lifecycleActionButton(action, compact: false)
-            }
+                    Spacer(minLength: 10)
 
-            quickAction("Add Intervention", systemImage: "cross.vial.fill", enabled: canMutate) {
-                interventionTargetProblemID = nil
-                showInterventionSheet = true
-            }
-            quickAction("Add Event", systemImage: "bolt.heart.fill", enabled: canMutate) {
-                showEventSheet = true
-            }
-            quickAction("Add Note", systemImage: "note.text.badge.plus", enabled: canMutate) {
-                showNoteSheet = true
-            }
-            quickAction("Add Annotation", systemImage: "text.badge.plus", enabled: canMutate) {
-                showAnnotationSheet = true
-            }
-            quickAction("Steer AI", systemImage: "wand.and.sparkles", enabled: canMutate) {
-                showSteerSheet = true
-            }
-            quickAction("Tick AI", systemImage: "timer", enabled: canMutate) {
-                store.triggerRunTick()
-            }
-            quickAction("Tick Vitals", systemImage: "heart.text.square", enabled: canMutate) {
-                store.triggerVitalsTick()
+                    TransportChip(banner: store.state.transportBanner)
+                    regularStopwatchStatus
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        ForEach(sessionControls) { control in
+                            controlButton(control)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        TransportChip(banner: store.state.transportBanner)
+                        regularStopwatchStatus
+                    }
+                }
             }
 
-            Spacer(minLength: 10)
+            sessionPreparationBanner
 
-            TransportChip(banner: store.state.transportBanner)
-
-            Label(formattedStopwatch, systemImage: "stopwatch.fill")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
-
-            Button("Run Summary") { onOpenSummary() }
-                .buttonStyle(.borderedProminent)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 136), spacing: 8)],
+                spacing: 8,
+            ) {
+                ForEach(quickControls) { control in
+                    controlButton(
+                        control,
+                        fullWidth: true,
+                        multiline: true,
+                    )
+                }
+            }
         }
         .padding(10)
         .background(TrainerLabTheme.tacticalSurfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func compactCommandPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
-        let controlPresentation = RunConsoleCompactControlPresentation.resolve(
-            layoutMode: .compact,
-            horizontalSizeClass: horizontalSizeClass
-        )
+    private func compactCommandPanel(
+        compactMetrics: RunConsoleCompactMetrics,
+        controlPresentation: RunConsoleCompactControlPresentation,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
+            sessionPreparationBanner
 
-        return VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
-            if !lifecycleActions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Session Controls")
-                        .font(compactMetrics.controlLabelFont)
-                        .foregroundStyle(.secondary)
-
-                    LazyVGrid(
-                        columns: compactControlColumns(for: compactMetrics),
-                        spacing: compactMetrics.gridSpacing
-                    ) {
-                        compactBackAction(compactMetrics: compactMetrics, controlPresentation: controlPresentation)
-                            .frame(maxWidth: .infinity)
-                        ForEach(lifecycleActions, id: \.self) { action in
-                            lifecycleActionButton(
-                                action,
-                                compact: true,
-                                compactMetrics: compactMetrics,
-                                controlPresentation: controlPresentation
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Scenario Actions")
-                    .font(compactMetrics.controlLabelFont)
-                    .foregroundStyle(.secondary)
-
-                LazyVGrid(
-                    columns: compactControlColumns(for: compactMetrics),
-                    spacing: compactMetrics.gridSpacing
-                ) {
-                    compactScenarioAction(
-                        "Add Intervention", systemImage: "cross.vial.fill",
-                        compactMetrics: compactMetrics,
-                        action: {
-                            interventionTargetProblemID = nil
-                            showInterventionSheet = true
-                        },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Event", systemImage: "bolt.heart.fill",
-                        compactMetrics: compactMetrics,
-                        action: { showEventSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Steer AI", systemImage: "wand.and.sparkles",
-                        compactMetrics: compactMetrics,
-                        action: { showSteerSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Note", systemImage: "note.text.badge.plus",
-                        compactMetrics: compactMetrics,
-                        action: { showNoteSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Add Annotation", systemImage: "text.badge.plus",
-                        compactMetrics: compactMetrics,
-                        action: { showAnnotationSheet = true },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Tick AI", systemImage: "timer",
-                        compactMetrics: compactMetrics,
-                        action: { store.triggerRunTick() },
-                        controlPresentation: controlPresentation
-                    )
-                    compactScenarioAction(
-                        "Tick Vitals", systemImage: "heart.text.square",
-                        compactMetrics: compactMetrics,
-                        action: { store.triggerVitalsTick() },
-                        controlPresentation: controlPresentation
-                    )
-                }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: compactMetrics.gridSpacing) {
-                    TransportChip(banner: store.state.transportBanner)
-                    stopwatchStatus
-                    Spacer(minLength: 0)
-                    compactSummaryButton(compactMetrics: compactMetrics)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: compactMetrics.gridSpacing) {
-                            TransportChip(banner: store.state.transportBanner)
-                            stopwatchStatus
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            TransportChip(banner: store.state.transportBanner)
-                            stopwatchStatus
-                        }
-                    }
-
-                    compactSummaryButton(compactMetrics: compactMetrics)
-                }
+            if controlPresentation == .phoneMenus {
+                compactPhoneControlPanel(compactMetrics: compactMetrics)
+            } else {
+                compactGridControlPanel(compactMetrics: compactMetrics)
             }
         }
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: compactMetrics.cardPadding
-            )
+                padding: compactMetrics.cardPadding,
+            ),
         )
+    }
+
+    private func compactGridControlPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(RunConsoleControlGroup.session.rawValue)
+                    .font(compactMetrics.controlLabelFont)
+                    .foregroundStyle(.secondary)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: compactMetrics.gridSpacing) {
+                        TransportChip(banner: store.state.transportBanner)
+                        stopwatchStatus
+                        Spacer(minLength: 0)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        TransportChip(banner: store.state.transportBanner)
+                        stopwatchStatus
+                    }
+                }
+
+                LazyVGrid(
+                    columns: compactControlColumns(for: compactMetrics),
+                    spacing: compactMetrics.gridSpacing,
+                ) {
+                    ForEach(sessionControls) { control in
+                        controlButton(
+                            control,
+                            compact: true,
+                            compactMetrics: compactMetrics,
+                            fullWidth: true,
+                            multiline: true,
+                        )
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(RunConsoleControlGroup.quick.rawValue)
+                    .font(compactMetrics.controlLabelFont)
+                    .foregroundStyle(.secondary)
+
+                LazyVGrid(
+                    columns: compactControlColumns(for: compactMetrics),
+                    spacing: compactMetrics.gridSpacing,
+                ) {
+                    ForEach(quickControls) { control in
+                        controlButton(
+                            control,
+                            compact: true,
+                            compactMetrics: compactMetrics,
+                            fullWidth: true,
+                            multiline: true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func compactPhoneControlPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: compactMetrics.gridSpacing) {
+                    TransportChip(banner: store.state.transportBanner)
+                    stopwatchStatus
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    TransportChip(banner: store.state.transportBanner)
+                    stopwatchStatus
+                }
+            }
+
+            HStack(spacing: compactMetrics.gridSpacing) {
+                compactControlMenu(
+                    title: RunConsoleControlGroup.session.rawValue,
+                    controls: sessionControls,
+                    compactMetrics: compactMetrics,
+                )
+                compactControlMenu(
+                    title: RunConsoleControlGroup.quick.rawValue,
+                    controls: quickControls,
+                    compactMetrics: compactMetrics,
+                )
+            }
+        }
     }
 
     // MARK: - Conflict banner
@@ -459,13 +437,14 @@ public struct RunConsoleView: View {
                 pulses: store.state.pulseAnnotations,
                 canMutate: canMutate,
                 onSelectInjury: { injury in
+                    guard canIntervene else { return }
                     quickActionInjury = injury
                 },
                 onUpdateProblemStatus: { problem, status in
                     if let problemID = problem.problemID {
                         store.updateProblemStatus(problemID: problemID, status: status)
                     }
-                }
+                },
             )
             .frame(minHeight: 380, maxHeight: .infinity)
 
@@ -538,22 +517,25 @@ public struct RunConsoleView: View {
         }
     }
 
-    // MARK: - Combined Info Panel (Scenario Brief + AI Instructor)
+    // MARK: - Combined Info Panel (Scenario Brief + Patient Status + AI Instructor)
 
-    private enum ActiveInfoPanel: Equatable { case scenarioBrief, aiInstructor, annotations }
+    private enum ActiveInfoPanel: Equatable { case scenarioBrief, patientStatus, aiInstructor, annotations }
 
     private var combinedInfoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Segmented pill + collapse button
             HStack(spacing: 8) {
-                HStack(spacing: 0) {
-                    infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
-                    infoPanelSegment(.aiInstructor, label: "AI Instructor")
-                    infoPanelSegment(.annotations, label: "Annotations")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        infoPanelSegment(.scenarioBrief, label: "Scenario Brief")
+                        infoPanelSegment(.patientStatus, label: "Patient Status")
+                        infoPanelSegment(.aiInstructor, label: "AI Instructor")
+                        infoPanelSegment(.annotations, label: "Annotations")
+                    }
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
                 }
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
 
                 if activeInfoPanel != nil {
                     Button {
@@ -577,6 +559,8 @@ public struct RunConsoleView: View {
 
                 if activeInfoPanel == .scenarioBrief {
                     scenarioBriefContent
+                } else if activeInfoPanel == .patientStatus {
+                    patientStatusContent
                 } else if activeInfoPanel == .aiInstructor {
                     aiInstructorContent
                 } else if activeInfoPanel == .annotations {
@@ -611,7 +595,7 @@ public struct RunConsoleView: View {
                 Text(label)
                     .font(.subheadline.weight(isActive ? .semibold : .regular))
                     .frame(maxWidth: .infinity)
-                if isLoadingRuntimeState, panel == .aiInstructor {
+                if isLoadingRuntimeState, panel != .annotations {
                     ProgressView().controlSize(.mini)
                 }
             }
@@ -632,7 +616,12 @@ public struct RunConsoleView: View {
     }
 
     @ViewBuilder private var scenarioBriefContent: some View {
-        if isLoadingRuntimeState, store.runtimeState == nil {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "The scenario brief will appear after initial generation completes.",
+            )
+        } else if isLoadingRuntimeState, store.runtimeState == nil {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
@@ -676,8 +665,94 @@ public struct RunConsoleView: View {
         }
     }
 
+    @ViewBuilder private var patientStatusContent: some View {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "Patient status and clinical findings will populate when the initial runtime snapshot is ready.",
+            )
+        } else if isLoadingRuntimeState, store.runtimeState == nil {
+            ProgressView()
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+        } else {
+            let status = store.patientStatus
+            let hasStatusContent = !(status.narrative.isEmpty
+                && status.teachingFlags.isEmpty
+                && status.avpu == nil
+                && !status.respiratoryDistress
+                && !status.hemodynamicInstability
+                && !status.impendingPneumothorax
+                && !status.tensionPneumothorax
+                && store.assessmentFindings.isEmpty
+                && store.diagnosticResults.isEmpty
+                && store.resources.isEmpty
+                && store.disposition == nil)
+
+            if hasStatusContent {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let avpu = status.avpu, !avpu.isEmpty {
+                        briefRow(label: "AVPU", value: avpu.uppercased())
+                    }
+                    if !status.narrative.isEmpty {
+                        Text(status.narrative)
+                            .font(.subheadline)
+                    }
+
+                    let alertRows = patientAlertRows(status)
+                    if !alertRows.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Flags")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(alertRows, id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                    }
+
+                    if !status.teachingFlags.isEmpty {
+                        statusListSection(title: "Teaching Flags", values: status.teachingFlags)
+                    }
+                    if !store.assessmentFindings.isEmpty {
+                        statusListSection(
+                            title: "Assessment Findings",
+                            values: store.assessmentFindings.compactMap(runtimeDisplayText),
+                        )
+                    }
+                    if !store.diagnosticResults.isEmpty {
+                        statusListSection(
+                            title: "Diagnostic Results",
+                            values: store.diagnosticResults.compactMap(runtimeDisplayText),
+                        )
+                    }
+                    if !store.resources.isEmpty {
+                        statusListSection(
+                            title: "Resources",
+                            values: store.resources.compactMap(runtimeDisplayText),
+                        )
+                    }
+                    if let disposition = store.disposition,
+                       let dispositionSummary = runtimeDisplayText(disposition)
+                    {
+                        statusListSection(title: "Disposition", values: [dispositionSummary])
+                    }
+                }
+            } else {
+                Text("No patient status available.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder private var aiInstructorContent: some View {
-        if let rs = store.runtimeState {
+        if isSeedingSession {
+            sessionLoadingMessage(
+                title: "Seeding scenario...",
+                message: "The runtime is still preparing the initial scenario. AI state will populate when the session is ready.",
+            )
+        } else if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Runtime")
@@ -826,18 +901,59 @@ public struct RunConsoleView: View {
         }
     }
 
+    private var sessionPreparationBanner: some View {
+        Group {
+            if isSeedingSession {
+                HStack(alignment: .center, spacing: 12) {
+                    ProgressView()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Seeding scenario...")
+                            .font(.subheadline.bold())
+                        Text("TrainerLab is preparing the initial scenario. Controls will unlock when the session is ready.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(TrainerLabTheme.warning.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
+                )
+            }
+        }
+    }
+
+    private func sessionLoadingMessage(title: String, message: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.bold())
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+    }
+
     private var annotationsContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Debrief annotations stay separate from live simulation notes.")
+                Text("Debrief annotations stay separate from the live run timeline.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 if canMutate {
+                    let annotationAction = RunConsoleQuickAction.annotation
                     Button {
                         showAnnotationSheet = true
                     } label: {
-                        Label("Add Annotation", systemImage: "plus.circle")
+                        Label(annotationAction.title, systemImage: annotationAction.systemImage)
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -918,6 +1034,109 @@ public struct RunConsoleView: View {
         }
     }
 
+    private func patientStatusBadge(label: String, color: Color) -> some View {
+        Text(label)
+            .font(.caption2.bold())
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(color.opacity(0.14))
+            .clipShape(Capsule())
+    }
+
+    private func statusListSection(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            ForEach(Array(values.enumerated()), id: \.offset) { item in
+                Text("• \(item.element)")
+                    .font(.caption)
+                    .foregroundStyle(Color(white: 0.70))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func patientAlertRows(_ status: RuntimePatientStatus) -> [(label: String, color: Color)] {
+        var rows: [(label: String, color: Color)] = []
+        if status.respiratoryDistress {
+            rows.append(("Respiratory Distress", TrainerLabTheme.warning))
+        }
+        if status.hemodynamicInstability {
+            rows.append(("Hemodynamic Instability", TrainerLabTheme.danger))
+        }
+        if status.impendingPneumothorax {
+            rows.append(("Impending Pneumothorax", TrainerLabTheme.warning))
+        }
+        if status.tensionPneumothorax {
+            rows.append(("Tension Pneumothorax", TrainerLabTheme.danger))
+        }
+        return rows
+    }
+
+    private func runtimeDisplayText(_ finding: RuntimeAssessmentFindingState) -> String? {
+        runtimeDisplayText(
+            title: finding.title,
+            code: finding.code ?? finding.kind,
+            description: finding.description,
+            status: finding.status,
+        )
+    }
+
+    private func runtimeDisplayText(_ result: RuntimeDiagnosticResultState) -> String? {
+        runtimeDisplayText(
+            title: result.title,
+            code: result.code ?? result.kind,
+            description: result.description,
+            status: result.status,
+        )
+    }
+
+    private func runtimeDisplayText(_ resource: RuntimeResourceState) -> String? {
+        runtimeDisplayText(
+            title: resource.title,
+            code: resource.code ?? resource.kind,
+            description: resource.description,
+            status: resource.status,
+        )
+    }
+
+    private func runtimeDisplayText(_ disposition: RuntimeDispositionState) -> String? {
+        runtimeDisplayText(
+            title: disposition.title,
+            code: disposition.code,
+            description: nil,
+            status: disposition.status,
+        )
+    }
+
+    private func runtimeDisplayText(
+        title: String?,
+        code: String?,
+        description: String?,
+        status: String?,
+    ) -> String? {
+        let candidates: [String?] = [
+            title,
+            code?.replacingOccurrences(of: "_", with: " ").capitalized,
+            description,
+        ]
+        let primary = candidates
+            .compactMap { (value: String?) -> String? in
+                guard let value else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .first
+
+        guard let primary else { return nil }
+        if let status, !status.isEmpty {
+            return "\(primary) (\(status.replacingOccurrences(of: "_", with: " ").capitalized))"
+        }
+        return primary
+    }
+
     private func fetchRuntimeState() async {
         isLoadingRuntimeState = true
         await store.loadRuntimeState()
@@ -927,7 +1146,7 @@ public struct RunConsoleView: View {
 
     private func fetchInfoPanelData(for panel: ActiveInfoPanel) async {
         switch panel {
-        case .scenarioBrief, .aiInstructor:
+        case .scenarioBrief, .patientStatus, .aiInstructor:
             await fetchRuntimeState()
         case .annotations:
             await store.loadAnnotations()
@@ -1004,7 +1223,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1)
+                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
                 )
                 .opacity(isSuperseded ? 0.65 : 1.0)
             }
@@ -1143,6 +1362,11 @@ public struct RunConsoleView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
+                } else if card.status == .failed {
+                    Text("Retry unavailable for this failure.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Button("View Run Summary") {
@@ -1156,7 +1380,7 @@ public struct RunConsoleView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1)
+                    .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
             )
             .padding(16)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1177,7 +1401,9 @@ public struct RunConsoleView: View {
         }
 
         if card.status == .failed {
-            return "We could not start this simulation. Please try again."
+            return canRetryInitialSimulation
+                ? "We could not start this simulation. Please try again."
+                : "This simulation could not be started."
         }
 
         return nil
@@ -1217,15 +1443,16 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
-            canMutate: canMutate
-        ) { type, siteCode, targetProblemID, status, effectiveness, notes in
+            canMutate: canIntervene,
+        ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
                 status: status,
                 effectiveness: effectiveness,
-                notes: notes
+                notes: notes,
+                tourniquetApplicationMode: tourniquetApplicationMode,
             )
             showInterventionSheet = false
         }
@@ -1235,24 +1462,20 @@ public struct RunConsoleView: View {
         InjuryQuickActionSheet(
             injury: injury,
             dictionary: store.interventionDictionary,
-            canMutate: canMutate
-        ) { type, siteCode, status, effectiveness in
+            canMutate: canIntervene,
+        ) { type, siteCode, status, effectiveness, tourniquetApplicationMode in
             store.addIntervention(
                 interventionType: type,
                 siteCode: siteCode,
                 targetProblemID: store.state.problemAnnotations.first(where: { $0.causeID == injury.causeID })?.problemID,
                 status: status,
-                effectiveness: effectiveness
+                effectiveness: effectiveness,
+                tourniquetApplicationMode: tourniquetApplicationMode,
             )
         }
     }
 
     private func resetInterventionSheet() {
-        selectedInterventionType = nil
-        selectedLocationLabel = nil
-        selectedLaterality = nil
-        selectedInterventionStatus = .applied
-        interventionNotes = ""
         interventionTargetProblemID = nil
     }
 
@@ -1261,7 +1484,7 @@ public struct RunConsoleView: View {
     private var steerSheet: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                Text("Direct the AI to adjust the simulation in a specific direction.")
+                Text("Direct the simulation in a specific direction.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1276,7 +1499,7 @@ public struct RunConsoleView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
 
-                Button("Send Steer Prompt") {
+                Button("Send Steer") {
                     store.steerPrompt(steerDraft)
                     steerDraft = ""
                     showSteerSheet = false
@@ -1288,7 +1511,7 @@ public struct RunConsoleView: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Steer AI")
+            .navigationTitle("Steer")
             .inlineNavBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1620,6 +1843,12 @@ public struct RunConsoleView: View {
 
     // MARK: - Helpers
 
+    private var regularStopwatchStatus: some View {
+        Label(formattedStopwatch, systemImage: "stopwatch.fill")
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(.secondary)
+    }
+
     private var stopwatchStatus: some View {
         Label(formattedStopwatch, systemImage: "stopwatch.fill")
             .font(.caption.monospacedDigit())
@@ -1635,7 +1864,7 @@ public struct RunConsoleView: View {
 
             Menu {
                 Picker("Event Type", selection: $selectedTimelineFilter) {
-                    ForEach(TimelineFilter.allCases) { filter in
+                    ForEach(RunConsoleTimelineFilter.allCases) { filter in
                         Text(filter.title).tag(filter)
                     }
                 }
@@ -1648,20 +1877,10 @@ public struct RunConsoleView: View {
     }
 
     private var filteredTimelineEntries: [ClinicalTimelineEntry] {
-        switch selectedTimelineFilter {
-        case .all:
-            store.state.clinicalTimelineEntries
-        case let .kind(kind):
-            store.state.clinicalTimelineEntries.filter { $0.kind == kind }
-        }
-    }
-
-    private func addTrainerNote() {
-        let trimmed = trainerNoteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        store.addTrainerNote(trimmed)
-        trainerNoteDraft = ""
-        selectedTimelineFilter = .all
+        RunConsoleTimelineFilter.visibleEntries(
+            from: store.state.clinicalTimelineEntries,
+            matching: selectedTimelineFilter,
+        )
     }
 
     private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
@@ -1702,7 +1921,7 @@ public struct RunConsoleView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2)
+                        .stroke(selectedAVPU == stateValue ? Color.white : Color.clear, lineWidth: 2),
                 )
         }
         .buttonStyle(.plain)
@@ -1720,11 +1939,23 @@ public struct RunConsoleView: View {
     }
 
     private var canMutate: Bool {
-        store.state.commandChannelAvailable
+        store.state.commandChannelAvailable && !isSeedingSession
+    }
+
+    private var canRunMutate: Bool {
+        canMutate
+    }
+
+    private var canIntervene: Bool {
+        canMutate
     }
 
     private var canRetryInitialSimulation: Bool {
         store.state.session?.status == .failed && store.state.session?.retryable == true
+    }
+
+    private var isSeedingSession: Bool {
+        store.state.session?.status == .seeding
     }
 
     private var sessionStatus: TrainerSessionStatus? {
@@ -1733,6 +1964,14 @@ public struct RunConsoleView: View {
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
         RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
+    }
+
+    private var sessionControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.sessionControls(lifecycleActions: lifecycleActions)
+    }
+
+    private var quickControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.quickControls
     }
 
     private var orderedVitals: [VitalStatusSnapshot] {
@@ -1843,71 +2082,116 @@ public struct RunConsoleView: View {
 
     // MARK: - Button helpers
 
-    private func lifecycleActionButton(
-        _ action: RunConsoleLifecycleAction,
-        compact: Bool,
-        compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled
-    ) -> some View {
-        quickAction(action.title, systemImage: action.systemImage, enabled: canMutate, compact: compact, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
+    private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
+        switch control {
+        case .exit, .summary:
+            true
+        case .lifecycle:
+            canRunMutate
+        case .quick(.intervention):
+            canIntervene
+        case .quick:
+            canMutate
+        }
+    }
+
+    private func performControl(_ control: RunConsoleControlItem) {
+        switch control {
+        case .exit:
+            onBack()
+        case .summary:
+            onOpenSummary()
+        case let .lifecycle(action):
             switch action {
-            case .start: store.start()
-            case .pause: store.pause()
-            case .resume: store.resume()
-            case .stop: store.stop()
+            case .start:
+                store.start()
+            case .pause:
+                store.pause()
+            case .resume:
+                store.resume()
+            case .stop:
+                store.stop()
+            }
+        case let .quick(action):
+            switch action {
+            case .intervention:
+                interventionTargetProblemID = nil
+                showInterventionSheet = true
+            case .event:
+                showEventSheet = true
+            case .annotation:
+                showAnnotationSheet = true
+            case .steer:
+                showSteerSheet = true
+            case .tickAI:
+                store.triggerRunTick()
+            case .tickVitals:
+                store.triggerVitalsTick()
             }
         }
     }
 
-    private func compactBackAction(compactMetrics: RunConsoleCompactMetrics, controlPresentation: RunConsoleCompactControlPresentation) -> some View {
-        quickAction("Exit", systemImage: "xmark", enabled: true, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation) {
-            onBack()
-        }
-    }
-
-    private func compactScenarioAction(
-        _ title: String, systemImage: String,
-        compactMetrics: RunConsoleCompactMetrics,
-        action: @escaping () -> Void,
-        controlPresentation: RunConsoleCompactControlPresentation
-    ) -> some View {
-        quickAction(title, systemImage: systemImage, enabled: canMutate, compact: true, compactMetrics: compactMetrics, controlPresentation: controlPresentation, action: action)
-            .frame(maxWidth: .infinity)
-    }
-
-    private func quickAction(
-        _ title: String, systemImage: String, enabled: Bool,
+    @ViewBuilder
+    private func controlButton(
+        _ control: RunConsoleControlItem,
         compact: Bool = false,
         compactMetrics: RunConsoleCompactMetrics = .standard,
-        controlPresentation: RunConsoleCompactControlPresentation = .labeled,
-        action: @escaping () -> Void
+        fullWidth: Bool = false,
+        multiline: Bool = false,
     ) -> some View {
-        Button(action: action) {
-            if compact, controlPresentation == .iconOnly {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: compactMetrics.buttonMinHeight)
-            } else {
-                Label(title, systemImage: systemImage)
-                    .font(compact ? compactMetrics.buttonFont : .body)
-                    .lineLimit(compact ? 2 : 1)
-                    .multilineTextAlignment(compact ? .center : .leading)
-                    .frame(maxWidth: compact ? .infinity : nil)
-                    .frame(minHeight: compact ? compactMetrics.buttonMinHeight : nil)
+        let button = Button {
+            performControl(control)
+        } label: {
+            Label {
+                Text(control.title)
+                    .lineLimit(multiline ? 2 : 1)
+                    .multilineTextAlignment(fullWidth ? .center : .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: control.systemImage)
             }
+            .font(compact ? compactMetrics.buttonFont : .body)
+            .frame(maxWidth: fullWidth ? .infinity : nil, alignment: fullWidth ? .center : .leading)
+            .frame(minHeight: compact ? compactMetrics.buttonMinHeight : nil)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
-        .disabled(!enabled)
-        .accessibilityLabel(title)
+
+        if case .exit = control {
+            button
+                .buttonStyle(.bordered)
+                .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
+                .disabled(!controlEnabled(control))
+                .accessibilityLabel(control.title)
+        } else {
+            button
+                .buttonStyle(.borderedProminent)
+                .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
+                .disabled(!controlEnabled(control))
+                .accessibilityLabel(control.title)
+        }
     }
 
-    private func compactSummaryButton(compactMetrics: RunConsoleCompactMetrics) -> some View {
-        Button("Run Summary") { onOpenSummary() }
-            .buttonStyle(.borderedProminent)
-            .controlSize(compactMetrics.buttonControlSize)
-            .frame(minHeight: compactMetrics.buttonMinHeight)
+    private func compactControlMenu(
+        title: String,
+        controls: [RunConsoleControlItem],
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
+        Menu {
+            ForEach(controls) { control in
+                Button {
+                    performControl(control)
+                } label: {
+                    Label(control.title, systemImage: control.systemImage)
+                }
+                .disabled(!controlEnabled(control))
+            }
+        } label: {
+            Text(title)
+                .font(compactMetrics.buttonFont)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: compactMetrics.buttonMinHeight)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(compactMetrics.buttonControlSize)
     }
 
     private func compactVitalCell(_ vital: VitalStatusSnapshot, compactMetrics: RunConsoleCompactMetrics) -> some View {
@@ -1932,7 +2216,7 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String) -> Void
+    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
 
     @State private var selectedType: String?
     @State private var selectedTargetProblemID: Int?
@@ -1940,6 +2224,7 @@ private struct InterventionPickerSheet: View {
     @State private var selectedLaterality: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
+    @State private var tourniquetApplicationMode: TourniquetApplicationMode = .hasty
     @State private var notes = ""
     @Environment(\.dismiss) private var dismiss
 
@@ -1967,6 +2252,10 @@ private struct InterventionPickerSheet: View {
 
     private var canSubmit: Bool {
         canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
+    }
+
+    private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
+        selectedType == "tourniquet" ? tourniquetApplicationMode : nil
     }
 
     var body: some View {
@@ -2024,7 +2313,7 @@ private struct InterventionPickerSheet: View {
                                         .foregroundStyle(.secondary)
                                     LazyVGrid(
                                         columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8
+                                        spacing: 8,
                                     ) {
                                         ForEach(types) { group in
                                             typeChip(group)
@@ -2063,7 +2352,7 @@ private struct InterventionPickerSheet: View {
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8
+                                spacing: 8,
                             ) {
                                 ForEach(locationGroups, id: \.location) { entry in
                                     locationChip(entry.location)
@@ -2099,6 +2388,17 @@ private struct InterventionPickerSheet: View {
                         .listRowBackground(Color.clear)
                     }
 
+                    if selectedType == "tourniquet" {
+                        Section("Application Mode") {
+                            Picker("Application Mode", selection: $tourniquetApplicationMode) {
+                                Text("Hasty").tag(TourniquetApplicationMode.hasty)
+                                Text("Deliberate").tag(TourniquetApplicationMode.deliberate)
+                            }
+                            .pickerStyle(.segmented)
+                            .listRowBackground(Color.clear)
+                        }
+                    }
+
                     Section("Notes (optional)") {
                         TextField("Additional notes...", text: $notes, axis: .vertical)
                             .lineLimit(1 ... 3)
@@ -2116,7 +2416,15 @@ private struct InterventionPickerSheet: View {
                         guard let siteCode = resolvedSiteCode,
                               let type = selectedType,
                               let selectedTargetProblemID else { return }
-                        onSubmit(type, siteCode, selectedTargetProblemID, status, effectiveness, notes)
+                        onSubmit(
+                            type,
+                            siteCode,
+                            selectedTargetProblemID,
+                            status,
+                            effectiveness,
+                            notes,
+                            selectedTourniquetApplicationMode,
+                        )
                     }
                     .disabled(!canSubmit)
                 }
@@ -2152,6 +2460,7 @@ private struct InterventionPickerSheet: View {
             selectedType = group.interventionType
             selectedLocationLabel = nil
             selectedLaterality = nil
+            tourniquetApplicationMode = .hasty
         } label: {
             Text(group.label)
                 .font(.caption.weight(.semibold))
@@ -2205,12 +2514,13 @@ private struct InjuryQuickActionSheet: View {
     let injury: InjuryAnnotation
     let dictionary: [InterventionGroup]
     let canMutate: Bool
-    let onApply: (String, String, InterventionStatus, InterventionEffectiveness) -> Void
+    let onApply: (String, String, InterventionStatus, InterventionEffectiveness, TourniquetApplicationMode?) -> Void
 
     @State private var selectedSuggestionType: String?
     @State private var selectedSiteCode: String?
     @State private var status: InterventionStatus = .applied
     @State private var effectiveness: InterventionEffectiveness = .effective
+    @State private var tourniquetApplicationMode: TourniquetApplicationMode = .hasty
     @Environment(\.dismiss) private var dismiss
 
     private var suggestions: [InterventionSuggestion] {
@@ -2224,6 +2534,10 @@ private struct InjuryQuickActionSheet: View {
 
     private var canSubmit: Bool {
         canMutate && selectedSuggestionType != nil && selectedSiteCode != nil
+    }
+
+    private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
+        selectedSuggestionType == "tourniquet" ? tourniquetApplicationMode : nil
     }
 
     var body: some View {
@@ -2243,7 +2557,7 @@ private struct InjuryQuickActionSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         guard let type = selectedSuggestionType, let site = selectedSiteCode else { return }
-                        onApply(type, site, status, effectiveness)
+                        onApply(type, site, status, effectiveness, selectedTourniquetApplicationMode)
                         dismiss()
                     }
                     .disabled(!canSubmit)
@@ -2289,10 +2603,12 @@ private struct InjuryQuickActionSheet: View {
             if selected {
                 selectedSuggestionType = nil
                 selectedSiteCode = nil
+                tourniquetApplicationMode = .hasty
             } else {
                 selectedSuggestionType = suggestion.interventionType
                 let group = InterventionDictionary.group(for: suggestion.interventionType, in: dictionary)
                 selectedSiteCode = group?.sites.count == 1 ? group?.sites.first?.code : nil
+                tourniquetApplicationMode = .hasty
             }
         } label: {
             HStack {
@@ -2342,6 +2658,16 @@ private struct InjuryQuickActionSheet: View {
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
             }
+            if selectedSuggestionType == "tourniquet" {
+                Section("Application Mode") {
+                    Picker("Application Mode", selection: $tourniquetApplicationMode) {
+                        Text("Hasty").tag(TourniquetApplicationMode.hasty)
+                        Text("Deliberate").tag(TourniquetApplicationMode.deliberate)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                }
+            }
             Section("Status") {
                 Picker("Status", selection: $status) {
                     Text("Applied").tag(InterventionStatus.applied)
@@ -2351,40 +2677,6 @@ private struct InjuryQuickActionSheet: View {
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
             }
-        }
-    }
-}
-
-// MARK: - Timeline filter
-
-private enum TimelineFilter: Hashable, CaseIterable, Identifiable {
-    case all
-    case kind(ClinicalTimelineKind)
-
-    static var allCases: [TimelineFilter] {
-        [.all, .kind(.lifecycle), .kind(.cause), .kind(.problem), .kind(.recommendation), .kind(.intervention), .kind(.loc), .kind(.note), .kind(.vitals)]
-    }
-
-    var id: String {
-        switch self {
-        case .all: "all"
-        case let .kind(kind): kind.rawValue
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .all: "All Events"
-        case .kind(.lifecycle): "Lifecycle"
-        case .kind(.cause): "Causes"
-        case .kind(.problem): "Problems"
-        case .kind(.recommendation): "Recommendations"
-        case .kind(.intervention): "Intervention"
-        case .kind(.loc): "LOC"
-        case .kind(.note): "Notes"
-        case .kind(.vitals): "Vitals"
-        case .kind(.injury): "Injury"
-        case .kind(.illness): "Illness"
         }
     }
 }
@@ -2402,7 +2694,7 @@ private struct RunConsoleCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1)
+                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
             )
     }
 }
@@ -2427,7 +2719,7 @@ private struct VitalValueCell: View {
         vital: VitalStatusSnapshot,
         valueText: String,
         font: Font = .subheadline.monospacedDigit(),
-        verticalPadding: CGFloat = 6
+        verticalPadding: CGFloat = 6,
     ) {
         self.vital = vital
         self.valueText = valueText
@@ -2463,8 +2755,8 @@ private struct VitalValueCell: View {
                             LinearGradient(
                                 colors: [.clear, Color.white.opacity(0.12), Color.white.opacity(0.35), Color.white.opacity(0.12), .clear],
                                 startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                                endPoint: .trailing,
+                            ),
                         )
                         .frame(width: width)
                         .offset(x: shimmerOffset * proxy.size.width)
@@ -2542,54 +2834,6 @@ private extension View {
     }
 }
 
-// MARK: - Note composer sheet
-
-private struct NoteComposerSheet: View {
-    @Binding var draft: String
-    let onSubmit: () -> Void
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 4)
-                .padding(.top, 10)
-                .padding(.bottom, 12)
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Add a simulation note event for the live run…", text: $draft, axis: .vertical)
-                    .lineLimit(1 ... 4)
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white)
-                    .tint(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .focused($focused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                        onSubmit()
-                    }
-
-                Button(action: onSubmit) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 8)
-        }
-        .background(.ultraThinMaterial)
-        .onAppear { focused = true }
-    }
-}
-
 struct DebriefAnnotationOption<Value: Hashable & Sendable>: Equatable {
     let value: Value
     let label: String
@@ -2649,7 +2893,7 @@ private struct DebriefAnnotationSheet: View {
                         onSubmit(
                             observationText.trimmingCharacters(in: .whitespacesAndNewlines),
                             learningObjective,
-                            outcome
+                            outcome,
                         )
                         dismiss()
                     }
@@ -2729,7 +2973,7 @@ private struct ScenarioBriefEditSheet: View {
                             threatContext: threatContext.isEmpty ? nil : threatContext,
                             evacuationOptions: parseList(from: evacuationOptions),
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
-                            specialConsiderations: parseList(from: specialConsiderations)
+                            specialConsiderations: parseList(from: specialConsiderations),
                         ))
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

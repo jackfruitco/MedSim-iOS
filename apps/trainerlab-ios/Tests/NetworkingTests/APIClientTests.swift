@@ -103,7 +103,7 @@ final class APIClientTests: XCTestCase {
         let client = APIClient(
             baseURLProvider: { URL(string: "https://example.com")! },
             tokenProvider: tokenProvider,
-            session: session
+            session: session,
         )
 
         let endpoint = Endpoint(path: "/api/v1/protected/")

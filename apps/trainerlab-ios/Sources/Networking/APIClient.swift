@@ -31,7 +31,7 @@ public struct Endpoint: Sendable {
         headers: [String: String] = [:],
         requiresAuth: Bool = true,
         idempotencyKey: String? = nil,
-        correlationID: String? = nil
+        correlationID: String? = nil,
     ) {
         self.path = path
         self.method = method
@@ -86,7 +86,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
-        session: URLSession = .shared
+        session: URLSession = .shared,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -265,7 +265,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
                 path: "/api/v1/auth/token/refresh/",
                 method: .post,
                 body: payload,
-                requiresAuth: false
+                requiresAuth: false,
             )
 
             let data = try await execute(endpoint: endpoint, allowRefreshRetry: false)
@@ -274,7 +274,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
                 accessToken: refresh.accessToken,
                 refreshToken: refresh.refreshToken ?? current.refreshToken,
                 expiresIn: refresh.expiresIn,
-                tokenType: refresh.tokenType
+                tokenType: refresh.tokenType,
             )
             tokenProvider.saveTokens(nextTokens)
             return nextTokens

@@ -22,26 +22,26 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     func testCompactDensityUsesNarrowPhoneAtOrBelow390Points() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 320, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 390, layoutMode: .compact),
-            .narrowPhone
+            .narrowPhone,
         )
     }
 
     func testCompactDensityUsesStandardAbove390PointsOrOutsideCompactMode() {
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 393, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 430, layoutMode: .compact),
-            .standard
+            .standard,
         )
         XCTAssertEqual(
             RunConsoleCompactDensity.resolve(width: 375, layoutMode: .regular),
-            .standard
+            .standard,
         )
     }
 
@@ -73,27 +73,27 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(metrics.vitalValueVerticalPadding, 3)
     }
 
-    func testCompactControlPresentationUsesIconOnlyForCompactPhoneOnly() {
+    func testCompactControlPresentationUsesPhoneMenusForSharedPhoneBreakpoints() {
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .compact,
-                horizontalSizeClass: .compact
+                width: 375,
+                horizontalSizeClass: .compact,
             ),
-            .iconOnly
+            .phoneMenus,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .compact,
-                horizontalSizeClass: .regular
+                width: 430,
+                horizontalSizeClass: .compact,
             ),
-            .labeled
+            .phoneMenus,
         )
         XCTAssertEqual(
             RunConsoleCompactControlPresentation.resolve(
-                layoutMode: .regular,
-                horizontalSizeClass: .compact
+                width: 700,
+                horizontalSizeClass: .regular,
             ),
-            .labeled
+            .grid,
         )
     }
 
@@ -103,31 +103,75 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             kind: .injury,
             title: "Injury Change",
             message: "Left arm",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let lifecycleEntry = ClinicalTimelineEntry(
             dedupeKey: "run-1",
             kind: .lifecycle,
             title: "Run Started",
             message: "Run started",
-            createdAt: Date()
+            createdAt: Date(),
         )
         let noteEntry = ClinicalTimelineEntry(
             dedupeKey: "note-1",
             kind: .note,
             title: "Anything",
             message: "Trainer note",
-            createdAt: Date()
+            createdAt: Date(),
         )
 
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .injury), "INJURY")
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .loc), "LOC")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: injuryEntry), "Change")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: lifecycleEntry), "Run Started")
-        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Trainer Note")
+        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Anything")
+    }
+
+    func testControlCatalogSeparatesSessionAndQuickControls() {
+        let sessionControls = RunConsoleControlsCatalog.sessionControls(lifecycleActions: [.pause, .stop])
+
+        XCTAssertEqual(sessionControls.map(\.title), ["Exit", "Pause", "Stop", "Summary"])
+        XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.quickControls.map(\.title),
+            ["Intervention", "Event", "Annotation", "Steer", "Tick AI", "Tick Vitals"],
+        )
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.quickControls.map(\.systemImage),
+            ["plus.app", "plus.app", "note.text.badge.plus", "wand.and.sparkles", "timer", "heart.text.square"],
+        )
+    }
+
+    func testTimelineFiltersIncludeNotesInRunConsole() {
+        let causeEntry = ClinicalTimelineEntry(
+            dedupeKey: "cause-1",
+            kind: .cause,
+            title: "Cause",
+            message: "Left arm injury",
+            createdAt: Date(),
+        )
+        let noteEntry = ClinicalTimelineEntry(
+            dedupeKey: "note-1",
+            kind: .note,
+            title: "Trainer Note",
+            message: "Internal note",
+            createdAt: Date(),
+        )
+        let visibleEntries = RunConsoleTimelineFilter.visibleEntries(
+            from: [causeEntry, noteEntry],
+            matching: .all,
+        )
+
+        XCTAssertTrue(RunConsoleTimelineFilter.allCases.contains(.kind(.note)))
+        XCTAssertEqual(visibleEntries, [causeEntry, noteEntry])
+        XCTAssertEqual(
+            RunConsoleTimelineFilter.visibleEntries(from: [causeEntry, noteEntry], matching: .kind(.note)),
+            [noteEntry],
+        )
     }
 
     func testLifecycleActionsMatchSessionStatus() {
+        XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeding), [])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeded), [.start])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .running), [.pause, .stop])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .paused), [.resume, .stop])
@@ -141,17 +185,17 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             DebriefAnnotationCatalog.learningObjectiveOptions,
             AnnotationLearningObjective.allCases.map {
                 DebriefAnnotationOption(value: $0, label: $0.displayLabel)
-            }
+            },
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.outcomeOptions,
             AnnotationOutcome.allCases.map {
                 DebriefAnnotationOption(value: $0, label: $0.displayLabel)
-            }
+            },
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.learningObjectiveOptions.first,
-            DebriefAnnotationOption(value: .assessment, label: "Assessment")
+            DebriefAnnotationOption(value: .assessment, label: "Assessment"),
         )
         XCTAssertEqual(
             DebriefAnnotationCatalog.outcomeOptions,
@@ -161,7 +205,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 DebriefAnnotationOption(value: .missed, label: "Missed"),
                 DebriefAnnotationOption(value: .improvised, label: "Improvised"),
                 DebriefAnnotationOption(value: .pending, label: "Pending"),
-            ]
+            ],
         )
     }
 }

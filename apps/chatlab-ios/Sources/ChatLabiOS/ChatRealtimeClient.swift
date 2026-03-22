@@ -74,7 +74,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         tokenProvider: AuthTokenProvider,
         service: ChatLabServiceProtocol,
         session: URLSession = .shared,
-        staleThresholdSeconds: TimeInterval = 45
+        staleThresholdSeconds: TimeInterval = 45,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
@@ -91,7 +91,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             }
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Invalid date string: \(value)"
+                debugDescription: "Invalid date string: \(value)",
             )
         }
         self.decoder = decoder
@@ -308,7 +308,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 let page = try await service.listEvents(
                     simulationID: simulationID,
                     cursor: currentCursor,
-                    limit: 50
+                    limit: 50,
                 )
                 if page.items.isEmpty, !page.hasMore {
                     break

@@ -50,7 +50,7 @@ public final class AppShellModel: ObservableObject {
                 for: .applicationSupportDirectory,
                 in: .userDomainMask,
                 appropriateFor: nil,
-                create: true
+                create: true,
             )
             let dbURL = support.appendingPathComponent("trainerlab-command-queue.sqlite")
             commandQueue = try GRDBCommandQueueStore(fileURL: dbURL)
@@ -87,12 +87,12 @@ public final class AppShellModel: ObservableObject {
         let realtime = ChatRealtimeClient(
             baseURLProvider: { self.mutableBaseURLProvider.currentURL() },
             tokenProvider: tokenStore,
-            service: chatService
+            service: chatService,
         )
         return ChatRunStore(
             service: chatService,
             realtimeClient: realtime,
-            simulation: simulation
+            simulation: simulation,
         )
     }
 

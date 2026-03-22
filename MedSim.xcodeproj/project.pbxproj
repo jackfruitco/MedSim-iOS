@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		77E5AA832F60000100D02877 /* AppShell in Frameworks */ = {isa = PBXBuildFile; productRef = 77E5AA822F60000100D02877 /* AppShell */; };
 		7F1A10012F6D100100A0B001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7F1A10102F6D100100A0B001 /* Assets.xcassets */; };
 		7F1A10022F6D100100A0B001 /* MedSimApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10122F6D100100A0B001 /* MedSimApp.swift */; };
 		7F1A10032F6D100100A0B001 /* MedSimSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10132F6D100100A0B001 /* MedSimSplashView.swift */; };
@@ -15,7 +16,6 @@
 		7F1A10062F6D100100A0B001 /* OrientationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10162F6D100100A0B001 /* OrientationCoordinatorTests.swift */; };
 		7F1A10072F6D100100A0B001 /* MedSimUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10172F6D100100A0B001 /* MedSimUITests.swift */; };
 		7F1A10082F6D100100A0B001 /* MedSimUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */; };
-		77E5AA832F60000100D02877 /* AppShell in Frameworks */ = {isa = PBXBuildFile; productRef = 77E5AA822F60000100D02877 /* AppShell */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +36,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		77CAB7172F38C27900D02877 /* MedSim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedSim.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		77CAB7292F38C27E00D02877 /* MedSimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7F1A10102F6D100100A0B001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7F1A10112F6D100100A0B001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7F1A10122F6D100100A0B001 /* MedSimApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimApp.swift; sourceTree = "<group>"; };
@@ -45,9 +48,6 @@
 		7F1A10162F6D100100A0B001 /* OrientationCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationCoordinatorTests.swift; sourceTree = "<group>"; };
 		7F1A10172F6D100100A0B001 /* MedSimUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimUITests.swift; sourceTree = "<group>"; };
 		7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedSimUITestsLaunchTests.swift; sourceTree = "<group>"; };
-		77CAB7172F38C27900D02877 /* MedSim.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MedSim.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		77CAB7292F38C27E00D02877 /* MedSimTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MedSimUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -84,6 +84,27 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		77CAB70E2F38C27900D02877 = {
+			isa = PBXGroup;
+			children = (
+				77B04BDB2F6C6A9200AF3818 /* scripts */,
+				77CAB7192F38C27900D02877 /* MedSim */,
+				77CAB72C2F38C27E00D02877 /* MedSimTests */,
+				77CAB7362F38C27E00D02877 /* MedSimUITests */,
+				77CAB7182F38C27900D02877 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		77CAB7182F38C27900D02877 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				77CAB7172F38C27900D02877 /* MedSim.app */,
+				77CAB7292F38C27E00D02877 /* MedSimTests.xctest */,
+				77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
 		77CAB7192F38C27900D02877 /* MedSim */ = {
 			isa = PBXGroup;
 			children = (
@@ -112,27 +133,6 @@
 				7F1A10182F6D100100A0B001 /* MedSimUITestsLaunchTests.swift */,
 			);
 			path = MedSimUITests;
-			sourceTree = "<group>";
-		};
-		77CAB70E2F38C27900D02877 = {
-			isa = PBXGroup;
-			children = (
-				77B04BDB2F6C6A9200AF3818 /* scripts */,
-				77CAB7192F38C27900D02877 /* MedSim */,
-				77CAB72C2F38C27E00D02877 /* MedSimTests */,
-				77CAB7362F38C27E00D02877 /* MedSimUITests */,
-				77CAB7182F38C27900D02877 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		77CAB7182F38C27900D02877 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				77CAB7172F38C27900D02877 /* MedSim.app */,
-				77CAB7292F38C27E00D02877 /* MedSimTests.xctest */,
-				77CAB7332F38C27E00D02877 /* MedSimUITests.xctest */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -480,14 +480,13 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSim;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jackfruitco.medsim;
 				PRODUCT_NAME = MedSim;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -514,14 +513,13 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = JackfruitCo.MedSim;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jackfruitco.medsim;
 				PRODUCT_NAME = MedSim;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

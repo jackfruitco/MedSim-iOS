@@ -69,7 +69,7 @@ final class TrainerLabContractTests: XCTestCase {
         let json = """
         {
           "simulation_id": 420,
-          "status": "seeded",
+          "status": "seeding",
           "scenario_spec": {},
           "runtime_state": {},
           "initial_directives": null,
@@ -89,6 +89,7 @@ final class TrainerLabContractTests: XCTestCase {
 
         XCTAssertEqual(run.simulationID, 420)
         XCTAssertEqual(run.id, 420)
+        XCTAssertEqual(run.status, .seeding)
     }
 
     func testRunSummaryDecodesWithoutLegacySessionID() throws {
@@ -146,6 +147,97 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(payload.terminalReasonText, "We could not start this simulation. Please try again.")
     }
 
+    func testSessionSeedingEnvelopeDecodesLifecyclePayload() throws {
+        let json = """
+        {
+          "event_id": "seed-1",
+          "event_type": "session.seeding",
+          "created_at": "2026-03-20T13:54:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "seeding",
+            "scenario_spec": {
+              "diagnosis": "Tension pneumothorax",
+              "modifiers": ["night-ops"]
+            },
+            "state_revision": 3,
+            "retry_count": 1,
+            "simulation_id": 7,
+            "extra_field": "ignored"
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionSeedingPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.seeding")
+        XCTAssertEqual(payload.status, "seeding")
+        XCTAssertEqual(payload.stateRevision, 3)
+        XCTAssertEqual(payload.retryCount, 1)
+        XCTAssertEqual(payload.simulationID, 7)
+        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
+        XCTAssertEqual(payload.scenarioSpec["modifiers"], .array([.string("night-ops")]))
+    }
+
+    func testSessionSeededEnvelopeDecodesLifecyclePayloadWithOptionalCallID() throws {
+        let json = """
+        {
+          "event_id": "seed-2",
+          "event_type": "session.seeded",
+          "created_at": "2026-03-20T13:55:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "seeded",
+            "scenario_spec": {
+              "diagnosis": "Tension pneumothorax"
+            },
+            "state_revision": 4,
+            "call_id": "call-123",
+            "simulation_id": 7
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionSeededPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.seeded")
+        XCTAssertEqual(payload.status, "seeded")
+        XCTAssertEqual(payload.stateRevision, 4)
+        XCTAssertEqual(payload.callID, "call-123")
+        XCTAssertEqual(payload.simulationID, 7)
+        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
+    }
+
+    func testSessionFailedEnvelopeDecodesLifecyclePayload() throws {
+        let json = """
+        {
+          "event_id": "seed-3",
+          "event_type": "session.failed",
+          "created_at": "2026-03-20T13:56:34.990952+00:00",
+          "correlation_id": "",
+          "payload": {
+            "status": "failed",
+            "reason_code": "trainerlab_initial_generation_failed",
+            "reason_text": "The initial scenario could not be generated.",
+            "retryable": false,
+            "simulation_id": 7
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let payload = try event.decodePayload(SessionFailedPayload.self)
+
+        XCTAssertEqual(event.eventType, "session.failed")
+        XCTAssertEqual(payload.status, "failed")
+        XCTAssertEqual(payload.reasonCode, "trainerlab_initial_generation_failed")
+        XCTAssertEqual(payload.reasonText, "The initial scenario could not be generated.")
+        XCTAssertEqual(payload.retryable, false)
+        XCTAssertEqual(payload.simulationID, 7)
+    }
+
     func testScenarioInstructionApplyEncodesSimulationID() throws {
         let request = ScenarioInstructionApplyRequest(simulationID: 77)
         let data = try JSONEncoder().encode(request)
@@ -185,7 +277,7 @@ final class TrainerLabContractTests: XCTestCase {
             targetProblemID: 19,
             status: .applied,
             effectiveness: .effective,
-            notes: "Applied high and tight"
+            notes: "Applied high and tight",
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -194,14 +286,33 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(object?["target_problem_id"] as? Int, 19)
         XCTAssertEqual(object?["initiated_by_type"] as? String, "instructor")
         XCTAssertNil(object?["performed_by_role"])
+        XCTAssertNil(object?["body"])
         XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+        XCTAssertEqual(details?["application_mode"] as? String, "hasty")
+    }
+
+    func testInterventionEventRequestEncodesExplicitTourniquetApplicationMode() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "left_arm",
+            targetProblemID: 19,
+            tourniquetApplicationMode: .deliberate,
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let details = object?["details"] as? [String: Any]
+
+        XCTAssertEqual(object?["intervention_type"] as? String, "tourniquet")
+        XCTAssertEqual(details?["kind"] as? String, "tourniquet")
+        XCTAssertEqual(details?["version"] as? Double, 1)
+        XCTAssertEqual(details?["application_mode"] as? String, "deliberate")
     }
 
     func testSimulationNoteCreateRequestEncodesCurrentBackendKeys() throws {
         let request = SimulationNoteCreateRequest(
             content: "Observe airway",
             sendToAI: true,
-            performedByRole: "instructor"
+            performedByRole: "instructor",
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -224,7 +335,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.requiresAuth, false)
         XCTAssertEqual(
             try? decodeJSONBody(api.capturedEndpoints.last?.body)?["refresh_token"] as? String,
-            "r"
+            "r",
         )
         XCTAssertTrue(tokenProvider.cleared)
     }
@@ -340,7 +451,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/run/start/"
+            "/api/v1/trainerlab/simulations/7/run/start/",
         )
 
         do {
@@ -354,9 +465,9 @@ final class TrainerLabContractTests: XCTestCase {
                     injuryRegion: nil,
                     avpuState: "alert",
                     interventionCode: nil,
-                    note: nil
+                    note: nil,
                 ),
-                idempotencyKey: "k2"
+                idempotencyKey: "k2",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -364,7 +475,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/adjust/"
+            "/api/v1/trainerlab/simulations/7/adjust/",
         )
 
         do {
@@ -375,7 +486,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/events/"
+            "/api/v1/trainerlab/simulations/7/events/",
         )
 
         do {
@@ -383,7 +494,7 @@ final class TrainerLabContractTests: XCTestCase {
                 simulationID: 7,
                 problemID: 3,
                 request: ProblemStatusUpdateRequest(isTreated: true, isResolved: false),
-                idempotencyKey: "k3"
+                idempotencyKey: "k3",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -391,7 +502,7 @@ final class TrainerLabContractTests: XCTestCase {
         }
         XCTAssertEqual(
             api.capturedEndpoints.last?.path,
-            "/api/v1/trainerlab/simulations/7/problems/3/"
+            "/api/v1/trainerlab/simulations/7/problems/3/",
         )
 
         do {
@@ -422,7 +533,7 @@ final class TrainerLabContractTests: XCTestCase {
             _ = try await service.createNoteEvent(
                 simulationID: 7,
                 request: SimulationNoteCreateRequest(content: "Observe airway"),
-                idempotencyKey: "k6"
+                idempotencyKey: "k6",
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -431,7 +542,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/simulations/7/events/notes/")
         XCTAssertEqual(
             try decodeJSONBody(api.capturedEndpoints.last?.body)?["content"] as? String,
-            "Observe airway"
+            "Observe airway",
         )
     }
 
@@ -452,14 +563,14 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(brief.specialConsiderations, ["night", "rain"])
     }
 
-    func testRetryInitialSimulationUsesGenericRetryEndpointThenReloadsTrainerSession() async throws {
+    func testRetryInitialSimulationUsesTrainerLabRetryEndpointThenReloadsCurrentTrainerSession() async throws {
         let api = RecordingAPIClient()
-        api.responseDataByPath["/api/v1/simulations/7/retry-initial/"] = Data()
+        api.responseDataByPath["/api/v1/trainerlab/simulations/7/retry-initial/"] = Data()
         api.responseDataByPath["/api/v1/trainerlab/simulations/7/"] = Data(
             """
             {
               "simulation_id": 7,
-              "status": "seeded",
+              "status": "seeding",
               "scenario_spec": {},
               "runtime_state": {},
               "initial_directives": null,
@@ -471,16 +582,16 @@ final class TrainerLabContractTests: XCTestCase {
               "created_at": "2026-03-12T12:00:00Z",
               "modified_at": "2026-03-12T12:00:00Z"
             }
-            """.utf8
+            """.utf8,
         )
         let service = TrainerLabService(apiClient: api)
 
         let session = try await service.retryInitialSimulation(simulationID: 7)
 
         XCTAssertEqual(session.simulationID, 7)
-        XCTAssertEqual(session.status, .seeded)
+        XCTAssertEqual(session.status, .seeding)
         XCTAssertEqual(api.capturedEndpoints.map(\.path), [
-            "/api/v1/simulations/7/retry-initial/",
+            "/api/v1/trainerlab/simulations/7/retry-initial/",
             "/api/v1/trainerlab/simulations/7/",
         ])
     }
@@ -538,6 +649,89 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNotNil(state.lastAITickAt)
     }
 
+    func testTrainerRuntimeStateDecodesVitalWithoutLockValue() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "status": "running",
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [
+              {
+                "vital_type": "heart_rate",
+                "min_value": 80,
+                "max_value": 120
+              }
+            ],
+            "pulses": [],
+            "patient_status": {}
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.currentSnapshot.vitals.first?.vitalType, "heart_rate")
+        XCTAssertNil(state.currentSnapshot.vitals.first?.lockValue)
+    }
+
+    func testTrainerRuntimeStateDecodesSparseAIPlan() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "status": "running",
+          "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "ai_plan": {
+            "summary": "Watch SpO2"
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.aiPlan?.summary, "Watch SpO2")
+        XCTAssertEqual(state.aiPlan?.rationale, "")
+        XCTAssertEqual(state.aiPlan?.monitoringFocus, [])
+    }
+
+    func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {
+        let json = """
+        {
+          "event_id": "rec-removed-1",
+          "event_type": "recommended_intervention.removed",
+          "created_at": "2026-03-20T13:56:34.990952+00:00",
+          "payload": {
+            "recommendation_id": 91,
+            "target_problem_id": 12
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+
+        XCTAssertEqual(event.eventType, "recommended_intervention.removed")
+        XCTAssertEqual(event.payload["recommendation_id"], .number(91))
+    }
+
     func testControlPlaneDebugDecodesCurrentBackendShape() throws {
         let json = """
         {
@@ -577,7 +771,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "triage",
                 "intervention",
                 "other",
-            ]
+            ],
         )
         XCTAssertEqual(
             AnnotationOutcome.allCases.map(\.rawValue),
@@ -587,7 +781,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "missed",
                 "improvised",
                 "pending",
-            ]
+            ],
         )
     }
 
@@ -597,7 +791,7 @@ final class TrainerLabContractTests: XCTestCase {
             learningObjective: .hemorrhageControl,
             outcome: .correct,
             linkedEventID: 99,
-            elapsedSecondsAt: 120
+            elapsedSecondsAt: 120,
         )
         let data = try JSONEncoder().encode(request)
         let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
@@ -616,14 +810,67 @@ final class TrainerLabContractTests: XCTestCase {
         try seedLegacyQueueDatabase(at: dbURL)
 
         let store = try GRDBCommandQueueStore(fileURL: dbURL)
-        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture)
+        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture, simulationID: nil)
         let endpoints = Set(rows.map(\.endpoint))
 
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/77/adjust/"))
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/"))
         XCTAssertFalse(endpoints.contains("/api/v1/trainerlab/sessions/55/run/start/"))
-        let pendingCount = try await store.pendingCount()
+        let pendingCount = try await store.pendingCount(simulationID: nil)
         XCTAssertEqual(pendingCount, 2)
+    }
+
+    func testCommandQueuePendingCountScopesToActiveRowsForSimulation() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("trainerlab-queue-pending-count-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: dbURL) }
+
+        let store = try GRDBCommandQueueStore(fileURL: dbURL)
+
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420,
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil,
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 421,
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/421/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil,
+        ))
+        try await store.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/events/notes/",
+            method: HTTPMethod.post.rawValue,
+            body: nil,
+        ))
+
+        let terminal = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/stop/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420,
+        )
+        try await store.enqueue(terminal)
+        try await store.markTerminalFailure(idempotencyKey: terminal.idempotencyKey, error: "terminal")
+
+        let currentSimulationCount = try await store.pendingCount(simulationID: 420)
+        let otherSimulationCount = try await store.pendingCount(simulationID: 421)
+        let globalCount = try await store.pendingCount(simulationID: nil)
+
+        XCTAssertEqual(currentSimulationCount, 2)
+        XCTAssertEqual(otherSimulationCount, 2)
+        XCTAssertEqual(globalCount, 5)
     }
 
     private func seedLegacyQueueDatabase(at url: URL) throws {
@@ -651,7 +898,7 @@ final class TrainerLabContractTests: XCTestCase {
               ack_state TEXT NOT NULL
             );
             INSERT INTO grdb_migrations(identifier) VALUES ('create_pending_commands');
-            """
+            """,
         )
 
         try execSQL(
@@ -663,7 +910,7 @@ final class TrainerLabContractTests: XCTestCase {
               ('old-adjust', '/api/v1/simulations/77/adjust/', 'POST', NULL, 'h1', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-session-run', '/api/v1/trainerlab/sessions/55/run/start/', 'POST', NULL, 'h2', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending'),
               ('old-sessions-root', '/api/v1/trainerlab/sessions/', 'POST', NULL, 'h3', '2026-03-12T00:00:00Z', 0, NULL, '2026-03-12T00:00:00Z', 'pending');
-            """
+            """,
         )
     }
 
@@ -676,7 +923,7 @@ final class TrainerLabContractTests: XCTestCase {
             throw NSError(
                 domain: "TrainerLabContractTests",
                 code: Int(result),
-                userInfo: [NSLocalizedDescriptionKey: message]
+                userInfo: [NSLocalizedDescriptionKey: message],
             )
         }
     }

@@ -82,6 +82,7 @@ public struct LabAccess: Codable, Sendable {
 }
 
 public enum TrainerSessionStatus: String, Codable, Sendable, CaseIterable {
+    case seeding
     case seeded
     case running
     case paused
@@ -127,7 +128,7 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
         modifiedAt: Date,
         terminalReasonCode: String? = nil,
         terminalReasonText: String? = nil,
-        retryable: Bool? = nil
+        retryable: Bool? = nil,
     ) {
         self.simulationID = simulationID
         self.status = status
@@ -179,7 +180,7 @@ public struct SimulationStateChangedPayload: Codable, Equatable, Sendable {
         terminalAt: Date? = nil,
         simulationID: Int? = nil,
         terminalReasonCode: String? = nil,
-        terminalReasonText: String? = nil
+        terminalReasonText: String? = nil,
     ) {
         self.status = status
         self.retryable = retryable
@@ -199,6 +200,96 @@ public struct SimulationStateChangedPayload: Codable, Equatable, Sendable {
     }
 }
 
+public struct SessionSeedingPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let scenarioSpec: [String: JSONValue]
+    public let stateRevision: Int
+    public let retryCount: Int?
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        scenarioSpec: [String: JSONValue],
+        stateRevision: Int,
+        retryCount: Int? = nil,
+        simulationID: Int? = nil,
+    ) {
+        self.status = status
+        self.scenarioSpec = scenarioSpec
+        self.stateRevision = stateRevision
+        self.retryCount = retryCount
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case scenarioSpec = "scenario_spec"
+        case stateRevision = "state_revision"
+        case retryCount = "retry_count"
+        case simulationID = "simulation_id"
+    }
+}
+
+public struct SessionSeededPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let scenarioSpec: [String: JSONValue]
+    public let stateRevision: Int
+    public let callID: String?
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        scenarioSpec: [String: JSONValue],
+        stateRevision: Int,
+        callID: String? = nil,
+        simulationID: Int? = nil,
+    ) {
+        self.status = status
+        self.scenarioSpec = scenarioSpec
+        self.stateRevision = stateRevision
+        self.callID = callID
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case scenarioSpec = "scenario_spec"
+        case stateRevision = "state_revision"
+        case callID = "call_id"
+        case simulationID = "simulation_id"
+    }
+}
+
+public struct SessionFailedPayload: Codable, Equatable, Sendable {
+    public let status: String
+    public let reasonCode: String
+    public let reasonText: String
+    public let retryable: Bool
+    public let simulationID: Int?
+
+    public init(
+        status: String,
+        reasonCode: String,
+        reasonText: String,
+        retryable: Bool,
+        simulationID: Int? = nil,
+    ) {
+        self.status = status
+        self.reasonCode = reasonCode
+        self.reasonText = reasonText
+        self.retryable = retryable
+        self.simulationID = simulationID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case reasonCode = "reason_code"
+        case reasonText = "reason_text"
+        case retryable
+        case simulationID = "simulation_id"
+    }
+}
+
 public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let eventID: String
     public let eventType: String
@@ -215,7 +306,7 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
         eventType: String,
         createdAt: Date,
         correlationID: String?,
-        payload: [String: JSONValue]
+        payload: [String: JSONValue],
     ) {
         self.eventID = eventID
         self.eventType = eventType
@@ -300,7 +391,7 @@ public struct RunSummary: Codable, Sendable {
         timelineHighlights: [SummaryTimelineEntry],
         commandLog: [SummaryCommandLog],
         aiRationaleNotes: [JSONValue],
-        aiDebrief: RunDebriefOutput? = nil
+        aiDebrief: RunDebriefOutput? = nil,
     ) {
         self.simulationID = simulationID
         self.status = status
@@ -391,7 +482,7 @@ public struct SimulationAdjustRequest: Codable, Sendable {
         avpuState: String?,
         interventionCode: String?,
         note: String?,
-        metadata: [String: JSONValue] = [:]
+        metadata: [String: JSONValue] = [:],
     ) {
         self.target = target
         self.direction = direction
@@ -497,7 +588,7 @@ public struct ScenarioInstructionCreateRequest: Codable, Sendable {
         instructionText: String,
         injuries: [String],
         severity: String,
-        metadata: [String: JSONValue] = [:]
+        metadata: [String: JSONValue] = [:],
     ) {
         self.title = title
         self.description = description
@@ -533,7 +624,7 @@ public struct ScenarioInstructionUpdateRequest: Codable, Sendable {
         injuries: [String]? = nil,
         severity: String? = nil,
         metadata: [String: JSONValue]? = nil,
-        isActive: Bool? = nil
+        isActive: Bool? = nil,
     ) {
         self.title = title
         self.description = description
@@ -569,7 +660,7 @@ public struct ScenarioInstructionShareRequest: Codable, Sendable {
         canEdit: Bool = false,
         canDelete: Bool = false,
         canShare: Bool = false,
-        canDuplicate: Bool = true
+        canDuplicate: Bool = true,
     ) {
         self.userID = userID
         self.canRead = canRead
@@ -699,7 +790,7 @@ public struct ScenarioBriefOut: Codable, Sendable {
         threatContext: String? = nil,
         evacuationOptions: [String] = [],
         evacuationTime: String? = nil,
-        specialConsiderations: [String] = []
+        specialConsiderations: [String] = [],
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment
@@ -760,7 +851,7 @@ public struct RuntimePatientStatus: Codable, Sendable {
         impendingPneumothorax: Bool = false,
         tensionPneumothorax: Bool = false,
         narrative: String = "",
-        teachingFlags: [String] = []
+        teachingFlags: [String] = [],
     ) {
         self.avpu = avpu
         self.respiratoryDistress = respiratoryDistress
@@ -1148,13 +1239,13 @@ public struct RuntimeDispositionState: Codable, Sendable {
 
 public struct RuntimeVitalState: Codable, Sendable {
     public let domainEventID: Int?
-    public let vitalType: String
-    public let minValue: Int
-    public let maxValue: Int
-    public let lockValue: Bool
+    public let vitalType: String?
+    public let minValue: Int?
+    public let maxValue: Int?
+    public let lockValue: Bool?
     public let minValueDiastolic: Int?
     public let maxValueDiastolic: Int?
-    public let trend: String
+    public let trend: String?
     public let source: String?
     public let timestamp: String?
 
@@ -1169,6 +1260,20 @@ public struct RuntimeVitalState: Codable, Sendable {
         case trend
         case source
         case timestamp
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
+        vitalType = try container.decodeIfPresent(String.self, forKey: .vitalType)
+        minValue = try container.decodeIfPresent(Int.self, forKey: .minValue)
+        maxValue = try container.decodeIfPresent(Int.self, forKey: .maxValue)
+        lockValue = try container.decodeIfPresent(Bool.self, forKey: .lockValue)
+        minValueDiastolic = try container.decodeIfPresent(Int.self, forKey: .minValueDiastolic)
+        maxValueDiastolic = try container.decodeIfPresent(Int.self, forKey: .maxValueDiastolic)
+        trend = try container.decodeIfPresent(String.self, forKey: .trend)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
     }
 }
 
@@ -1240,7 +1345,7 @@ public struct TrainerRuntimeSnapshot: Codable, Sendable {
         disposition: RuntimeDispositionState? = nil,
         vitals: [RuntimeVitalState] = [],
         pulses: [RuntimePulseState] = [],
-        patientStatus: RuntimePatientStatus = .init()
+        patientStatus: RuntimePatientStatus = .init(),
     ) {
         self.causes = causes
         self.problems = problems
@@ -1289,6 +1394,17 @@ public struct RuntimeInstructorIntent: Codable, Sendable {
         case upcomingChanges = "upcoming_changes"
         case monitoringFocus = "monitoring_focus"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        rationale = try container.decodeIfPresent(String.self, forKey: .rationale) ?? ""
+        trigger = try container.decodeIfPresent(String.self, forKey: .trigger) ?? ""
+        etaSeconds = try container.decodeIfPresent(Int.self, forKey: .etaSeconds)
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0
+        upcomingChanges = try container.decodeIfPresent([String].self, forKey: .upcomingChanges) ?? []
+        monitoringFocus = try container.decodeIfPresent([String].self, forKey: .monitoringFocus) ?? []
+    }
 }
 
 public struct TrainerRuntimeStateOut: Codable, Sendable {
@@ -1331,10 +1447,10 @@ public struct TrainerRuntimeStateOut: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         simulationID = try container.decode(Int.self, forKey: .simulationID)
-        sessionID = try container.decode(Int.self, forKey: .sessionID)
-        status = try container.decode(String.self, forKey: .status)
-        stateRevision = try container.decode(Int.self, forKey: .stateRevision)
-        activeElapsedSeconds = try container.decode(Int.self, forKey: .activeElapsedSeconds)
+        sessionID = try container.decodeIfPresent(Int.self, forKey: .sessionID) ?? simulationID
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+        stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
+        activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
         tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds)
         nextTickAt = try container.decodeIfPresent(Date.self, forKey: .nextTickAt)
         scenarioBrief = try container.decodeIfPresent(ScenarioBriefOut.self, forKey: .scenarioBrief)
@@ -1389,7 +1505,7 @@ public struct InjuryEventRequest: Codable, Sendable {
         injuryDescription: String,
         description: String = "",
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.injuryLocation = injuryLocation
         self.injuryKind = injuryKind
@@ -1423,7 +1539,7 @@ public struct IllnessEventRequest: Codable, Sendable {
         anatomicalLocation: String = "",
         laterality: String = "",
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.name = name
         self.description = description
@@ -1441,6 +1557,11 @@ public struct IllnessEventRequest: Codable, Sendable {
         case metadata
         case supersedesEventID = "supersedes_event_id"
     }
+}
+
+public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
+    case hasty
+    case deliberate
 }
 
 public struct InterventionEventRequest: Codable, Sendable {
@@ -1463,9 +1584,10 @@ public struct InterventionEventRequest: Codable, Sendable {
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",
         details: [String: JSONValue]? = nil,
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
         initiatedByType: String = "instructor",
         initiatedByID: Int? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.interventionType = interventionType
         self.siteCode = siteCode
@@ -1473,13 +1595,27 @@ public struct InterventionEventRequest: Codable, Sendable {
         self.status = status
         self.effectiveness = effectiveness
         self.notes = notes
-        self.details = details ?? [
-            "kind": .string(interventionType),
-            "version": .number(1),
-        ]
+        self.details = details ?? Self.defaultDetails(
+            for: interventionType,
+            tourniquetApplicationMode: tourniquetApplicationMode,
+        )
         self.initiatedByType = initiatedByType
         self.initiatedByID = initiatedByID
         self.supersedesEventID = supersedesEventID
+    }
+
+    public static func defaultDetails(
+        for interventionType: String,
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
+    ) -> [String: JSONValue] {
+        var details: [String: JSONValue] = [
+            "kind": .string(interventionType),
+            "version": .number(1),
+        ]
+        if interventionType == "tourniquet" {
+            details["application_mode"] = .string((tourniquetApplicationMode ?? .hasty).rawValue)
+        }
+        return details
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1512,7 +1648,7 @@ public struct VitalEventRequest: Codable, Sendable {
         lockValue: Bool,
         minValueDiastolic: Int?,
         maxValueDiastolic: Int?,
-        supersedesEventID: Int?
+        supersedesEventID: Int?,
     ) {
         self.vitalType = vitalType
         self.minValue = minValue
@@ -1635,7 +1771,7 @@ public struct ProblemCreateRequest: Codable, Sendable {
         laterality: String = "",
         status: ProblemLifecycleState = .active,
         metadata: [String: JSONValue]? = nil,
-        supersedesEventID: Int? = nil
+        supersedesEventID: Int? = nil,
     ) {
         self.causeKind = causeKind
         self.causeID = causeID
@@ -1854,7 +1990,7 @@ public struct AnnotationCreateRequest: Codable, Sendable {
         learningObjective: AnnotationLearningObjective = .other,
         outcome: AnnotationOutcome = .pending,
         linkedEventID: Int? = nil,
-        elapsedSecondsAt: Int? = nil
+        elapsedSecondsAt: Int? = nil,
     ) {
         self.learningObjective = learningObjective
         self.observationText = observationText
@@ -1960,7 +2096,7 @@ public struct ScenarioBriefUpdateRequest: Codable, Sendable {
         threatContext: String? = nil,
         evacuationOptions: [String]? = nil,
         evacuationTime: String? = nil,
-        specialConsiderations: [String]? = nil
+        specialConsiderations: [String]? = nil,
     ) {
         self.readAloudBrief = readAloudBrief
         self.environment = environment

@@ -137,7 +137,7 @@ final class ChatLabContractTests: XCTestCase {
                 conversationID: 3,
                 cursor: "22",
                 order: "desc",
-                limit: 10
+                limit: 10,
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -157,7 +157,7 @@ final class ChatLabContractTests: XCTestCase {
         do {
             _ = try await service.signOrders(
                 simulationID: 7,
-                request: ChatSignOrdersRequest(submittedOrders: ["CBC"])
+                request: ChatSignOrdersRequest(submittedOrders: ["CBC"]),
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -177,7 +177,7 @@ final class ChatLabContractTests: XCTestCase {
         do {
             _ = try await service.submitLabOrders(
                 simulationID: 7,
-                request: ChatSubmitLabOrdersRequest(orders: ["CBC"])
+                request: ChatSubmitLabOrdersRequest(orders: ["CBC"]),
             )
             XCTFail("Expected intercepted error")
         } catch {
@@ -187,7 +187,7 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
         XCTAssertEqual(
             try decodeJSONBody(api.capturedEndpoints.last?.body)?["orders"] as? [String],
-            ["CBC"]
+            ["CBC"],
         )
 
         do {
