@@ -133,6 +133,20 @@ public struct AccountOut: Codable, Equatable, Identifiable, Sendable {
         case membershipStatus = "membership_status"
         case isActiveContext = "is_active_context"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        uuid = try container.decode(String.self, forKey: .uuid)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        slug = try container.decodeIfPresent(String.self, forKey: .slug) ?? ""
+        accountType = try container.decodeIfPresent(String.self, forKey: .accountType) ?? "personal"
+        isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? true
+        requiresJoinApproval = try container.decodeIfPresent(Bool.self, forKey: .requiresJoinApproval) ?? false
+        parentAccountUUID = try container.decodeIfPresent(String.self, forKey: .parentAccountUUID)
+        membershipRole = try container.decodeIfPresent(String.self, forKey: .membershipRole)
+        membershipStatus = try container.decodeIfPresent(String.self, forKey: .membershipStatus)
+        isActiveContext = try container.decodeIfPresent(Bool.self, forKey: .isActiveContext) ?? false
+    }
 }
 
 public struct ProductAccessOut: Codable, Equatable, Sendable {
@@ -154,6 +168,13 @@ public struct ProductAccessOut: Codable, Equatable, Sendable {
         case enabled
         case features
         case limits
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        features = try container.decodeIfPresent([String: JSONValue].self, forKey: .features) ?? [:]
+        limits = try container.decodeIfPresent([String: JSONValue].self, forKey: .limits) ?? [:]
     }
 }
 
@@ -184,6 +205,15 @@ public struct AccessSnapshotOut: Codable, Equatable, Sendable {
         case accountType = "account_type"
         case membershipRole = "membership_role"
         case products
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountUUID = try container.decode(String.self, forKey: .accountUUID)
+        accountName = try container.decodeIfPresent(String.self, forKey: .accountName) ?? ""
+        accountType = try container.decodeIfPresent(String.self, forKey: .accountType) ?? "personal"
+        membershipRole = try container.decodeIfPresent(String.self, forKey: .membershipRole)
+        products = try container.decodeIfPresent([String: ProductAccessOut].self, forKey: .products) ?? [:]
     }
 }
 

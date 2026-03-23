@@ -68,6 +68,7 @@ public struct AppShellRootView: View {
                         },
                         onSignOut: {
                             selectedApp = nil
+                            showAccountBilling = false
                             Task { await model.authViewModel.signOut() }
                         },
                     )
@@ -371,7 +372,9 @@ private struct AccountBillingSheet: View {
                                 Task {
                                     do {
                                         try await accountStore.switchAccount(to: account.uuid)
-                                        onAccountSwitched()
+                                        await MainActor.run {
+                                            onAccountSwitched()
+                                        }
                                     } catch {
                                         // Surface the backend error through the shared store state.
                                     }

@@ -84,7 +84,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         guard let value = productAccess(code: productCode)?.features[feature] else {
             return false
         }
-        switch value {
+        return switch value {
         case let .bool(enabled):
             enabled
         case let .number(number):
@@ -259,8 +259,9 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
 
     private func persistedSelectionKey() -> String {
         let baseURL = baseURLProvider()
-        let host = baseURL.host() ?? baseURL.host ?? "unknown"
-        let port = baseURL.port.map(String.init) ?? "default"
+        let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        let host = components?.host ?? "unknown"
+        let port = components?.port.map(String.init) ?? "default"
         return "medsim.selected-account.\(host).\(port)"
     }
 }
