@@ -439,6 +439,51 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.clinicalTimelineEntries.map(\.title), ["Run Started", "Scenario Ready"])
     }
 
+    func testBindSeedsHydratedSectionsFromSessionRuntimeStateAliases() {
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+
+        store.bind(session: makeSession(
+            status: .seeded,
+            runtimeState: makeAliasedSessionRuntimeSeed(),
+        ))
+
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
+        XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
+        XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
+        XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
+        XCTAssertEqual(store.state.vitals.first?.key, "heart_rate")
+        XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
+        XCTAssertEqual(store.state.interventionAnnotations.first?.siteCode, "LEFT_ARM")
+    }
+
+    func testRefreshSessionSeedsHydratedSectionsFromReturnedRuntimeSeed() async {
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(
+            status: .running,
+            runtimeState: makeAliasedSessionRuntimeSeed(),
+        ))
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+
+        await store.refreshSession()
+
+        XCTAssertEqual(service.getSessionCalls, [420])
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
+        XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
+        XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
+        XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
+    }
+
     func testStateUpdatedAuthoritativelyReplacesVitals() async throws {
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
@@ -491,6 +536,213 @@ final class RunSessionStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(store.state.vitals.count, 1)
+    }
+
+    func testSparseRuntimeRefreshPreservesHydratedSectionsWhenPayloadOmitsThem() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                scenarioBrief: [
+                    "read_aloud_brief": "Patrol medic called to blast injury.",
+                ],
+                causes: [[
+                    "cause_id": 11,
+                    "kind": "injury",
+                    "title": "Blast Injury",
+                    "description": "Open wound to the left arm",
+                    "injury_location": "LEFT_ARM",
+                ]],
+                problems: [[
+                    "problem_id": 21,
+                    "title": "Hemorrhagic Shock",
+                    "status": "active",
+                    "cause_id": 11,
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 90,
+                    "max_value": 110,
+                ]],
+                pulses: [[
+                    "location": "radial_left",
+                    "present": false,
+                    "quality": "weak",
+                ]],
+                interventions: [[
+                    "intervention_id": 31,
+                    "kind": "tourniquet",
+                    "title": "Tourniquet",
+                    "site_code": "LEFT_ARM",
+                    "target_problem_id": 21,
+                ]],
+                patientStatus: [
+                    "narrative": "Increasing respiratory distress.",
+                ],
+                aiPlan: [
+                    "summary": "Escalate respiratory distress",
+                ],
+            )),
+            .success(try decodeRuntimeStatePayload([
+                "simulation_id": 420,
+                "session_id": 420,
+                "status": "running",
+                "state_revision": 2,
+                "active_elapsed_seconds": 0,
+                "tick_interval_seconds": 15,
+                "current_snapshot": [
+                    "vitals": [[
+                        "vital_type": "heart_rate",
+                        "min_value": 120,
+                        "max_value": 150,
+                    ]],
+                ],
+                "pending_runtime_reasons": [],
+                "pending_reasons": [],
+                "currently_processing_reasons": [],
+                "last_runtime_error": "",
+            ])),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.hydratedCauses.first?.causeID == 11 &&
+                store.state.vitals.first?.minValue == 90
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "state-2",
+            eventType: "state.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2 &&
+                store.state.vitals.first?.minValue == 120 &&
+                store.state.vitals.first?.maxValue == 150
+        }
+
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
+        XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
+        XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
+        XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
+        XCTAssertEqual(store.state.interventionAnnotations.first?.siteCode, "LEFT_ARM")
+        XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
+    }
+
+    func testExplicitEmptyRuntimeCollectionsClearHydratedState() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                causes: [[
+                    "cause_id": 11,
+                    "kind": "injury",
+                    "title": "Blast Injury",
+                    "description": "Open wound to the left arm",
+                    "injury_location": "LEFT_ARM",
+                ]],
+                problems: [[
+                    "problem_id": 21,
+                    "title": "Hemorrhagic Shock",
+                    "status": "active",
+                    "cause_id": 11,
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 90,
+                    "max_value": 110,
+                ]],
+                pulses: [[
+                    "location": "radial_left",
+                    "present": false,
+                    "quality": "weak",
+                ]],
+                interventions: [[
+                    "intervention_id": 31,
+                    "kind": "tourniquet",
+                    "title": "Tourniquet",
+                    "site_code": "LEFT_ARM",
+                    "target_problem_id": 21,
+                ]],
+            )),
+            .success(try decodeRuntimeStatePayload([
+                "simulation_id": 420,
+                "session_id": 420,
+                "status": "running",
+                "state_revision": 2,
+                "active_elapsed_seconds": 0,
+                "tick_interval_seconds": 15,
+                "current_snapshot": [
+                    "causes": [],
+                    "problems": [],
+                    "recommended_interventions": [],
+                    "interventions": [],
+                    "assessment_findings": [],
+                    "diagnostic_results": [],
+                    "resources": [],
+                    "disposition": NSNull(),
+                    "vitals": [],
+                    "pulses": [],
+                    "patient_status": [:],
+                ],
+                "pending_runtime_reasons": [],
+                "pending_reasons": [],
+                "currently_processing_reasons": [],
+                "last_runtime_error": "",
+            ])),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.hydratedCauses.count == 1 &&
+                store.state.problemAnnotations.count == 1 &&
+                store.state.interventionAnnotations.count == 1 &&
+                store.state.pulseAnnotations.count == 1 &&
+                store.state.vitals.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "state-clear",
+            eventType: "state.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2 &&
+                store.hydratedCauses.isEmpty &&
+                store.state.problemAnnotations.isEmpty &&
+                store.state.interventionAnnotations.isEmpty &&
+                store.state.pulseAnnotations.isEmpty &&
+                store.state.vitals.isEmpty
+        }
     }
 
     func testAIIntentUpdatedTriggersAuthoritativeRefresh() async throws {
@@ -1148,6 +1400,7 @@ final class RunSessionStoreTests: XCTestCase {
     private func makeSession(
         status: TrainerSessionStatus,
         scenarioSpec: [String: JSONValue] = [:],
+        runtimeState: [String: JSONValue] = [:],
         runStartedAt: Date? = nil,
         runCompletedAt: Date? = nil,
         terminalReasonCode: String? = nil,
@@ -1159,7 +1412,7 @@ final class RunSessionStoreTests: XCTestCase {
             simulationID: 420,
             status: status,
             scenarioSpec: scenarioSpec,
-            runtimeState: [:],
+            runtimeState: runtimeState,
             initialDirectives: nil,
             tickIntervalSeconds: 15,
             runStartedAt: runStartedAt,
@@ -1334,10 +1587,73 @@ final class RunSessionStoreTests: XCTestCase {
             "last_ai_tick_at": NSNull(),
         ]
 
+        return try decodeRuntimeStatePayload(payload)
+    }
+
+    private func decodeRuntimeStatePayload(_ payload: [String: Any]) throws -> TrainerRuntimeStateOut {
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(TrainerRuntimeStateOut.self, from: data)
+    }
+
+    private func makeAliasedSessionRuntimeSeed() -> [String: JSONValue] {
+        [
+            "scenario_brief": .object([
+                "read_aloud_brief": .string("Patrol medic called to blast injury."),
+                "environment": .string("Night operation"),
+            ]),
+            "injuries": .array([
+                .object([
+                    "cause_id": .number(11),
+                    "kind": .string("injury"),
+                    "title": .string("Blast Injury"),
+                    "description": .string("Open wound to the left arm"),
+                    "injury_location": .string("LEFT_ARM"),
+                ]),
+            ]),
+            "conditions": .array([
+                .object([
+                    "problem_id": .number(21),
+                    "title": .string("Hemorrhagic Shock"),
+                    "status": .string("active"),
+                    "cause_id": .number(11),
+                    "anatomical_location": .string("LEFT_ARM"),
+                ]),
+            ]),
+            "interventions": .array([
+                .object([
+                    "intervention_id": .number(31),
+                    "kind": .string("tourniquet"),
+                    "title": .string("Tourniquet"),
+                    "site_code": .string("LEFT_ARM"),
+                    "target_problem_id": .number(21),
+                ]),
+            ]),
+            "pulses": .array([
+                .object([
+                    "location": .string("radial_left"),
+                    "present": .bool(false),
+                    "quality": .string("weak"),
+                ]),
+            ]),
+            "vitals": .array([
+                .object([
+                    "vital_type": .string("heart_rate"),
+                    "min_value": .number(120),
+                    "max_value": .number(140),
+                ]),
+            ]),
+            "patient_status": .object([
+                "avpu": .string("verbal"),
+                "narrative": .string("Increasing respiratory distress."),
+                "respiratory_distress": .bool(true),
+            ]),
+            "ai_instructor": .object([
+                "summary": .string("Escalate respiratory distress"),
+                "upcoming_changes": .array([.string("Decrease SpO2")]),
+            ]),
+        ]
     }
 
     private func makeLifecycleEvent(

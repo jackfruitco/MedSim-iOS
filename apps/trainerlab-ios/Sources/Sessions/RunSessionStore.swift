@@ -21,11 +21,15 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var scenarioBrief: ScenarioBriefOut?
     @Published public private(set) var controlPlaneDebug: ControlPlaneDebugOut?
     @Published public private(set) var debriefAnnotations: [AnnotationOut] = []
+    @Published public private(set) var hydratedCauses: [RuntimeCauseState] = []
+    @Published public private(set) var hydratedProblems: [RuntimeProblemState] = []
     @Published public private(set) var assessmentFindings: [RuntimeAssessmentFindingState] = []
     @Published public private(set) var diagnosticResults: [RuntimeDiagnosticResultState] = []
     @Published public private(set) var resources: [RuntimeResourceState] = []
     @Published public private(set) var disposition: RuntimeDispositionState?
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
+    @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
+    @Published public private(set) var aiInstructorNotes: [String] = []
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
@@ -69,6 +73,7 @@ public final class RunSessionStore: ObservableObject {
 
     public func bind(session: TrainerSessionDTO) {
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
+        seedHydrationFromSessionRuntimeState(session)
         syncStopwatchState()
         syncTransportPresentation(for: state.transportState)
     }
@@ -360,6 +365,7 @@ public final class RunSessionStore: ObservableObject {
             let previousStatus = state.session?.status
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(latest))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            seedHydrationFromSessionRuntimeState(latest)
             syncStopwatchState(previousStatus: previousStatus)
         } catch {
             state.conflictBanner = error.localizedDescription
@@ -375,6 +381,7 @@ public final class RunSessionStore: ObservableObject {
                 let previousStatus = state.session?.status
                 state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updated))
                 state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+                seedHydrationFromSessionRuntimeState(updated)
                 syncStopwatchState(previousStatus: previousStatus)
                 _ = await loadRuntimeState(reason: "retry initial simulation")
             } catch {
@@ -2104,12 +2111,98 @@ public final class RunSessionStore: ObservableObject {
         applyRuntimeState(runtimeState, source: "reconcile")
     }
 
+    private func seedHydrationFromSessionRuntimeState(_ session: TrainerSessionDTO) {
+        guard let seededRuntimeState = decodeRuntimeStateSeed(from: session) else {
+            return
+        }
+        applyRuntimeState(seededRuntimeState, source: "session")
+    }
+
+    private func decodeRuntimeStateSeed(from session: TrainerSessionDTO) -> TrainerRuntimeStateOut? {
+        guard !session.runtimeState.isEmpty else {
+            return nil
+        }
+
+        var payload = session.runtimeState
+        if payload["simulation_id"] == nil {
+            payload["simulation_id"] = .number(Double(session.simulationID))
+        }
+        if payload["session_id"] == nil {
+            payload["session_id"] = .number(Double(session.simulationID))
+        }
+        if payload["status"] == nil {
+            payload["status"] = .string(session.status.rawValue)
+        }
+        if payload["state_revision"] == nil {
+            payload["state_revision"] = .number(0)
+        }
+        if payload["active_elapsed_seconds"] == nil {
+            payload["active_elapsed_seconds"] = .number(0)
+        }
+        if payload["tick_interval_seconds"] == nil {
+            payload["tick_interval_seconds"] = .number(Double(session.tickIntervalSeconds))
+        }
+        if payload["current_snapshot"] == nil {
+            let snapshotKeys: Set<String> = [
+                "causes",
+                "injuries",
+                "problems",
+                "conditions",
+                "recommended_interventions",
+                "interventions",
+                "assessment_findings",
+                "diagnostic_results",
+                "resources",
+                "disposition",
+                "vitals",
+                "pulses",
+                "patient_status",
+            ]
+            let snapshotObject = payload.filter { snapshotKeys.contains($0.key) }
+            payload["current_snapshot"] = .object(snapshotObject)
+        }
+        if payload["last_ai_tick_at"] == nil, let lastAITickAt = session.lastAITickAt {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            payload["last_ai_tick_at"] = .string(formatter.string(from: lastAITickAt))
+        }
+
+        do {
+            let data = try JSONSerialization.data(withJSONObject: payload.mapValues(\.rawValue), options: [.sortedKeys])
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let value = try container.decode(String.self)
+                if let date = Self.parseISO8601(value) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(value)")
+            }
+            return try decoder.decode(TrainerRuntimeStateOut.self, from: data)
+        } catch {
+            logger.debug(
+                "Skipping session runtime hydration seed for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
+            )
+            return nil
+        }
+    }
+
     private func hydrateHiddenClinicalState(from snapshot: TrainerRuntimeSnapshot) {
-        assessmentFindings = snapshot.assessmentFindings
-        diagnosticResults = snapshot.diagnosticResults
-        resources = snapshot.resources
-        disposition = snapshot.disposition
-        patientStatus = snapshot.patientStatus
+        if snapshot.presence.assessmentFindings {
+            assessmentFindings = snapshot.assessmentFindings
+        }
+        if snapshot.presence.diagnosticResults {
+            diagnosticResults = snapshot.diagnosticResults
+        }
+        if snapshot.presence.resources {
+            resources = snapshot.resources
+        }
+        if snapshot.presence.disposition {
+            disposition = snapshot.disposition
+        }
+        if snapshot.presence.patientStatus {
+            patientStatus = snapshot.patientStatus
+        }
     }
 
     private func makeVitalSnapshot(
@@ -2164,34 +2257,59 @@ public final class RunSessionStore: ObservableObject {
         )
 
         self.runtimeState = runtimeState
-        scenarioBrief = runtimeState.scenarioBrief
+        if runtimeState.presence.scenarioBrief {
+            scenarioBrief = runtimeState.scenarioBrief
+        }
+        if runtimeState.presence.aiPlan {
+            aiInstructorIntent = runtimeState.aiPlan
+        }
+        if runtimeState.presence.aiRationaleNotes {
+            aiInstructorNotes = runtimeState.aiRationaleNotes
+        }
         hydrateHiddenClinicalState(from: snapshot)
         noteLifecycleRevision(runtimeState.stateRevision)
 
-        let causesByID = Dictionary(uniqueKeysWithValues: snapshot.causes.compactMap { cause in
+        if snapshot.presence.causes {
+            hydratedCauses = snapshot.causes
+        }
+        if snapshot.presence.problems {
+            hydratedProblems = snapshot.problems
+        }
+
+        let causesByID = Dictionary(uniqueKeysWithValues: hydratedCauses.compactMap { cause in
             cause.causeID.map { ($0, cause) }
         })
-        let problemsByID = Dictionary(uniqueKeysWithValues: snapshot.problems.compactMap { problem in
+        let problemsByID = Dictionary(uniqueKeysWithValues: hydratedProblems.compactMap { problem in
             problem.problemID.map { ($0, problem) }
         })
-        let existingVitalsByKey = Dictionary(uniqueKeysWithValues: state.vitals.map { ($0.key, $0) })
 
-        state.causeAnnotations = snapshot.causes.compactMap { cause in
-            makeCauseAnnotation(from: cause, fallbackProblem: cause.causeID.flatMap { causeID in
-                snapshot.problems.first(where: { $0.causeID == causeID })
-            })
+        if snapshot.presence.causes || snapshot.presence.problems {
+            state.causeAnnotations = hydratedCauses.compactMap { cause in
+                makeCauseAnnotation(from: cause, fallbackProblem: cause.causeID.flatMap { causeID in
+                    hydratedProblems.first(where: { $0.causeID == causeID })
+                })
+            }
+            state.problemAnnotations = hydratedProblems.map { problem in
+                makeProblemAnnotation(from: problem, causesByID: causesByID)
+            }
         }
-        state.problemAnnotations = snapshot.problems.map { problem in
-            makeProblemAnnotation(from: problem, causesByID: causesByID)
+        if snapshot.presence.recommendedInterventions {
+            state.recommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
+                makeRecommendedInterventionItem(from: recommendation, problemsByID: problemsByID)
+            }
         }
-        state.recommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
-            makeRecommendedInterventionItem(from: recommendation, problemsByID: problemsByID)
+        if snapshot.presence.interventions {
+            state.interventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
         }
-        state.interventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
-        state.pulseAnnotations = snapshot.pulses.compactMap(makePulseAnnotation)
-        state.vitals = snapshot.vitals.compactMap { vitalState in
-            let existing = vitalState.vitalType.flatMap { existingVitalsByKey[$0] }
-            return makeVitalSnapshot(from: vitalState, existing: existing)
+        if snapshot.presence.pulses {
+            state.pulseAnnotations = snapshot.pulses.compactMap(makePulseAnnotation)
+        }
+        if snapshot.presence.vitals {
+            let existingVitalsByKey = Dictionary(uniqueKeysWithValues: state.vitals.map { ($0.key, $0) })
+            state.vitals = snapshot.vitals.compactMap { vitalState in
+                let existing = vitalState.vitalType.flatMap { existingVitalsByKey[$0] }
+                return makeVitalSnapshot(from: vitalState, existing: existing)
+            }
         }
     }
 
@@ -2595,6 +2713,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func parseISODate(_ value: String?) -> Date? {
         guard let value, !value.isEmpty else { return nil }
+        return Self.parseISO8601(value)
+    }
+
+    private nonisolated static func parseISO8601(_ value: String) -> Date? {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = fractional.date(from: value) {
