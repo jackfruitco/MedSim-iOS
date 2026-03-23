@@ -57,22 +57,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         query: String?,
         searchMessages: Bool,
     ) async throws -> PaginatedResponse<ChatSimulation> {
-        var queryItems: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        if let status, !status.isEmpty {
-            queryItems.append(URLQueryItem(name: "status", value: status))
-        }
-        if let query, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            queryItems.append(URLQueryItem(name: "q", value: query))
-        }
-        if searchMessages {
-            queryItems.append(URLQueryItem(name: "search_messages", value: "true"))
-        }
-
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/", query: queryItems),
+        try await apiClient.request(
+            ChatLabAPI.listSimulations(
+                limit: limit,
+                cursor: cursor,
+                status: status,
+                query: query,
+                searchMessages: searchMessages,
+            ),
             as: PaginatedResponse<ChatSimulation>.self,
         )
     }
@@ -80,42 +72,40 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     public func quickCreateSimulation(request: ChatQuickCreateRequest) async throws -> ChatSimulation {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/quick-create/", method: .post, body: body),
+            ChatLabAPI.quickCreateSimulation(body: body),
             as: ChatSimulation.self,
         )
     }
 
     public func getSimulation(simulationID: Int) async throws -> ChatSimulation {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/"),
+            ChatLabAPI.simulation(simulationID: simulationID),
             as: ChatSimulation.self,
         )
     }
 
     public func endSimulation(simulationID: Int) async throws -> ChatSimulation {
-        _ = try await apiClient.requestData(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/end/", method: .post, body: Data()),
-        )
+        _ = try await apiClient.requestData(ChatLabAPI.endSimulation(simulationID: simulationID))
         return try await getSimulation(simulationID: simulationID)
     }
 
     public func retryInitial(simulationID: Int) async throws -> ChatSimulation {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-initial/", method: .post, body: Data()),
+            ChatLabAPI.retryInitial(simulationID: simulationID),
             as: ChatSimulation.self,
         )
     }
 
     public func retryFeedback(simulationID: Int) async throws -> ChatSimulation {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/retry-feedback/", method: .post, body: Data()),
+            ChatLabAPI.retryFeedback(simulationID: simulationID),
             as: ChatSimulation.self,
         )
     }
 
     public func listConversations(simulationID: Int) async throws -> ChatConversationListResponse {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/"),
+            ChatLabAPI.conversations(simulationID: simulationID),
             as: ChatConversationListResponse.self,
         )
     }
@@ -123,14 +113,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     public func createConversation(simulationID: Int, request: ChatCreateConversationRequest) async throws -> ChatConversation {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/", method: .post, body: body),
+            ChatLabAPI.createConversation(simulationID: simulationID, body: body),
             as: ChatConversation.self,
         )
     }
 
     public func getConversation(simulationID: Int, conversationUUID: String) async throws -> ChatConversation {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/conversations/\(conversationUUID)/"),
+            ChatLabAPI.conversation(simulationID: simulationID, conversationUUID: conversationUUID),
             as: ChatConversation.self,
         )
     }
@@ -142,18 +132,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         order: String = "asc",
         limit: Int = 50,
     ) async throws -> PaginatedResponse<ChatMessage> {
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "order", value: order),
-            URLQueryItem(name: "limit", value: String(limit)),
-        ]
-        if let conversationID {
-            queryItems.append(URLQueryItem(name: "conversation_id", value: String(conversationID)))
-        }
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/", query: queryItems),
+        try await apiClient.request(
+            ChatLabAPI.listMessages(
+                simulationID: simulationID,
+                conversationID: conversationID,
+                cursor: cursor,
+                order: order,
+                limit: limit,
+            ),
             as: PaginatedResponse<ChatMessage>.self,
         )
     }
@@ -161,57 +147,49 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     public func createMessage(simulationID: Int, request: ChatCreateMessageRequest) async throws -> ChatMessage {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/", method: .post, body: body),
+            ChatLabAPI.createMessage(simulationID: simulationID, body: body),
             as: ChatMessage.self,
         )
     }
 
     public func retryMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/retry/", method: .post, body: Data()),
+            ChatLabAPI.retryMessage(simulationID: simulationID, messageID: messageID),
             as: ChatMessage.self,
         )
     }
 
     public func getMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/"),
+            ChatLabAPI.message(simulationID: simulationID, messageID: messageID),
             as: ChatMessage.self,
         )
     }
 
     public func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/read/", method: .patch, body: Data()),
+            ChatLabAPI.markMessageRead(simulationID: simulationID, messageID: messageID),
             as: ChatMessage.self,
         )
     }
 
     public func listEvents(simulationID: Int, cursor: String?, limit: Int = 50) async throws -> PaginatedResponse<ChatEventEnvelope> {
-        var queryItems: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/events/", query: queryItems),
+        try await apiClient.request(
+            ChatLabAPI.listEvents(simulationID: simulationID, cursor: cursor, limit: limit),
             as: PaginatedResponse<ChatEventEnvelope>.self,
         )
     }
 
     public func listTools(simulationID: Int, names: [String]? = nil) async throws -> ChatToolListResponse {
-        var queryItems: [URLQueryItem] = []
-        if let names {
-            queryItems.append(contentsOf: names.map { URLQueryItem(name: "names", value: $0) })
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/", query: queryItems),
+        try await apiClient.request(
+            ChatLabAPI.listTools(simulationID: simulationID, names: names),
             as: ChatToolListResponse.self,
         )
     }
 
     public func getTool(simulationID: Int, toolName: String) async throws -> ChatToolState {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/\(toolName)/"),
+            ChatLabAPI.tool(simulationID: simulationID, toolName: toolName),
             as: ChatToolState.self,
         )
     }
@@ -219,7 +197,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     public func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/tools/patient_results/orders/", method: .post, body: body),
+            ChatLabAPI.signOrders(simulationID: simulationID, body: body),
             as: ChatSignOrdersResponse.self,
         )
     }
@@ -227,18 +205,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
     public func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/simulations/\(simulationID)/lab-orders/", method: .post, body: body),
+            ChatLabAPI.submitLabOrders(simulationID: simulationID, body: body),
             as: ChatLabOrdersResponse.self,
         )
     }
 
     public func listModifierGroups(groups: [String]? = nil) async throws -> [ModifierGroup] {
-        var queryItems: [URLQueryItem] = []
-        if let groups {
-            queryItems.append(contentsOf: groups.map { URLQueryItem(name: "groups", value: $0) })
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/config/modifier-groups/", query: queryItems),
+        try await apiClient.request(
+            ChatLabAPI.listModifierGroups(groups: groups),
             as: [ModifierGroup].self,
         )
     }

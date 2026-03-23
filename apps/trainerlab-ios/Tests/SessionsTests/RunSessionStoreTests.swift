@@ -277,7 +277,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         let event = EventEnvelope(
             eventID: "event-dup-1",
-            eventType: "trainerlab.adjustment.applied",
+            eventType: SimulationEventType.simulationAdjustmentUpdated,
             createdAt: Date(),
             correlationID: "corr-1",
             payload: ["target": .string("avpu")],
@@ -324,7 +324,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "vital-1",
-            eventType: "vital.created",
+            eventType: SimulationEventType.patientVitalCreated,
             createdAt: Date(),
             correlationID: nil,
             payload: [
@@ -405,8 +405,18 @@ final class RunSessionStoreTests: XCTestCase {
         ))
         service.listEventsResult = .success(PaginatedResponse(
             items: [
-                makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
-                makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
+                makeStatusUpdatedEvent(
+                    eventID: "seed-1",
+                    status: "seeded",
+                    stateRevision: 4,
+                    createdAt: Date(timeIntervalSince1970: 10),
+                ),
+                makeStatusUpdatedEvent(
+                    eventID: "run-1",
+                    status: "running",
+                    to: "running",
+                    createdAt: Date(timeIntervalSince1970: 20),
+                ),
             ],
             nextCursor: nil,
             hasMore: false,
@@ -437,6 +447,10 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
         XCTAssertEqual(store.runtimeState?.aiPlan?.summary, "Escalate respiratory distress")
         XCTAssertEqual(store.state.clinicalTimelineEntries.map(\.title), ["Run Started", "Scenario Ready"])
+        XCTAssertEqual(
+            store.state.timeline.map(\.eventType),
+            [SimulationEventType.simulationStatusUpdated, SimulationEventType.simulationStatusUpdated],
+        )
     }
 
     func testBindSeedsHydratedSectionsFromSessionRuntimeStateAliases() {
@@ -523,7 +537,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "state-2",
-            eventType: "state.updated",
+            eventType: SimulationEventType.simulationSnapshotUpdated,
             createdAt: Date(),
             correlationID: nil,
             payload: [:],
@@ -774,7 +788,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "ai-1",
-            eventType: "ai.intent.updated",
+            eventType: SimulationEventType.simulationPlanUpdated,
             createdAt: Date(),
             correlationID: nil,
             payload: ["summary": .string("Reassess airway")],
@@ -809,9 +823,9 @@ final class RunSessionStoreTests: XCTestCase {
             service.getRuntimeStateCalls.count == 1
         }
 
-        realtime.emit(event: EventEnvelope(eventID: "e1", eventType: "state.updated", createdAt: Date(), correlationID: nil, payload: [:]))
-        realtime.emit(event: EventEnvelope(eventID: "e2", eventType: "ai.intent.updated", createdAt: Date(), correlationID: nil, payload: [:]))
-        realtime.emit(event: EventEnvelope(eventID: "e3", eventType: "recommended_intervention.updated", createdAt: Date(), correlationID: nil, payload: [:]))
+        realtime.emit(event: EventEnvelope(eventID: "e1", eventType: SimulationEventType.simulationSnapshotUpdated, createdAt: Date(), correlationID: nil, payload: [:]))
+        realtime.emit(event: EventEnvelope(eventID: "e2", eventType: SimulationEventType.simulationPlanUpdated, createdAt: Date(), correlationID: nil, payload: [:]))
+        realtime.emit(event: EventEnvelope(eventID: "e3", eventType: SimulationEventType.patientRecommendedInterventionUpdated, createdAt: Date(), correlationID: nil, payload: [:]))
 
         await waitUntil(timeout: 2.0) {
             service.getRuntimeStateCalls.count == 2
@@ -826,8 +840,18 @@ final class RunSessionStoreTests: XCTestCase {
         service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
         service.listEventsResult = .success(PaginatedResponse(
             items: [
-                makeLifecycleEvent(eventID: "seed-1", eventType: "session.seeded", createdAt: Date(timeIntervalSince1970: 10)),
-                makeLifecycleEvent(eventID: "run-1", eventType: "run.started", createdAt: Date(timeIntervalSince1970: 20)),
+                makeStatusUpdatedEvent(
+                    eventID: "seed-1",
+                    status: "seeded",
+                    stateRevision: 1,
+                    createdAt: Date(timeIntervalSince1970: 10),
+                ),
+                makeStatusUpdatedEvent(
+                    eventID: "run-1",
+                    status: "running",
+                    to: "running",
+                    createdAt: Date(timeIntervalSince1970: 20),
+                ),
             ],
             nextCursor: nil,
             hasMore: false,
@@ -847,14 +871,17 @@ final class RunSessionStoreTests: XCTestCase {
             store.state.timeline.count == 2
         }
 
-        realtime.emit(event: makeLifecycleEvent(
+        realtime.emit(event: makeStatusUpdatedEvent(
             eventID: "run-1",
-            eventType: "run.started",
+            status: "running",
+            to: "running",
             createdAt: Date(timeIntervalSince1970: 20),
         ))
-        realtime.emit(event: makeLifecycleEvent(
+        realtime.emit(event: makeStatusUpdatedEvent(
             eventID: "run-2",
-            eventType: "run.paused",
+            status: "paused",
+            from: "running",
+            to: "paused",
             createdAt: Date(timeIntervalSince1970: 30),
         ))
 
@@ -862,6 +889,15 @@ final class RunSessionStoreTests: XCTestCase {
             store.state.timeline.map(\.eventID) == ["seed-1", "run-1", "run-2"]
                 && store.state.clinicalTimelineEntries.map(\.title) == ["Run Paused", "Run Started", "Scenario Ready"]
         }
+
+        XCTAssertEqual(
+            store.state.timeline.map(\.eventType),
+            [
+                SimulationEventType.simulationStatusUpdated,
+                SimulationEventType.simulationStatusUpdated,
+                SimulationEventType.simulationStatusUpdated,
+            ],
+        )
     }
 
     func testStopwatchTracksRunLifecycleTransitions() async throws {
@@ -877,10 +913,10 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "run-1",
-            eventType: "run.started",
+            eventType: SimulationEventType.simulationStatusUpdated,
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: ["status": .string("running"), "to": .string("running")],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -895,10 +931,10 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "run-2",
-            eventType: "run.paused",
+            eventType: SimulationEventType.simulationStatusUpdated,
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: ["status": .string("paused"), "from": .string("running"), "to": .string("paused")],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -911,10 +947,10 @@ final class RunSessionStoreTests: XCTestCase {
 
         realtime.emit(event: EventEnvelope(
             eventID: "run-3",
-            eventType: "trainerlab.run.resumed",
+            eventType: SimulationEventType.simulationStatusUpdated,
             createdAt: Date(),
             correlationID: nil,
-            payload: [:],
+            payload: ["status": .string("running"), "from": .string("paused"), "to": .string("running")],
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -968,15 +1004,12 @@ final class RunSessionStoreTests: XCTestCase {
             store.state.stopwatchIsRunning
         }
 
-        realtime.emit(event: makeSimulationStateChangedEvent(
-            payload: SimulationStateChangedPayload(
-                status: "failed",
-                retryable: true,
-                terminalAt: Date(),
-                simulationID: 420,
-                terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
-                terminalReasonText: "We could not start this simulation. Please try again.",
-            ),
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "failed",
+            reasonCode: "trainerlab_initial_generation_enqueue_failed",
+            reasonText: "We could not start this simulation. Please try again.",
+            retryable: true,
+            terminalAt: Date(),
         ))
 
         await waitUntil(timeout: 1.5) {
@@ -1001,15 +1034,13 @@ final class RunSessionStoreTests: XCTestCase {
         store.startConsole()
         defer { store.stopConsole() }
 
-        realtime.emit(event: makeSimulationStateChangedEvent(
-            payload: SimulationStateChangedPayload(
-                status: "failed",
-                retryable: true,
-                terminalAt: Date(),
-                simulationID: 999,
-                terminalReasonCode: "trainerlab_initial_generation_enqueue_failed",
-                terminalReasonText: "Should be ignored.",
-            ),
+        realtime.emit(event: makeStatusUpdatedEvent(
+            simulationID: 999,
+            status: "failed",
+            reasonCode: "trainerlab_initial_generation_enqueue_failed",
+            reasonText: "Should be ignored.",
+            retryable: true,
+            terminalAt: Date(),
         ))
 
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -1028,8 +1059,8 @@ final class RunSessionStoreTests: XCTestCase {
         store.startConsole()
         defer { store.stopConsole() }
 
-        realtime.emit(event: makeSessionFailedEvent(
-            simulationID: 420,
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "failed",
             reasonCode: "trainerlab_initial_generation_failed",
             reasonText: "Initial scenario generation failed.",
             retryable: true,
@@ -1060,8 +1091,8 @@ final class RunSessionStoreTests: XCTestCase {
         store.startConsole()
         defer { store.stopConsole() }
 
-        realtime.emit(event: makeSessionSeedingEvent(
-            simulationID: 420,
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "seeding",
             stateRevision: 2,
             scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
             retryCount: 1,
@@ -1110,8 +1141,8 @@ final class RunSessionStoreTests: XCTestCase {
                 service.retryInitialCalls == [420]
         }
 
-        realtime.emit(event: makeSessionSeededEvent(
-            simulationID: 420,
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "seeded",
             stateRevision: 2,
             scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
         ))
@@ -1359,8 +1390,8 @@ final class RunSessionStoreTests: XCTestCase {
         let runtimeCallsBefore = service.getRuntimeStateCalls.count
         let annotationCallsBefore = service.listAnnotationsCalls.count
 
-        realtime.emit(event: makeSessionSeededEvent(
-            simulationID: 420,
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "seeded",
             stateRevision: 2,
             scenarioSpec: ["diagnosis": .string("Tension pneumothorax")],
         ))
@@ -1371,6 +1402,194 @@ final class RunSessionStoreTests: XCTestCase {
                 && service.listAnnotationsCalls.count > annotationCallsBefore
                 && store.state.session?.status == .seeded
         }
+    }
+
+    func testLivePatientEventsHydrateClinicalStateAcrossFamilies() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date()))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "injury-1",
+            eventType: SimulationEventType.patientInjuryCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "cause_id": .number(501),
+                "domain_event_id": .number(501),
+                "title": .string("Gunshot wound"),
+                "description": .string("Penetrating injury to the left arm"),
+                "anatomical_location": .string("LEFT_ARM"),
+                "kind": .string("injury"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "problem-1",
+            eventType: SimulationEventType.patientProblemUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "problem_id": .number(601),
+                "title": .string("External hemorrhage"),
+                "status": .string("active"),
+                "cause_id": .number(501),
+                "anatomical_location": .string("LEFT_ARM"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "recommendation-1",
+            eventType: SimulationEventType.patientRecommendedInterventionCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "recommendation_id": .number(701),
+                "title": .string("Apply tourniquet"),
+                "target_problem_id": .number(601),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "intervention-1",
+            eventType: SimulationEventType.patientInterventionCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "domain_event_id": .number(801),
+                "intervention_id": .number(801),
+                "intervention_type": .string("tourniquet"),
+                "title": .string("Tourniquet"),
+                "site_code": .string("LEFT_ARM"),
+                "target_problem_id": .number(601),
+                "status": .string("applied"),
+                "effectiveness": .string("effective"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "pulse-1",
+            eventType: SimulationEventType.patientPulseUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "domain_event_id": .number(901),
+                "location": .string("radial_left"),
+                "present": .bool(false),
+                "quality": .string("weak"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "finding-1",
+            eventType: SimulationEventType.patientAssessmentFindingCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "finding_id": .number(1001),
+                "title": .string("Absent breath sounds"),
+                "status": .string("present"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "diagnostic-1",
+            eventType: SimulationEventType.patientDiagnosticResultCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "diagnostic_id": .number(1101),
+                "title": .string("Ultrasound pending"),
+                "status": .string("queued"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "resource-1",
+            eventType: SimulationEventType.patientResourceUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "resource_id": .number(1201),
+                "title": .string("Whole blood available"),
+                "status": .string("ready"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "disposition-1",
+            eventType: SimulationEventType.patientDispositionUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "disposition_id": .number(1301),
+                "status": .string("requested"),
+                "destination": .string("Role 2"),
+                "transport_mode": .string("ground"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "recommendation-2",
+            eventType: SimulationEventType.patientRecommendedInterventionRemoved,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "recommendation_id": .number(701),
+                "target_problem_id": .number(601),
+            ],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            store.state.causeAnnotations.first?.causeID == 501
+                && store.state.problemAnnotations.first?.problemID == 601
+                && store.state.interventionAnnotations.first?.interventionID == 801
+                && store.state.pulseAnnotations.first?.location == "radial_left"
+                && store.assessmentFindings.first?.findingID == 1001
+                && store.diagnosticResults.first?.resultID == 1101
+                && store.resources.first?.resourceID == 1201
+                && store.disposition?.dispositionID == 1301
+                && store.state.recommendedInterventions.isEmpty
+        }
+    }
+
+    func testUnknownEventsNormalizeSafelyWithoutTriggeringRefresh() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date()))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "unknown-1",
+            eventType: "SIMULATION.BRAND_NEW_EVENT",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 1.5) {
+            store.state.timeline.last?.eventID == "unknown-1"
+        }
+
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(service.getRuntimeStateCalls.count, 1)
+        XCTAssertEqual(store.state.timeline.last?.eventType, "simulation.brand_new_event")
     }
 
     func testDuplicateSessionSeededEventsRemainSafe() async throws {
@@ -1389,8 +1608,8 @@ final class RunSessionStoreTests: XCTestCase {
         store.startConsole()
         defer { store.stopConsole() }
 
-        realtime.emit(event: makeSessionSeededEvent(simulationID: 420, stateRevision: 2))
-        realtime.emit(event: makeSessionSeededEvent(simulationID: 420, stateRevision: 2))
+        realtime.emit(event: makeStatusUpdatedEvent(status: "seeded", stateRevision: 2))
+        realtime.emit(event: makeStatusUpdatedEvent(status: "seeded", stateRevision: 2))
 
         await waitUntil(timeout: 1.5) {
             store.state.session?.status == .seeded &&
@@ -1423,8 +1642,8 @@ final class RunSessionStoreTests: XCTestCase {
             store.runtimeState?.stateRevision == 3
         }
 
-        realtime.emit(event: makeSessionSeedingEvent(
-            simulationID: 420,
+        realtime.emit(event: makeStatusUpdatedEvent(
+            status: "seeding",
             stateRevision: 2,
             scenarioSpec: ["diagnosis": .string("Stale scenario")],
         ))
@@ -1464,112 +1683,67 @@ final class RunSessionStoreTests: XCTestCase {
         )
     }
 
-    private func makeSimulationStateChangedEvent(
-        payload: SimulationStateChangedPayload,
+    private func makeStatusUpdatedEvent(
+        eventID: String = UUID().uuidString.lowercased(),
+        simulationID: Int? = 420,
+        status: String,
+        from fromStatus: String? = nil,
+        to toStatus: String? = nil,
+        stateRevision: Int? = nil,
+        scenarioSpec: [String: JSONValue]? = nil,
+        callID: String? = nil,
+        retryCount: Int? = nil,
+        reasonCode: String? = nil,
+        reasonText: String? = nil,
+        retryable: Bool? = nil,
+        createdAt: Date = Date(),
+        terminalAt: Date? = nil,
     ) -> EventEnvelope {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let terminalAt = payload.terminalAt ?? Date()
-        var eventPayload: [String: JSONValue] = [
-            "status": .string(payload.status),
-            "terminal_at": .string(formatter.string(from: terminalAt)),
-        ]
 
-        if let retryable = payload.retryable {
-            eventPayload["retryable"] = .bool(retryable)
-        }
-        if let simulationID = payload.simulationID {
-            eventPayload["simulation_id"] = .number(Double(simulationID))
-        }
-        if let terminalReasonCode = payload.terminalReasonCode {
-            eventPayload["terminal_reason_code"] = .string(terminalReasonCode)
-        }
-        if let terminalReasonText = payload.terminalReasonText {
-            eventPayload["terminal_reason_text"] = .string(terminalReasonText)
-        }
-
-        return EventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
-            eventType: "simulation.state_changed",
-            createdAt: terminalAt,
-            correlationID: nil,
-            payload: eventPayload,
-        )
-    }
-
-    private func makeSessionSeedingEvent(
-        simulationID: Int?,
-        stateRevision: Int,
-        scenarioSpec: [String: JSONValue] = [:],
-        retryCount: Int? = nil,
-        createdAt: Date = Date(),
-    ) -> EventEnvelope {
         var payload: [String: JSONValue] = [
-            "status": .string("seeding"),
-            "scenario_spec": .object(scenarioSpec),
-            "state_revision": .number(Double(stateRevision)),
+            "status": .string(status),
         ]
         if let simulationID {
             payload["simulation_id"] = .number(Double(simulationID))
         }
-        if let retryCount {
-            payload["retry_count"] = .number(Double(retryCount))
+        if let fromStatus {
+            payload["from"] = .string(fromStatus)
         }
-        return EventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
-            eventType: "session.seeding",
-            createdAt: createdAt,
-            correlationID: nil,
-            payload: payload,
-        )
-    }
-
-    private func makeSessionSeededEvent(
-        simulationID: Int?,
-        stateRevision: Int,
-        scenarioSpec: [String: JSONValue] = [:],
-        callID: String? = nil,
-        createdAt: Date = Date(),
-    ) -> EventEnvelope {
-        var payload: [String: JSONValue] = [
-            "status": .string("seeded"),
-            "scenario_spec": .object(scenarioSpec),
-            "state_revision": .number(Double(stateRevision)),
-        ]
-        if let simulationID {
-            payload["simulation_id"] = .number(Double(simulationID))
+        if let toStatus {
+            payload["to"] = .string(toStatus)
+        }
+        if let stateRevision {
+            payload["state_revision"] = .number(Double(stateRevision))
+        }
+        if let scenarioSpec {
+            payload["scenario_spec"] = .object(scenarioSpec)
         }
         if let callID {
             payload["call_id"] = .string(callID)
         }
-        return EventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
-            eventType: "session.seeded",
-            createdAt: createdAt,
-            correlationID: nil,
-            payload: payload,
-        )
-    }
-
-    private func makeSessionFailedEvent(
-        simulationID: Int?,
-        reasonCode: String,
-        reasonText: String,
-        retryable: Bool,
-        createdAt: Date = Date(),
-    ) -> EventEnvelope {
-        var payload: [String: JSONValue] = [
-            "status": .string("failed"),
-            "reason_code": .string(reasonCode),
-            "reason_text": .string(reasonText),
-            "retryable": .bool(retryable),
-        ]
-        if let simulationID {
-            payload["simulation_id"] = .number(Double(simulationID))
+        if let retryCount {
+            payload["retry_count"] = .number(Double(retryCount))
         }
+        if let reasonCode {
+            payload["reason_code"] = .string(reasonCode)
+            payload["terminal_reason_code"] = .string(reasonCode)
+        }
+        if let reasonText {
+            payload["reason_text"] = .string(reasonText)
+            payload["terminal_reason_text"] = .string(reasonText)
+        }
+        if let retryable {
+            payload["retryable"] = .bool(retryable)
+        }
+        if let terminalAt {
+            payload["terminal_at"] = .string(formatter.string(from: terminalAt))
+        }
+
         return EventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
-            eventType: "session.failed",
+            eventID: eventID,
+            eventType: SimulationEventType.simulationStatusUpdated,
             createdAt: createdAt,
             correlationID: nil,
             payload: payload,
@@ -1706,7 +1880,6 @@ final class RunSessionStoreTests: XCTestCase {
             payload: [:],
         )
     }
-
     private func waitUntil(
         timeout: TimeInterval,
         condition: @escaping @MainActor () -> Bool,

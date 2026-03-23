@@ -19,12 +19,7 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
 
     public func signIn(email: String, password: String) async throws -> AuthTokens {
         let payload = try JSONEncoder().encode(["email": email, "password": password])
-        let endpoint = Endpoint(
-            path: "/api/v1/auth/token/",
-            method: .post,
-            body: payload,
-            requiresAuth: false,
-        )
+        let endpoint = AuthAPI.signIn(body: payload)
         let tokens: AuthTokens = try await apiClient.request(endpoint, as: AuthTokens.self)
         tokenProvider.saveTokens(tokens)
         return tokens
@@ -34,12 +29,7 @@ public final class AuthService: AuthServiceProtocol, @unchecked Sendable {
         if let tokens = tokenProvider.loadTokens(),
            let payload = try? JSONEncoder().encode(["refresh_token": tokens.refreshToken])
         {
-            let endpoint = Endpoint(
-                path: "/api/v1/auth/logout/",
-                method: .post,
-                body: payload,
-                requiresAuth: false,
-            )
+            let endpoint = AuthAPI.signOut(body: payload)
             _ = try? await apiClient.requestData(endpoint)
         }
         tokenProvider.clearTokens()

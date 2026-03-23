@@ -1361,10 +1361,21 @@ public struct RunConsoleView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ForEach(operationalItems.prefix(30), id: \.eventID) { item in
-                    Text("[\(item.createdAt.formatted(date: .omitted, time: .standard))] \(item.eventType)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    let row = RunConsoleOperationalLogPresentation.row(for: item)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("[\(item.createdAt.formatted(date: .omitted, time: .standard))] \(row.title)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                        if let detail = row.detail {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(row.canonicalEventType)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

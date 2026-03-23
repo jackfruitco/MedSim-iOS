@@ -70,22 +70,12 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     }
 
     public func accessMe() async throws -> LabAccess {
-        try await apiClient.request(Endpoint(path: "/api/v1/trainerlab/access/me/"), as: LabAccess.self)
+        try await apiClient.request(TrainerLabAPI.accessMe(), as: LabAccess.self)
     }
 
     public func listSessions(limit: Int = 20, cursor: String? = nil, status: String? = nil, query searchQuery: String? = nil) async throws -> PaginatedResponse<TrainerSessionDTO> {
-        var query = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            query.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        if let status {
-            query.append(URLQueryItem(name: "status", value: status))
-        }
-        if let searchQuery, !searchQuery.isEmpty {
-            query.append(URLQueryItem(name: "q", value: searchQuery))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/", query: query),
+        try await apiClient.request(
+            TrainerLabAPI.listSessions(limit: limit, cursor: cursor, status: status, query: searchQuery),
             as: PaginatedResponse<TrainerSessionDTO>.self,
         )
     }
@@ -93,40 +83,33 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/",
-                method: .post,
-                body: body,
-                idempotencyKey: idempotencyKey,
-            ),
+            TrainerLabAPI.createSession(body: body, idempotencyKey: idempotencyKey),
             as: TrainerSessionDTO.self,
         )
     }
 
     public func getSession(simulationID: Int) async throws -> TrainerSessionDTO {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/"),
+            TrainerLabAPI.session(simulationID: simulationID),
             as: TrainerSessionDTO.self,
         )
     }
 
     public func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO {
-        _ = try await apiClient.requestData(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/retry-initial/", method: .post, body: Data()),
-        )
+        _ = try await apiClient.requestData(TrainerLabAPI.retryInitial(simulationID: simulationID))
         return try await getSession(simulationID: simulationID)
     }
 
     public func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/state/"),
+            TrainerLabAPI.runtimeState(simulationID: simulationID),
             as: TrainerRuntimeStateOut.self,
         )
     }
 
     public func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/control-plane/"),
+            TrainerLabAPI.controlPlaneDebug(simulationID: simulationID),
             as: ControlPlaneDebugOut.self,
         )
     }
@@ -137,10 +120,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         idempotencyKey: String,
     ) async throws -> TrainerSessionDTO {
         try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/run/\(command.rawValue)/",
-                method: .post,
-                body: Data(),
+            TrainerLabAPI.runCommand(
+                simulationID: simulationID,
+                command: command.rawValue,
                 idempotencyKey: idempotencyKey,
             ),
             as: TrainerSessionDTO.self,
@@ -149,24 +131,14 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
 
     public func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck {
         try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/",
-                method: .post,
-                body: Data(),
-                idempotencyKey: idempotencyKey,
-            ),
+            TrainerLabAPI.triggerRunTick(simulationID: simulationID, idempotencyKey: idempotencyKey),
             as: TrainerCommandAck.self,
         )
     }
 
     public func triggerVitalsTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck {
         try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/run/tick/vitals/",
-                method: .post,
-                body: Data(),
-                idempotencyKey: idempotencyKey,
-            ),
+            TrainerLabAPI.triggerVitalsTick(simulationID: simulationID, idempotencyKey: idempotencyKey),
             as: TrainerCommandAck.self,
         )
     }
@@ -176,19 +148,15 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         cursor: String?,
         limit: Int,
     ) async throws -> PaginatedResponse<EventEnvelope> {
-        var query = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            query.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/events/", query: query),
+        try await apiClient.request(
+            TrainerLabAPI.listEvents(simulationID: simulationID, cursor: cursor, limit: limit),
             as: PaginatedResponse<EventEnvelope>.self,
         )
     }
 
     public func getRunSummary(simulationID: Int) async throws -> RunSummary {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/summary/"),
+            TrainerLabAPI.runSummary(simulationID: simulationID),
             as: RunSummary.self,
         )
     }
@@ -196,9 +164,8 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func adjustSimulation(simulationID: Int, request: SimulationAdjustRequest, idempotencyKey: String) async throws -> SimulationAdjustAck {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/adjust/",
-                method: .post,
+            TrainerLabAPI.adjustSimulation(
+                simulationID: simulationID,
                 body: body,
                 idempotencyKey: idempotencyKey,
             ),
@@ -213,9 +180,8 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     ) async throws -> TrainerCommandAck {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/steer/prompt/",
-                method: .post,
+            TrainerLabAPI.steerPrompt(
+                simulationID: simulationID,
                 body: body,
                 idempotencyKey: idempotencyKey,
             ),
@@ -228,10 +194,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: InjuryEventRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.injuries(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -240,10 +205,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: IllnessEventRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/illnesses/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.illnesses(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -252,10 +216,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: ProblemCreateRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/problems/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.problems(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -264,10 +227,13 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: AssessmentFindingCreateRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/assessment-findings/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.assessmentFindings(
+                simulationID: simulationID,
+                body: body,
+                idempotencyKey: idempotencyKey,
+            ),
         )
     }
 
@@ -276,10 +242,13 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: DiagnosticResultCreateRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/diagnostic-results/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.diagnosticResults(
+                simulationID: simulationID,
+                body: body,
+                idempotencyKey: idempotencyKey,
+            ),
         )
     }
 
@@ -288,10 +257,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: ResourceStateCreateRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/resources/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.resources(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -300,10 +268,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: DispositionStateCreateRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/disposition/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.disposition(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -312,10 +279,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: VitalEventRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/vitals/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.vitals(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
         )
     }
 
@@ -324,28 +290,26 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         request: InterventionEventRequest,
         idempotencyKey: String,
     ) async throws -> TrainerCommandAck {
-        try await injectEvent(
-            path: "/api/v1/trainerlab/simulations/\(simulationID)/events/interventions/",
-            request: request,
-            idempotencyKey: idempotencyKey,
+        let body = try encoder.encode(request)
+        return try await injectEvent(
+            TrainerLabAPI.interventions(
+                simulationID: simulationID,
+                body: body,
+                idempotencyKey: idempotencyKey,
+            ),
         )
     }
 
-    private func injectEvent(path: String, request: some Encodable, idempotencyKey: String) async throws -> TrainerCommandAck {
-        let body = try encoder.encode(request)
-        return try await apiClient.request(
-            Endpoint(path: path, method: .post, body: body, idempotencyKey: idempotencyKey),
+    private func injectEvent(_ endpoint: Endpoint) async throws -> TrainerCommandAck {
+        try await apiClient.request(
+            endpoint,
             as: TrainerCommandAck.self,
         )
     }
 
     public func listPresets(limit: Int, cursor: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
-        var query = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            query.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/", query: query),
+        try await apiClient.request(
+            TrainerLabAPI.listPresets(limit: limit, cursor: cursor),
             as: PaginatedResponse<ScenarioInstruction>.self,
         )
     }
@@ -353,14 +317,14 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func createPreset(request: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/", method: .post, body: body),
+            TrainerLabAPI.presets(body: body, method: .post),
             as: ScenarioInstruction.self,
         )
     }
 
     public func getPreset(presetID: Int) async throws -> ScenarioInstruction {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/"),
+            TrainerLabAPI.preset(presetID: presetID),
             as: ScenarioInstruction.self,
         )
     }
@@ -368,20 +332,18 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func updatePreset(presetID: Int, request: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/", method: .patch, body: body),
+            TrainerLabAPI.preset(presetID: presetID, body: body, method: .patch),
             as: ScenarioInstruction.self,
         )
     }
 
     public func deletePreset(presetID: Int) async throws {
-        _ = try await apiClient.requestData(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/", method: .delete),
-        )
+        _ = try await apiClient.requestData(TrainerLabAPI.preset(presetID: presetID, method: .delete))
     }
 
     public func duplicatePreset(presetID: Int) async throws -> ScenarioInstruction {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/duplicate/", method: .post, body: Data()),
+            TrainerLabAPI.duplicatePreset(presetID: presetID),
             as: ScenarioInstruction.self,
         )
     }
@@ -389,49 +351,35 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     public func sharePreset(presetID: Int, request: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/share/", method: .post, body: body),
+            TrainerLabAPI.sharePreset(presetID: presetID, body: body),
             as: ScenarioInstructionPermission.self,
         )
     }
 
     public func unsharePreset(presetID: Int, request: ScenarioInstructionUnshareRequest) async throws {
         let body = try encoder.encode(request)
-        _ = try await apiClient.requestData(
-            Endpoint(path: "/api/v1/trainerlab/presets/\(presetID)/unshare/", method: .post, body: body),
-        )
+        _ = try await apiClient.requestData(TrainerLabAPI.unsharePreset(presetID: presetID, body: body))
     }
 
     public func applyPreset(presetID: Int, request: ScenarioInstructionApplyRequest, idempotencyKey: String) async throws -> TrainerCommandAck {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/presets/\(presetID)/apply/",
-                method: .post,
-                body: body,
-                idempotencyKey: idempotencyKey,
-            ),
+            TrainerLabAPI.applyPreset(presetID: presetID, body: body, idempotencyKey: idempotencyKey),
             as: TrainerCommandAck.self,
         )
     }
 
     public func injuryDictionary() async throws -> InjuryDictionary {
-        try await apiClient.request(Endpoint(path: "/api/v1/trainerlab/dictionaries/injuries/"), as: InjuryDictionary.self)
+        try await apiClient.request(TrainerLabAPI.injuryDictionary(), as: InjuryDictionary.self)
     }
 
     public func interventionDictionary() async throws -> [InterventionGroup] {
-        try await apiClient.request(Endpoint(path: "/api/v1/trainerlab/dictionaries/interventions/"), as: [InterventionGroup].self)
+        try await apiClient.request(TrainerLabAPI.interventionDictionary(), as: [InterventionGroup].self)
     }
 
     public func listAccounts(query: String, cursor: String?, limit: Int) async throws -> PaginatedResponse<AccountListUser> {
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: String(limit)),
-        ]
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
-        }
-        return try await apiClient.request(
-            Endpoint(path: "/api/v1/account/list/", query: queryItems),
+        try await apiClient.request(
+            TrainerLabAPI.listAccounts(query: query, cursor: cursor, limit: limit),
             as: PaginatedResponse<AccountListUser>.self,
         )
     }
@@ -444,9 +392,9 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     ) async throws -> ProblemStatusOut {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/problems/\(problemID)/",
-                method: .patch,
+            TrainerLabAPI.problemStatus(
+                simulationID: simulationID,
+                problemID: problemID,
                 body: body,
                 idempotencyKey: idempotencyKey,
             ),
@@ -461,12 +409,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     ) async throws -> TrainerCommandAck {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/events/notes/",
-                method: .post,
-                body: body,
-                idempotencyKey: idempotencyKey,
-            ),
+            TrainerLabAPI.notes(simulationID: simulationID, body: body, idempotencyKey: idempotencyKey),
             as: TrainerCommandAck.self,
         )
     }
@@ -478,9 +421,8 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     ) async throws -> AnnotationOut {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/annotations/",
-                method: .post,
+            TrainerLabAPI.createAnnotation(
+                simulationID: simulationID,
                 body: body,
                 idempotencyKey: idempotencyKey,
             ),
@@ -490,7 +432,7 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
 
     public func listAnnotations(simulationID: Int) async throws -> [AnnotationOut] {
         try await apiClient.request(
-            Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/annotations/"),
+            TrainerLabAPI.annotations(simulationID: simulationID),
             as: [AnnotationOut].self,
         )
     }
@@ -502,9 +444,8 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
     ) async throws -> ScenarioBriefOut {
         let body = try encoder.encode(request)
         return try await apiClient.request(
-            Endpoint(
-                path: "/api/v1/trainerlab/simulations/\(simulationID)/scenario-brief/",
-                method: .patch,
+            TrainerLabAPI.scenarioBrief(
+                simulationID: simulationID,
                 body: body,
                 idempotencyKey: idempotencyKey,
             ),

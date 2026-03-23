@@ -88,7 +88,7 @@ final class TrainerLabContractTests: XCTestCase {
           "run_started_at": "2026-03-12T12:00:00Z",
           "run_completed_at": "2026-03-12T12:05:00Z",
           "final_state": {},
-          "event_type_counts": {"run.started": 1},
+          "event_type_counts": {"simulation.status.updated": 1},
           "timeline_highlights": [],
           "command_log": [],
           "ai_rationale_notes": []
@@ -102,11 +102,11 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(summary.status, "completed")
     }
 
-    func testSimulationStateChangedEnvelopeDecodesExactFailurePayload() throws {
+    func testSimulationStatusUpdatedEnvelopeDecodesFailurePayload() throws {
         let json = """
         {
           "event_id": "cfb87f10-d622-42af-9eff-1267e51607d6",
-          "event_type": "simulation.state_changed",
+          "event_type": "simulation.status.updated",
           "created_at": "2026-03-20T13:54:34.990952+00:00",
           "correlation_id": "",
           "payload": {
@@ -120,26 +120,26 @@ final class TrainerLabContractTests: XCTestCase {
           "status": "delivered",
           "delivery_attempts": 0,
           "last_error": null,
-          "idempotency_key": "simulation.state_changed:b5cd7d71-7e95-44ef-9ccd-9d3e5e1f3cb2"
+          "idempotency_key": "simulation.status.updated:b5cd7d71-7e95-44ef-9ccd-9d3e5e1f3cb2"
         }
         """
 
         let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
-        let payload = try event.decodePayload(SimulationStateChangedPayload.self)
+        let payload = try event.decodePayload(SimulationStatusUpdatedPayload.self)
 
-        XCTAssertEqual(event.eventType, "simulation.state_changed")
+        XCTAssertEqual(event.eventType, SimulationEventType.simulationStatusUpdated)
         XCTAssertEqual(payload.status, "failed")
         XCTAssertEqual(payload.retryable, true)
         XCTAssertEqual(payload.simulationID, 1)
-        XCTAssertEqual(payload.terminalReasonCode, "trainerlab_initial_generation_enqueue_failed")
-        XCTAssertEqual(payload.terminalReasonText, "We could not start this simulation. Please try again.")
+        XCTAssertEqual(payload.effectiveReasonCode, "trainerlab_initial_generation_enqueue_failed")
+        XCTAssertEqual(payload.effectiveReasonText, "We could not start this simulation. Please try again.")
     }
 
-    func testSessionSeedingEnvelopeDecodesLifecyclePayload() throws {
+    func testSimulationStatusUpdatedEnvelopeDecodesSeedingPayload() throws {
         let json = """
         {
           "event_id": "seed-1",
-          "event_type": "session.seeding",
+          "event_type": "simulation.status.updated",
           "created_at": "2026-03-20T13:54:34.990952+00:00",
           "correlation_id": "",
           "payload": {
@@ -157,22 +157,22 @@ final class TrainerLabContractTests: XCTestCase {
         """
 
         let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
-        let payload = try event.decodePayload(SessionSeedingPayload.self)
+        let payload = try event.decodePayload(SimulationStatusUpdatedPayload.self)
 
-        XCTAssertEqual(event.eventType, "session.seeding")
+        XCTAssertEqual(event.eventType, SimulationEventType.simulationStatusUpdated)
         XCTAssertEqual(payload.status, "seeding")
         XCTAssertEqual(payload.stateRevision, 3)
         XCTAssertEqual(payload.retryCount, 1)
         XCTAssertEqual(payload.simulationID, 7)
-        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
-        XCTAssertEqual(payload.scenarioSpec["modifiers"], .array([.string("night-ops")]))
+        XCTAssertEqual(payload.scenarioSpec?["diagnosis"], .string("Tension pneumothorax"))
+        XCTAssertEqual(payload.scenarioSpec?["modifiers"], .array([.string("night-ops")]))
     }
 
-    func testSessionSeededEnvelopeDecodesLifecyclePayloadWithOptionalCallID() throws {
+    func testSimulationStatusUpdatedEnvelopeDecodesSeededPayloadWithOptionalCallID() throws {
         let json = """
         {
           "event_id": "seed-2",
-          "event_type": "session.seeded",
+          "event_type": "simulation.status.updated",
           "created_at": "2026-03-20T13:55:34.990952+00:00",
           "correlation_id": "",
           "payload": {
@@ -188,21 +188,21 @@ final class TrainerLabContractTests: XCTestCase {
         """
 
         let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
-        let payload = try event.decodePayload(SessionSeededPayload.self)
+        let payload = try event.decodePayload(SimulationStatusUpdatedPayload.self)
 
-        XCTAssertEqual(event.eventType, "session.seeded")
+        XCTAssertEqual(event.eventType, SimulationEventType.simulationStatusUpdated)
         XCTAssertEqual(payload.status, "seeded")
         XCTAssertEqual(payload.stateRevision, 4)
         XCTAssertEqual(payload.callID, "call-123")
         XCTAssertEqual(payload.simulationID, 7)
-        XCTAssertEqual(payload.scenarioSpec["diagnosis"], .string("Tension pneumothorax"))
+        XCTAssertEqual(payload.scenarioSpec?["diagnosis"], .string("Tension pneumothorax"))
     }
 
-    func testSessionFailedEnvelopeDecodesLifecyclePayload() throws {
+    func testSimulationStatusUpdatedEnvelopeDecodesFailedSeedingPayload() throws {
         let json = """
         {
           "event_id": "seed-3",
-          "event_type": "session.failed",
+          "event_type": "simulation.status.updated",
           "created_at": "2026-03-20T13:56:34.990952+00:00",
           "correlation_id": "",
           "payload": {
@@ -216,14 +216,35 @@ final class TrainerLabContractTests: XCTestCase {
         """
 
         let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
-        let payload = try event.decodePayload(SessionFailedPayload.self)
+        let payload = try event.decodePayload(SimulationStatusUpdatedPayload.self)
 
-        XCTAssertEqual(event.eventType, "session.failed")
+        XCTAssertEqual(event.eventType, SimulationEventType.simulationStatusUpdated)
         XCTAssertEqual(payload.status, "failed")
-        XCTAssertEqual(payload.reasonCode, "trainerlab_initial_generation_failed")
-        XCTAssertEqual(payload.reasonText, "The initial scenario could not be generated.")
+        XCTAssertEqual(payload.effectiveReasonCode, "trainerlab_initial_generation_failed")
+        XCTAssertEqual(payload.effectiveReasonText, "The initial scenario could not be generated.")
         XCTAssertEqual(payload.retryable, false)
         XCTAssertEqual(payload.simulationID, 7)
+    }
+
+    func testLegacyLifecycleAliasCanonicalizesToCanonicalStatusUpdated() throws {
+        let json = """
+        {
+          "event_id": "seed-legacy",
+          "event_type": "session.seeded",
+          "created_at": "2026-03-20T13:55:34.990952+00:00",
+          "payload": {
+            "state_revision": 4
+          }
+        }
+        """
+
+        let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
+        let canonical = event.canonicalized()
+        let payload = try canonical.decodePayload(SimulationStatusUpdatedPayload.self)
+
+        XCTAssertEqual(canonical.eventType, SimulationEventType.simulationStatusUpdated)
+        XCTAssertEqual(payload.status, "seeded")
+        XCTAssertEqual(payload.stateRevision, 4)
     }
 
     func testScenarioInstructionApplyEncodesSimulationID() throws {
@@ -686,7 +707,7 @@ final class TrainerLabContractTests: XCTestCase {
         let json = """
         {
           "event_id": "rec-removed-1",
-          "event_type": "recommended_intervention.removed",
+          "event_type": "patient.recommendedintervention.removed",
           "created_at": "2026-03-20T13:56:34.990952+00:00",
           "payload": {
             "recommendation_id": 91,
@@ -697,7 +718,7 @@ final class TrainerLabContractTests: XCTestCase {
 
         let event = try makeContractDecoder().decode(EventEnvelope.self, from: Data(json.utf8))
 
-        XCTAssertEqual(event.eventType, "recommended_intervention.removed")
+        XCTAssertEqual(event.eventType, SimulationEventType.patientRecommendedInterventionRemoved)
         XCTAssertEqual(event.payload["recommendation_id"], .number(91))
     }
 
