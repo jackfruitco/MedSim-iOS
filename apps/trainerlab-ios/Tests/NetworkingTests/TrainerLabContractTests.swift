@@ -279,6 +279,20 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNil(object?["description"])
     }
 
+    func testInterventionEventRequestOmitsNilTargetProblemID() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: nil,
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["intervention_type"] as? String, "tourniquet")
+        XCTAssertEqual(object?["site_code"] as? String, "LEFT_ARM")
+        XCTAssertNil(object?["target_problem_id"])
+    }
+
     func testInterventionEventRequestEncodesCurrentBackendKeys() throws {
         let request = InterventionEventRequest(
             interventionType: "tourniquet",
@@ -629,6 +643,64 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(state.aiPlan?.summary, "Watch SpO2")
         XCTAssertEqual(state.aiPlan?.rationale, "")
         XCTAssertEqual(state.aiPlan?.monitoringFocus, [])
+    }
+
+    func testTrainerRuntimeStateDecodesAliasedHydrationKeysWithoutWipingPresence() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "status": "running",
+          "scenario_brief": {
+            "read_aloud_brief": "Patient found after blast exposure."
+          },
+          "current_snapshot": {
+            "injuries": [
+              {
+                "cause_id": 11,
+                "kind": "injury",
+                "title": "Blast Injury",
+                "description": "Open wound to the left arm",
+                "injury_location": "LEFT_ARM"
+              }
+            ],
+            "conditions": [
+              {
+                "problem_id": 21,
+                "title": "Hemorrhagic Shock",
+                "status": "active",
+                "cause_id": 11,
+                "anatomical_location": "LEFT_ARM"
+              }
+            ],
+            "interventions": [],
+            "pulses": [],
+            "vitals": [],
+            "patient_status": {
+              "narrative": "Bleeding remains uncontrolled."
+            }
+          },
+          "ai_instructor": {
+            "summary": "Control hemorrhage first"
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.scenarioBrief?.readAloudBrief, "Patient found after blast exposure.")
+        XCTAssertEqual(state.currentSnapshot.causes.first?.causeID, 11)
+        XCTAssertEqual(state.currentSnapshot.problems.first?.problemID, 21)
+        XCTAssertEqual(state.currentSnapshot.patientStatus.narrative, "Bleeding remains uncontrolled.")
+        XCTAssertEqual(state.aiPlan?.summary, "Control hemorrhage first")
+        XCTAssertEqual(state.presence.scenarioBrief, true)
+        XCTAssertEqual(state.presence.aiPlan, true)
+        XCTAssertEqual(state.presence.aiRationaleNotes, false)
+        XCTAssertEqual(state.currentSnapshot.presence.causes, true)
+        XCTAssertEqual(state.currentSnapshot.presence.problems, true)
+        XCTAssertEqual(state.currentSnapshot.presence.interventions, true)
+        XCTAssertEqual(state.currentSnapshot.presence.vitals, true)
+        XCTAssertEqual(state.currentSnapshot.presence.patientStatus, true)
+        XCTAssertEqual(state.currentSnapshot.presence.recommendedInterventions, false)
     }
 
     func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {

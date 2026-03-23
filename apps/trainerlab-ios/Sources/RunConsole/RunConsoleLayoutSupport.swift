@@ -67,6 +67,22 @@ enum RunConsoleTimelinePresentation {
     }
 }
 
+enum RunConsoleTimelineAccordion {
+    static func toggledExpandedEntryKey(
+        current: String?,
+        tapped entry: ClinicalTimelineEntry,
+    ) -> String? {
+        current == entry.dedupeKey ? nil : entry.dedupeKey
+    }
+
+    static func isExpanded(
+        _ entry: ClinicalTimelineEntry,
+        expandedEntryKey: String?,
+    ) -> Bool {
+        expandedEntryKey == entry.dedupeKey
+    }
+}
+
 enum RunConsoleControlGroup: String {
     case session = "Session Controls"
     case quick = "Quick Controls"

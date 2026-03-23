@@ -127,6 +127,45 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Anything")
     }
 
+    func testTimelineAccordionTogglesSingleExpandedEntryByDedupeKey() {
+        let first = ClinicalTimelineEntry(
+            dedupeKey: "entry-1",
+            kind: .note,
+            title: "Trainer Note",
+            message: "First",
+            createdAt: Date(),
+        )
+        let second = ClinicalTimelineEntry(
+            dedupeKey: "entry-2",
+            kind: .intervention,
+            title: "Intervention",
+            message: "Second",
+            createdAt: Date(),
+        )
+
+        let expandedFirst = RunConsoleTimelineAccordion.toggledExpandedEntryKey(
+            current: nil,
+            tapped: first,
+        )
+        XCTAssertEqual(expandedFirst, "entry-1")
+        XCTAssertTrue(RunConsoleTimelineAccordion.isExpanded(first, expandedEntryKey: expandedFirst))
+        XCTAssertFalse(RunConsoleTimelineAccordion.isExpanded(second, expandedEntryKey: expandedFirst))
+
+        let expandedSecond = RunConsoleTimelineAccordion.toggledExpandedEntryKey(
+            current: expandedFirst,
+            tapped: second,
+        )
+        XCTAssertEqual(expandedSecond, "entry-2")
+        XCTAssertFalse(RunConsoleTimelineAccordion.isExpanded(first, expandedEntryKey: expandedSecond))
+        XCTAssertTrue(RunConsoleTimelineAccordion.isExpanded(second, expandedEntryKey: expandedSecond))
+
+        let collapsed = RunConsoleTimelineAccordion.toggledExpandedEntryKey(
+            current: expandedSecond,
+            tapped: second,
+        )
+        XCTAssertNil(collapsed)
+    }
+
     func testControlCatalogSeparatesSessionAndQuickControls() {
         let sessionControls = RunConsoleControlsCatalog.sessionControls(lifecycleActions: [.pause, .stop])
 

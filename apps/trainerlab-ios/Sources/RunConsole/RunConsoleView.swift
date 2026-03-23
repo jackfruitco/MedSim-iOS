@@ -21,6 +21,7 @@ public struct RunConsoleView: View {
 
     // Collapsible panels
     @State private var isOperationalLogExpanded = false
+    @State private var expandedTimelineEntryKey: String?
     @State private var activeInfoPanel: ActiveInfoPanel? = .scenarioBrief
     @State private var isLoadingRuntimeState = false
     @State private var showScenarioBriefEditSheet = false
@@ -123,7 +124,7 @@ public struct RunConsoleView: View {
             .presentationDetents([.fraction(0.55)])
         }
         .sheet(isPresented: $showScenarioBriefEditSheet) {
-            if let brief = store.scenarioBrief ?? store.runtimeState?.scenarioBrief {
+            if let brief = store.scenarioBrief {
                 ScenarioBriefEditSheet(brief: brief) { request in
                     store.updateScenarioBrief(request)
                     showScenarioBriefEditSheet = false
@@ -430,7 +431,7 @@ public struct RunConsoleView: View {
 
             PatientDiagramPanel(
                 injuries: store.state.injuryAnnotations,
-                allCauses: store.runtimeState?.currentSnapshot.causes ?? [],
+                allCauses: store.hydratedCauses,
                 interventions: store.state.interventionAnnotations,
                 problems: store.state.problemAnnotations,
                 recommendations: store.state.recommendedInterventions,
@@ -625,7 +626,7 @@ public struct RunConsoleView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
-        } else if let brief = store.scenarioBrief ?? store.runtimeState?.scenarioBrief {
+        } else if let brief = store.scenarioBrief {
             VStack(alignment: .leading, spacing: 8) {
                 if canMutate {
                     HStack {
@@ -781,7 +782,7 @@ public struct RunConsoleView: View {
                     }
                 }
 
-                if let plan = rs.aiPlan {
+                if let plan = store.aiInstructorIntent {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Current Focus")
                             .font(.caption.bold())
@@ -824,12 +825,12 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
-                if !rs.aiRationaleNotes.isEmpty {
+                if !store.aiInstructorNotes.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("AI Notes")
                             .font(.caption.bold())
                             .foregroundStyle(.secondary)
-                        ForEach(rs.aiRationaleNotes, id: \.self) { note in
+                        ForEach(store.aiInstructorNotes, id: \.self) { note in
                             Text("• " + note)
                                 .font(.caption)
                                 .foregroundStyle(Color(white: 0.70))
@@ -863,7 +864,7 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
-                if rs.aiPlan == nil, rs.aiRationaleNotes.isEmpty {
+                if store.aiInstructorIntent == nil, store.aiInstructorNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1168,65 +1169,113 @@ public struct RunConsoleView: View {
                 timelineEntries
             }
         }
+        .onChange(of: filteredTimelineEntryKeys) { _, keys in
+            guard
+                let expandedTimelineEntryKey,
+                !keys.contains(expandedTimelineEntryKey)
+            else {
+                return
+            }
+            self.expandedTimelineEntryKey = nil
+        }
         .trainerCardStyle()
     }
 
     private var timelineEntries: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(filteredTimelineEntries.prefix(160)) { item in
-                let isSuperseded = item.metadata["superseded_by"] != nil
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .top, spacing: 8) {
-                        timelineKindChip(item.kind)
+                timelineEntryRow(item)
+            }
+        }
+    }
+
+    private func timelineEntryRow(_ item: ClinicalTimelineEntry) -> some View {
+        let isSuperseded = item.metadata["superseded_by"] != nil
+        let isExpanded = RunConsoleTimelineAccordion.isExpanded(
+            item,
+            expandedEntryKey: expandedTimelineEntryKey,
+        )
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                expandedTimelineEntryKey = RunConsoleTimelineAccordion.toggledExpandedEntryKey(
+                    current: expandedTimelineEntryKey,
+                    tapped: item,
+                )
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    timelineKindChip(item.kind)
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(RunConsoleTimelinePresentation.title(for: item))
                             .font(.subheadline.bold())
                             .lineLimit(2)
                             .strikethrough(isSuperseded, color: .secondary)
                             .foregroundStyle(isSuperseded ? Color.secondary : Color.white)
-                        Spacer(minLength: 8)
+                        Text(item.message)
+                            .font(.caption)
+                            .lineLimit(isExpanded ? nil : 1)
+                            .foregroundStyle(isSuperseded ? Color(white: 0.45) : Color(white: 0.70))
+                            .strikethrough(isSuperseded, color: Color(white: 0.45))
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 6) {
                         Text(item.createdAt.formatted(date: .omitted, time: .standard))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                    }
-
-                    Text(item.message)
-                        .font(.caption)
-                        .foregroundStyle(isSuperseded ? Color(white: 0.45) : Color(white: 0.70))
-                        .strikethrough(isSuperseded, color: Color(white: 0.45))
-
-                    // Intervention effectiveness / status badges
-                    if item.kind == .intervention {
-                        HStack(spacing: 6) {
-                            if let effectiveness = item.metadata["effectiveness"] {
-                                effectivenessBadge(effectiveness)
-                            }
-                            if let status = item.metadata["intervention_status"] {
-                                interventionStatusBadge(status)
-                            }
-                            if isSuperseded {
-                                Text("Updated")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color.secondary.opacity(0.15))
-                                    .clipShape(Capsule())
-                            }
-                        }
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(isSuperseded
-                    ? TrainerLabTheme.tacticalSurfaceElevated.opacity(0.5)
-                    : TrainerLabTheme.tacticalSurfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
-                )
-                .opacity(isSuperseded ? 0.65 : 1.0)
+
+                if isExpanded {
+                    timelineEntryExpandedContent(item, isSuperseded: isSuperseded)
+                }
             }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSuperseded
+                ? TrainerLabTheme.tacticalSurfaceElevated.opacity(0.5)
+                : TrainerLabTheme.tacticalSurfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
+            )
+            .opacity(isSuperseded ? 0.65 : 1.0)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func timelineEntryExpandedContent(
+        _ item: ClinicalTimelineEntry,
+        isSuperseded: Bool,
+    ) -> some View {
+        if item.kind == .intervention {
+            HStack(spacing: 6) {
+                if let effectiveness = item.metadata["effectiveness"] {
+                    effectivenessBadge(effectiveness)
+                }
+                if let status = item.metadata["intervention_status"] {
+                    interventionStatusBadge(status)
+                }
+                if isSuperseded {
+                    Text("Updated")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.secondary.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+            }
+        } else if isSuperseded {
+            Text("Updated by a newer event")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -1894,6 +1943,10 @@ public struct RunConsoleView: View {
         )
     }
 
+    private var filteredTimelineEntryKeys: [String] {
+        filteredTimelineEntries.map(\.dedupeKey)
+    }
+
     private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
         switch outcome {
         case .correct:
@@ -2227,7 +2280,7 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
+    let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
 
     @State private var selectedType: String?
     @State private var selectedTargetProblemID: Int?
@@ -2262,7 +2315,7 @@ private struct InterventionPickerSheet: View {
     }
 
     private var canSubmit: Bool {
-        canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
+        canMutate && resolvedSiteCode != nil
     }
 
     private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
@@ -2273,7 +2326,26 @@ private struct InterventionPickerSheet: View {
         NavigationStack {
             Form {
                 if !problems.isEmpty {
-                    Section("Target Problem") {
+                    Section("Target Problem (Optional)") {
+                        Button {
+                            selectedTargetProblemID = nil
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("No specific problem")
+                                        .foregroundStyle(.primary)
+                                    Text("Record this as a general intervention.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if selectedTargetProblemID == nil {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+
                         ForEach(problems) { problem in
                             Button {
                                 selectedTargetProblemID = problem.problemID
@@ -2296,8 +2368,8 @@ private struct InterventionPickerSheet: View {
                         }
                     }
                 } else {
-                    Section("Target Problem") {
-                        Text("A target problem is required by the backend before an intervention can be submitted.")
+                    Section("Target Problem (Optional)") {
+                        Text("Leave this blank to record a general intervention.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -2425,8 +2497,7 @@ private struct InterventionPickerSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         guard let siteCode = resolvedSiteCode,
-                              let type = selectedType,
-                              let selectedTargetProblemID else { return }
+                              let type = selectedType else { return }
                         onSubmit(
                             type,
                             siteCode,
