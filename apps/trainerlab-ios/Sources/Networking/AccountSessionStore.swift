@@ -23,7 +23,7 @@ public actor SelectedAccountContext: AccountContextProvider {
     }
 }
 
-private struct AccountSelectionRequest: Codable, Sendable {
+private struct AccountSelectionRequest: Codable {
     let accountUUID: String
 
     enum CodingKeys: String, CodingKey {
@@ -100,8 +100,8 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         productAccess(code: productCode)?.limits[key]
     }
 
-    // Account-scoped backend checklist: bootstrap accounts, persist selection,
-    // and refresh access after account switch or billing sync.
+    /// Account-scoped backend checklist: bootstrap accounts, persist selection,
+    /// and refresh access after account switch or billing sync.
     public func bootstrapSession() async throws {
         isBootstrapping = true
         errorMessage = nil
@@ -191,11 +191,13 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         }
 
         let effectiveUUID = availableAccounts.first(where: \.isActiveContext)?.uuid ?? resolvedUUID
+        accessSnapshot = nil
         selectedAccountUUID = effectiveUUID
         persistSelectedAccountUUID(effectiveUUID)
         await accountContext.setSelectedAccountUUID(effectiveUUID)
 
-        accessSnapshot = try await apiClient.request(AccountsAPI.accessSnapshot(), as: AccessSnapshotOut.self)
+        let snapshot = try await apiClient.request(AccountsAPI.accessSnapshot(), as: AccessSnapshotOut.self)
+        accessSnapshot = snapshot
 
         if let snapshotUUID = accessSnapshot?.accountUUID, snapshotUUID != effectiveUUID {
             selectedAccountUUID = snapshotUUID

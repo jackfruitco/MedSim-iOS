@@ -36,11 +36,16 @@ public struct BillingCatalogEntry: Identifiable, Equatable, Sendable {
     }
 }
 
-private struct BillingCatalogDescriptor: Sendable {
+private struct BillingCatalogDescriptor {
     let productID: String
     let group: BillingProductGroup
     let fallbackTitle: String
     let fallbackSubtitle: String
+}
+
+struct PendingBillingSyncRetryContext {
+    let accountUUID: String?
+    let requests: [AppleBillingSyncRequest]
 }
 
 @MainActor
@@ -57,7 +62,7 @@ public final class AppleBillingService: ObservableObject {
     private let catalog: [BillingCatalogDescriptor]
     private let encoder: JSONEncoder
     private var productsByID: [String: Product] = [:]
-    private var pendingSyncRequests: [AppleBillingSyncRequest] = []
+    private var pendingSyncRetryContext: PendingBillingSyncRetryContext?
 
     public init(
         apiClient: APIClientProtocol,
@@ -66,8 +71,8 @@ public final class AppleBillingService: ObservableObject {
         self.apiClient = apiClient
         self.accountSessionStore = accountSessionStore
         let descriptors = Self.defaultCatalog
-        self.catalog = descriptors
-        self.catalogEntries = Self.makeFallbackEntries(from: descriptors)
+        catalog = descriptors
+        catalogEntries = Self.makeFallbackEntries(from: descriptors)
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -136,13 +141,11 @@ public final class AppleBillingService: ObservableObject {
                 let syncError = await syncRequestsHandlingError([request])
                 await transaction.finish()
                 if let syncError {
-                    pendingSyncRequests = [request]
-                    hasPendingSyncRetry = true
+                    storePendingSyncRetry([request], accountUUID: accountSessionStore.selectedAccountUUID)
                     syncErrorMessage = syncError.localizedDescription
                     return
                 }
-                pendingSyncRequests = []
-                hasPendingSyncRetry = false
+                clearPendingSyncRetry()
                 try await accountSessionStore.refreshAfterBillingSync()
             case .pending:
                 syncErrorMessage = "Purchase is pending approval."
@@ -165,8 +168,7 @@ public final class AppleBillingService: ObservableObject {
             try await AppStore.sync()
             let transactions = try await currentVerifiedEntitlements()
             guard !transactions.isEmpty else {
-                hasPendingSyncRetry = false
-                pendingSyncRequests = []
+                clearPendingSyncRetry()
                 syncErrorMessage = "No active App Store purchases were found to restore."
                 return
             }
@@ -178,14 +180,12 @@ public final class AppleBillingService: ObservableObject {
             }
 
             if let syncError {
-                pendingSyncRequests = requests
-                hasPendingSyncRetry = true
+                storePendingSyncRetry(requests, accountUUID: accountSessionStore.selectedAccountUUID)
                 syncErrorMessage = syncError.localizedDescription
                 return
             }
 
-            pendingSyncRequests = []
-            hasPendingSyncRetry = false
+            clearPendingSyncRetry()
             try await accountSessionStore.refreshAfterBillingSync()
         } catch {
             syncErrorMessage = error.localizedDescription
@@ -193,20 +193,25 @@ public final class AppleBillingService: ObservableObject {
     }
 
     public func retryPendingSync() async {
-        guard !pendingSyncRequests.isEmpty else { return }
+        guard let retryContext = pendingSyncRetryContext, !retryContext.requests.isEmpty else { return }
 
         isProcessing = true
         syncErrorMessage = nil
         defer { isProcessing = false }
 
-        if let syncError = await syncRequestsHandlingError(pendingSyncRequests) {
+        guard retryContext.accountUUID == accountSessionStore.selectedAccountUUID else {
+            syncErrorMessage = retryScopeMismatchMessage(originAccountUUID: retryContext.accountUUID)
+            hasPendingSyncRetry = true
+            return
+        }
+
+        if let syncError = await syncRequestsHandlingError(retryContext.requests) {
             syncErrorMessage = syncError.localizedDescription
             hasPendingSyncRetry = true
             return
         }
 
-        pendingSyncRequests = []
-        hasPendingSyncRetry = false
+        clearPendingSyncRetry()
 
         do {
             try await accountSessionStore.refreshAfterBillingSync()
@@ -247,22 +252,51 @@ public final class AppleBillingService: ObservableObject {
         switch verification {
         case let .verified(value):
             value
-        case .unverified(_, _):
+        case .unverified:
             throw APIClientError.decoding("StoreKit transaction verification failed.")
         }
+    }
+
+    func storePendingSyncRetry(_ requests: [AppleBillingSyncRequest], accountUUID: String?) {
+        pendingSyncRetryContext = PendingBillingSyncRetryContext(
+            accountUUID: accountUUID,
+            requests: requests,
+        )
+        hasPendingSyncRetry = !requests.isEmpty
+    }
+
+    func clearPendingSyncRetry() {
+        pendingSyncRetryContext = nil
+        hasPendingSyncRetry = false
+    }
+
+    private func retryScopeMismatchMessage(originAccountUUID: String?) -> String {
+        guard let originAccountUUID else {
+            return "Switch back to the original account before retrying App Store sync."
+        }
+
+        let accountName = accountSessionStore.availableAccounts
+            .first(where: { $0.uuid == originAccountUUID })?
+            .name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let accountName, !accountName.isEmpty {
+            return "Switch back to \(accountName) before retrying App Store sync."
+        }
+
+        return "Switch back to the original account before retrying App Store sync."
     }
 
     private func makeSyncRequest(from transaction: Transaction) -> AppleBillingSyncRequest {
         let expirationDate = transaction.expirationDate
         let revokedAt = transaction.revocationDate
         let now = Date()
-        let status: String
-        if revokedAt != nil {
-            status = "revoked"
+        let status = if revokedAt != nil {
+            "revoked"
         } else if let expirationDate, expirationDate < now {
-            status = "expired"
+            "expired"
         } else {
-            status = "active"
+            "active"
         }
 
         let group = catalog.first(where: { $0.productID == transaction.productID })?.group

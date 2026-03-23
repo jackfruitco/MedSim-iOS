@@ -214,6 +214,14 @@ private struct RunConsoleScreen: View {
 }
 
 private struct MainMenuView: View {
+    private struct MenuButtonContent {
+        let title: String
+        let subtitle: String
+        let systemImage: String
+        let isEnabled: Bool
+        let availabilityMessage: String?
+    }
+
     let currentAccountName: String
     let currentAccountType: String?
     let accessMessage: String?
@@ -257,20 +265,24 @@ private struct MainMenuView: View {
 
                 VStack(spacing: 12) {
                     menuButton(
-                        title: "TrainerLab",
-                        subtitle: "Run and manage live trainer sessions",
-                        systemImage: "waveform.path.ecg",
-                        isEnabled: trainerLabEnabled,
-                        availabilityMessage: trainerLabMessage,
+                        MenuButtonContent(
+                            title: "TrainerLab",
+                            subtitle: "Run and manage live trainer sessions",
+                            systemImage: "waveform.path.ecg",
+                            isEnabled: trainerLabEnabled,
+                            availabilityMessage: trainerLabMessage,
+                        ),
                         action: onOpenTrainerLab,
                     )
 
                     menuButton(
-                        title: "ChatLab",
-                        subtitle: "Work simulations through the messaging runtime",
-                        systemImage: "message.badge",
-                        isEnabled: chatLabEnabled,
-                        availabilityMessage: chatLabMessage,
+                        MenuButtonContent(
+                            title: "ChatLab",
+                            subtitle: "Work simulations through the messaging runtime",
+                            systemImage: "message.badge",
+                            isEnabled: chatLabEnabled,
+                            availabilityMessage: chatLabMessage,
+                        ),
                         action: onOpenChatLab,
                     )
                 }
@@ -297,28 +309,24 @@ private struct MainMenuView: View {
     }
 
     private func menuButton(
-        title: String,
-        subtitle: String,
-        systemImage: String,
-        isEnabled: Bool,
-        availabilityMessage: String?,
+        _ content: MenuButtonContent,
         action: @escaping () -> Void,
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: systemImage)
+                Image(systemName: content.systemImage)
                     .font(.title2.weight(.semibold))
                     .frame(width: 42, height: 42)
                     .background(TrainerLabTheme.accentBlue.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
+                    Text(content.title)
                         .font(.headline)
-                    Text(subtitle)
+                    Text(content.subtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    if let availabilityMessage, !isEnabled {
+                    if let availabilityMessage = content.availabilityMessage, !content.isEnabled {
                         Text(availabilityMessage)
                             .font(.caption)
                             .foregroundStyle(TrainerLabTheme.warning)
@@ -337,8 +345,8 @@ private struct MainMenuView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.62)
+        .disabled(!content.isEnabled)
+        .opacity(content.isEnabled ? 1 : 0.62)
     }
 }
 

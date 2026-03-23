@@ -62,7 +62,7 @@ private final class URLProtocolMock: URLProtocol {
     override func stopLoading() {}
 }
 
-private struct ProtectedResponse: Decodable, Sendable {
+private struct ProtectedResponse: Decodable {
     let value: String
 }
 

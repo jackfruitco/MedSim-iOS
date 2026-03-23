@@ -1,13 +1,15 @@
 import Foundation
-import Networking
+@testable import Networking
 import SharedModels
 import XCTest
 
 private final class MockAccountAPIClient: APIClientProtocol, @unchecked Sendable {
     var accounts: [AccountOut]
     var accessSnapshotsByAccountUUID: [String: AccessSnapshotOut]
+    var accessErrorByAccountUUID: [String: Error] = [:]
     var selectedAccountUUID: String?
     private(set) var selectCalls: [String] = []
+    private(set) var billingSyncCalls: [AppleBillingSyncRequest] = []
 
     init(accounts: [AccountOut], accessSnapshotsByAccountUUID: [String: AccessSnapshotOut], selectedAccountUUID: String? = nil) {
         self.accounts = accounts
@@ -15,10 +17,17 @@ private final class MockAccountAPIClient: APIClientProtocol, @unchecked Sendable
         self.selectedAccountUUID = selectedAccountUUID ?? accounts.first(where: \.isActiveContext)?.uuid
     }
 
+    private func typedResponse<T>(_ value: some Sendable, as _: T.Type = T.self) throws -> T {
+        guard let typed = value as? T else {
+            throw APIClientError.decoding("Unexpected mock response type for \(T.self)")
+        }
+        return typed
+    }
+
     func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
         switch endpoint.path {
         case "/api/v1/accounts/":
-            return accounts as! T
+            return try typedResponse(accounts)
         case "/api/v1/accounts/select/":
             let body = try XCTUnwrap(endpoint.body)
             let payload = try JSONDecoder().decode(AccountSelectionPayload.self, from: body)
@@ -38,14 +47,23 @@ private final class MockAccountAPIClient: APIClientProtocol, @unchecked Sendable
                     isActiveContext: account.uuid == payload.accountUUID,
                 )
             }
-            return EmptyResponse() as! T
+            return try typedResponse(EmptyResponse())
         case "/api/v1/accounts/me/access/":
+            if let selectedAccountUUID,
+               let error = accessErrorByAccountUUID[selectedAccountUUID]
+            {
+                throw error
+            }
             guard let selectedAccountUUID,
                   let snapshot = accessSnapshotsByAccountUUID[selectedAccountUUID]
             else {
                 throw APIClientError.http(statusCode: 404, detail: "Missing access snapshot", correlationID: nil)
             }
-            return snapshot as! T
+            return try typedResponse(snapshot)
+        case "/api/v1/billing/apple/sync/":
+            let body = try XCTUnwrap(endpoint.body)
+            try billingSyncCalls.append(JSONDecoder().decode(AppleBillingSyncRequest.self, from: body))
+            return try typedResponse(EmptyResponse())
         default:
             throw APIClientError.http(statusCode: 500, detail: "Unhandled path \(endpoint.path)", correlationID: nil)
         }
@@ -73,7 +91,7 @@ private struct AccountSelectionPayload: Decodable {
 final class AccountSessionStoreTests: XCTestCase {
     func testBootstrapUsesPersistedSelectionAndRefreshesAccessSnapshot() async throws {
         let suiteName = "AccountSessionStoreTests.bootstrap.\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
         userDefaults.set("acct-b", forKey: "medsim.selected-account.example.com.default")
 
@@ -150,7 +168,7 @@ final class AccountSessionStoreTests: XCTestCase {
 
     func testSwitchAccountUpdatesActiveContextAndPersistsSelection() async throws {
         let suiteName = "AccountSessionStoreTests.switch.\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let accounts = [
@@ -212,6 +230,167 @@ final class AccountSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.currentAccount?.uuid, "acct-b")
         XCTAssertEqual(userDefaults.string(forKey: "medsim.selected-account.example.com.default"), "acct-b")
         XCTAssertEqual(store.productAccess(code: "trainerlab")?.enabled, true)
+    }
+
+    func testSwitchAccountClearsStaleAccessSnapshotWhenRefreshFails() async throws {
+        let suiteName = "AccountSessionStoreTests.switch-error.\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let accounts = [
+            AccountOut(
+                uuid: "acct-a",
+                name: "Alpha",
+                slug: "alpha",
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "owner",
+                membershipStatus: "active",
+                isActiveContext: true,
+            ),
+            AccountOut(
+                uuid: "acct-b",
+                name: "Bravo",
+                slug: "bravo",
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "member",
+                membershipStatus: "active",
+                isActiveContext: false,
+            ),
+        ]
+
+        let snapshots = [
+            "acct-a": AccessSnapshotOut(
+                accountUUID: "acct-a",
+                accountName: "Alpha",
+                accountType: "personal",
+                membershipRole: "owner",
+                products: ["chatlab": ProductAccessOut(enabled: true)],
+            ),
+        ]
+
+        let apiClient = MockAccountAPIClient(accounts: accounts, accessSnapshotsByAccountUUID: snapshots)
+        apiClient.accessErrorByAccountUUID["acct-b"] = APIClientError.http(
+            statusCode: 503,
+            detail: "Temporary outage",
+            correlationID: nil,
+        )
+        let accountContext = SelectedAccountContext(accountUUID: "acct-a")
+        let store = AccountSessionStore(
+            apiClient: apiClient,
+            baseURLProvider: { URL(string: "https://example.com")! },
+            accountContext: accountContext,
+            userDefaults: userDefaults,
+        )
+
+        try await store.bootstrapSession()
+
+        do {
+            try await store.switchAccount(to: "acct-b")
+            XCTFail("Expected switchAccount to surface the access snapshot failure")
+        } catch {}
+
+        XCTAssertEqual(store.selectedAccountUUID, "acct-b")
+        XCTAssertEqual(store.currentAccount?.uuid, "acct-b")
+        XCTAssertNil(store.accessSnapshot)
+        XCTAssertNil(store.productAccess(code: "chatlab"))
+        let selectedFromContext = await accountContext.selectedAccountUUID()
+        XCTAssertEqual(selectedFromContext, "acct-b")
+    }
+
+    func testRetryPendingSyncRequiresOriginalAccountContext() async throws {
+        let suiteName = "AccountSessionStoreTests.billing-retry.\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let accounts = [
+            AccountOut(
+                uuid: "acct-a",
+                name: "Alpha",
+                slug: "alpha",
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "owner",
+                membershipStatus: "active",
+                isActiveContext: true,
+            ),
+            AccountOut(
+                uuid: "acct-b",
+                name: "Bravo",
+                slug: "bravo",
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "member",
+                membershipStatus: "active",
+                isActiveContext: false,
+            ),
+        ]
+
+        let snapshots = [
+            "acct-a": AccessSnapshotOut(
+                accountUUID: "acct-a",
+                accountName: "Alpha",
+                accountType: "personal",
+                membershipRole: "owner",
+                products: [:],
+            ),
+            "acct-b": AccessSnapshotOut(
+                accountUUID: "acct-b",
+                accountName: "Bravo",
+                accountType: "personal",
+                membershipRole: "member",
+                products: [:],
+            ),
+        ]
+
+        let apiClient = MockAccountAPIClient(accounts: accounts, accessSnapshotsByAccountUUID: snapshots)
+        let accountContext = SelectedAccountContext(accountUUID: "acct-a")
+        let store = AccountSessionStore(
+            apiClient: apiClient,
+            baseURLProvider: { URL(string: "https://example.com")! },
+            accountContext: accountContext,
+            userDefaults: userDefaults,
+        )
+        let billingService = AppleBillingService(
+            apiClient: apiClient,
+            accountSessionStore: store,
+        )
+
+        try await store.bootstrapSession()
+        billingService.storePendingSyncRetry(
+            [
+                AppleBillingSyncRequest(
+                    transactionID: "tx-1",
+                    originalTransactionID: "orig-1",
+                    productID: "com.jackfruitco.medsim.one.monthly",
+                    status: "active",
+                    purchaseDate: Date(timeIntervalSince1970: 1_710_000_000),
+                    expiresDate: nil,
+                    endedAt: nil,
+                    metadata: [:],
+                ),
+            ],
+            accountUUID: "acct-a",
+        )
+
+        try await store.switchAccount(to: "acct-b")
+        await billingService.retryPendingSync()
+
+        XCTAssertTrue(apiClient.billingSyncCalls.isEmpty)
+        XCTAssertTrue(billingService.hasPendingSyncRetry)
+        XCTAssertEqual(
+            billingService.syncErrorMessage,
+            "Switch back to Alpha before retrying App Store sync.",
+        )
     }
 
     func testAppleBillingSyncRequestEncodesExpectedKeys() throws {
