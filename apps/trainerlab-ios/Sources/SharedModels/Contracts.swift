@@ -1422,28 +1422,28 @@ public struct TrainerRuntimeSnapshot: Decodable, Sendable {
         problems = decodedProblems.value
 
         let hasRecommendedInterventions = container.contains(.recommendedInterventions)
-        recommendedInterventions = hasRecommendedInterventions
-            ? (try container.decodeIfPresent([RuntimeRecommendedInterventionState].self, forKey: .recommendedInterventions) ?? [])
+        recommendedInterventions = try hasRecommendedInterventions
+            ? (container.decodeIfPresent([RuntimeRecommendedInterventionState].self, forKey: .recommendedInterventions) ?? [])
             : []
 
         let hasInterventions = container.contains(.interventions)
-        interventions = hasInterventions
-            ? (try container.decodeIfPresent([RuntimeInterventionState].self, forKey: .interventions) ?? [])
+        interventions = try hasInterventions
+            ? (container.decodeIfPresent([RuntimeInterventionState].self, forKey: .interventions) ?? [])
             : []
 
         let hasAssessmentFindings = container.contains(.assessmentFindings)
-        assessmentFindings = hasAssessmentFindings
-            ? (try container.decodeIfPresent([RuntimeAssessmentFindingState].self, forKey: .assessmentFindings) ?? [])
+        assessmentFindings = try hasAssessmentFindings
+            ? (container.decodeIfPresent([RuntimeAssessmentFindingState].self, forKey: .assessmentFindings) ?? [])
             : []
 
         let hasDiagnosticResults = container.contains(.diagnosticResults)
-        diagnosticResults = hasDiagnosticResults
-            ? (try container.decodeIfPresent([RuntimeDiagnosticResultState].self, forKey: .diagnosticResults) ?? [])
+        diagnosticResults = try hasDiagnosticResults
+            ? (container.decodeIfPresent([RuntimeDiagnosticResultState].self, forKey: .diagnosticResults) ?? [])
             : []
 
         let hasResources = container.contains(.resources)
-        resources = hasResources
-            ? (try container.decodeIfPresent([RuntimeResourceState].self, forKey: .resources) ?? [])
+        resources = try hasResources
+            ? (container.decodeIfPresent([RuntimeResourceState].self, forKey: .resources) ?? [])
             : []
 
         let hasDisposition = container.contains(.disposition)
@@ -1452,18 +1452,18 @@ public struct TrainerRuntimeSnapshot: Decodable, Sendable {
             : nil
 
         let hasVitals = container.contains(.vitals)
-        vitals = hasVitals
-            ? (try container.decodeIfPresent([RuntimeVitalState].self, forKey: .vitals) ?? [])
+        vitals = try hasVitals
+            ? (container.decodeIfPresent([RuntimeVitalState].self, forKey: .vitals) ?? [])
             : []
 
         let hasPulses = container.contains(.pulses)
-        pulses = hasPulses
-            ? (try container.decodeIfPresent([RuntimePulseState].self, forKey: .pulses) ?? [])
+        pulses = try hasPulses
+            ? (container.decodeIfPresent([RuntimePulseState].self, forKey: .pulses) ?? [])
             : []
 
         let hasPatientStatus = container.contains(.patientStatus)
-        patientStatus = hasPatientStatus
-            ? (try container.decodeIfPresent(RuntimePatientStatus.self, forKey: .patientStatus) ?? .init())
+        patientStatus = try hasPatientStatus
+            ? (container.decodeIfPresent(RuntimePatientStatus.self, forKey: .patientStatus) ?? .init())
             : .init()
 
         presence = TrainerRuntimeSnapshotPresence(
@@ -1574,8 +1574,8 @@ public struct TrainerRuntimeStateOut: Decodable, Sendable {
         )
         aiPlan = decodedAIPlan.value
         let hasAIRationaleNotes = container.contains(.aiRationaleNotes)
-        aiRationaleNotes = hasAIRationaleNotes
-            ? (try container.decodeIfPresent([String].self, forKey: .aiRationaleNotes) ?? [])
+        aiRationaleNotes = try hasAIRationaleNotes
+            ? (container.decodeIfPresent([String].self, forKey: .aiRationaleNotes) ?? [])
             : []
         pendingRuntimeReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingRuntimeReasons) ?? []
         pendingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingReasons) ?? []
@@ -1597,10 +1597,10 @@ private extension KeyedDecodingContainer where K == TrainerRuntimeSnapshot.Codin
         aliases: [K],
     ) throws -> (value: [T], present: Bool) {
         if contains(primary) {
-            return (try decodeIfPresent(type, forKey: primary) ?? [], true)
+            return try (decodeIfPresent(type, forKey: primary) ?? [], true)
         }
         for alias in aliases where contains(alias) {
-            return (try decodeIfPresent(type, forKey: alias) ?? [], true)
+            return try (decodeIfPresent(type, forKey: alias) ?? [], true)
         }
         return ([], false)
     }
@@ -1613,10 +1613,10 @@ private extension KeyedDecodingContainer where K == TrainerRuntimeStateOut.Codin
         aliases: [K],
     ) throws -> (value: T?, present: Bool) {
         if contains(primary) {
-            return (try decodeIfPresent(type, forKey: primary), true)
+            return try (decodeIfPresent(type, forKey: primary), true)
         }
         for alias in aliases where contains(alias) {
-            return (try decodeIfPresent(type, forKey: alias), true)
+            return try (decodeIfPresent(type, forKey: alias), true)
         }
         return (nil, false)
     }

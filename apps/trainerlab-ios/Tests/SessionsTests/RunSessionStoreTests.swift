@@ -599,7 +599,7 @@ final class RunSessionStoreTests: XCTestCase {
                     "summary": "Escalate respiratory distress",
                 ],
             )),
-            .success(try decodeRuntimeStatePayload([
+            .success(decodeRuntimeStatePayload([
                 "simulation_id": 420,
                 "session_id": 420,
                 "status": "running",
@@ -696,7 +696,7 @@ final class RunSessionStoreTests: XCTestCase {
                     "target_problem_id": 21,
                 ]],
             )),
-            .success(try decodeRuntimeStatePayload([
+            .success(decodeRuntimeStatePayload([
                 "simulation_id": 420,
                 "session_id": 420,
                 "status": "running",
@@ -1880,6 +1880,7 @@ final class RunSessionStoreTests: XCTestCase {
             payload: [:],
         )
     }
+
     private func waitUntil(
         timeout: TimeInterval,
         condition: @escaping @MainActor () -> Bool,

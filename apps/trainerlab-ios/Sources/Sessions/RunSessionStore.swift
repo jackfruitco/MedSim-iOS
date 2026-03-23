@@ -2101,7 +2101,7 @@ public final class RunSessionStore: ObservableObject {
             payload["tick_interval_seconds"] = .number(Double(session.tickIntervalSeconds))
         }
         if payload["current_snapshot"] == nil {
-            let snapshotKeys: Set<String> = [
+            let snapshotKeys: Set = [
                 "causes",
                 "injuries",
                 "problems",
