@@ -453,10 +453,6 @@ public final class RunSessionStore: ObservableObject {
         supersedesEventID: Int? = nil,
     ) {
         guard canInterventionCommands else { return }
-        guard let targetProblemID else {
-            state.conflictBanner = "Select a target problem before recording an intervention."
-            return
-        }
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }

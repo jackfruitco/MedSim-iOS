@@ -1780,7 +1780,7 @@ public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
 public struct InterventionEventRequest: Codable, Sendable {
     public let interventionType: String
     public let siteCode: String
-    public let targetProblemID: Int
+    public let targetProblemID: Int?
     public let status: InterventionStatus
     public let effectiveness: InterventionEffectiveness
     public let notes: String
@@ -1792,7 +1792,7 @@ public struct InterventionEventRequest: Codable, Sendable {
     public init(
         interventionType: String,
         siteCode: String,
-        targetProblemID: Int,
+        targetProblemID: Int? = nil,
         status: InterventionStatus = .applied,
         effectiveness: InterventionEffectiveness = .unknown,
         notes: String = "",

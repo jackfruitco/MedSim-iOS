@@ -1154,6 +1154,43 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertTrue(service.injectInterventionCalls.isEmpty)
     }
 
+    func testAddInterventionAllowsMissingTargetProblem() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "cmd-1", status: "accepted"))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.commandChannelAvailable
+        }
+
+        store.addIntervention(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: nil,
+            notes: "Applied prophylactically",
+        )
+
+        await waitUntil(timeout: 1.5) {
+            service.injectInterventionCalls.count == 1
+        }
+
+        XCTAssertNil(service.injectInterventionCalls.first?.targetProblemID)
+        XCTAssertNil(store.state.conflictBanner)
+        XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .intervention)
+    }
+
     func testReplayPendingCommandsOnlyReplaysRowsForBoundSimulation() async throws {
         let service = MockTrainerLabService()
         let queue = InMemoryCommandQueueStore()

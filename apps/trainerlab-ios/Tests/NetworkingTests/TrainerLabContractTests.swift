@@ -258,6 +258,20 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNil(object?["description"])
     }
 
+    func testInterventionEventRequestOmitsNilTargetProblemID() throws {
+        let request = InterventionEventRequest(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: nil,
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+
+        XCTAssertEqual(object?["intervention_type"] as? String, "tourniquet")
+        XCTAssertEqual(object?["site_code"] as? String, "LEFT_ARM")
+        XCTAssertNil(object?["target_problem_id"])
+    }
+
     func testInterventionEventRequestEncodesCurrentBackendKeys() throws {
         let request = InterventionEventRequest(
             interventionType: "tourniquet",

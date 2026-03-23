@@ -2269,7 +2269,7 @@ private struct InterventionPickerSheet: View {
     let problems: [ProblemAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
-    let onSubmit: (String, String, Int, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
+    let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
 
     @State private var selectedType: String?
     @State private var selectedTargetProblemID: Int?
@@ -2304,7 +2304,7 @@ private struct InterventionPickerSheet: View {
     }
 
     private var canSubmit: Bool {
-        canMutate && resolvedSiteCode != nil && selectedTargetProblemID != nil
+        canMutate && resolvedSiteCode != nil
     }
 
     private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
@@ -2315,7 +2315,26 @@ private struct InterventionPickerSheet: View {
         NavigationStack {
             Form {
                 if !problems.isEmpty {
-                    Section("Target Problem") {
+                    Section("Target Problem (Optional)") {
+                        Button {
+                            selectedTargetProblemID = nil
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("No specific problem")
+                                        .foregroundStyle(.primary)
+                                    Text("Record this as a general intervention.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if selectedTargetProblemID == nil {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                        }
+
                         ForEach(problems) { problem in
                             Button {
                                 selectedTargetProblemID = problem.problemID
@@ -2338,8 +2357,8 @@ private struct InterventionPickerSheet: View {
                         }
                     }
                 } else {
-                    Section("Target Problem") {
-                        Text("A target problem is required by the backend before an intervention can be submitted.")
+                    Section("Target Problem (Optional)") {
+                        Text("Leave this blank to record a general intervention.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -2467,8 +2486,7 @@ private struct InterventionPickerSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         guard let siteCode = resolvedSiteCode,
-                              let type = selectedType,
-                              let selectedTargetProblemID else { return }
+                              let type = selectedType else { return }
                         onSubmit(
                             type,
                             siteCode,
