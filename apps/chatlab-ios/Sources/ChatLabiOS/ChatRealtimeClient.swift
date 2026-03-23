@@ -53,6 +53,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
 
     private let baseURLProvider: () -> URL
     private let tokenProvider: AuthTokenProvider
+    private let accountContextProvider: AccountContextProvider
     private let service: ChatLabServiceProtocol
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -73,12 +74,14 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
+        accountContextProvider: AccountContextProvider = EmptyAccountContextProvider(),
         service: ChatLabServiceProtocol,
         session: URLSession = .shared,
         staleThresholdSeconds: TimeInterval = 45,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
+        self.accountContextProvider = accountContextProvider
         self.service = service
         self.session = session
         self.staleThresholdSeconds = staleThresholdSeconds
@@ -182,7 +185,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             let freshness = ChatSSEFreshnessTracker()
             let task = Task {
                 do {
-                    let request = try makeSSERequest(simulationID: simulationID, cursor: cursor)
+                    let request = try await makeSSERequest(simulationID: simulationID, cursor: cursor)
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                         throw URLError(.badServerResponse)
@@ -263,13 +266,18 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         }
     }
 
-    private func makeSSERequest(simulationID: Int, cursor: String?) throws -> URLRequest {
+    private func makeSSERequest(simulationID: Int, cursor: String?) async throws -> URLRequest {
         guard let tokens = tokenProvider.loadTokens() else {
             throw URLError(.userAuthenticationRequired)
         }
 
         let route = ChatLabAPI.eventStream(simulationID: simulationID, cursor: cursor)
-        return try route.makeURLRequest(baseURL: baseURLProvider(), accessToken: tokens.accessToken)
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
+        return try route.makeURLRequest(
+            baseURL: baseURLProvider(),
+            accessToken: tokens.accessToken,
+            accountUUID: accountUUID,
+        )
     }
 
     private func emitIfNew(_ event: ChatEventEnvelope) {

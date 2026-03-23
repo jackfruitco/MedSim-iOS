@@ -13,10 +13,19 @@ public final class SessionHubViewModel: ObservableObject {
 
     private var nextCursor: String?
     private let service: TrainerLabServiceProtocol
+    private let accountUUIDProvider: () -> String?
     private var searchDebounceTask: Task<Void, Never>?
 
-    public init(service: TrainerLabServiceProtocol) {
+    public init(service: TrainerLabServiceProtocol, accountUUIDProvider: @escaping () -> String? = { nil }) {
         self.service = service
+        self.accountUUIDProvider = accountUUIDProvider
+    }
+
+    public func resetForAccountChange() {
+        sessions = []
+        nextCursor = nil
+        hasMore = false
+        errorMessage = nil
     }
 
     public func onSearchQueryChanged() {
@@ -77,11 +86,20 @@ public final class SessionHubViewModel: ObservableObject {
         )
 
         do {
-            let idempotencyKey = "ios.session.create.\(UUID().uuidString.lowercased())"
+            let idempotencyKey = makeIdempotencyKey(scope: "session.create")
             let session = try await service.createSession(request: request, idempotencyKey: idempotencyKey)
             sessions.insert(session, at: 0)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func makeIdempotencyKey(scope: String) -> String {
+        let accountFragment = accountUUIDProvider()?
+            .split(separator: "-")
+            .first
+            .map(String.init)
+            .flatMap { $0.isEmpty ? nil : $0.lowercased() } ?? "global"
+        return "ios.\(scope).\(accountFragment).\(UUID().uuidString.lowercased())"
     }
 }

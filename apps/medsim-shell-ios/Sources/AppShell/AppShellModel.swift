@@ -14,11 +14,14 @@ import Summary
 public final class AppShellModel: ObservableObject {
     public let environmentStore: APIEnvironmentStore
     public let authViewModel: AuthViewModel
+    public let accountSessionStore: AccountSessionStore
+    public let billingService: AppleBillingService
     public let sessionHubViewModel: SessionHubViewModel
     public let presetsViewModel: PresetsViewModel
 
     private let tokenStore: KeychainTokenStore
     private let mutableBaseURLProvider: MutableBaseURLProvider
+    private let selectedAccountContext: SelectedAccountContext
     private let apiClient: APIClient
     private let trainerService: TrainerLabService
     private let chatService: ChatLabService
@@ -37,12 +40,31 @@ public final class AppShellModel: ObservableObject {
         }
         self.tokenStore = tokenStore
 
-        let apiClient = APIClient(baseURLProvider: { mutableBaseURLProvider.currentURL() }, tokenProvider: tokenStore)
+        let selectedAccountContext = SelectedAccountContext()
+        self.selectedAccountContext = selectedAccountContext
+
+        let apiClient = APIClient(
+            baseURLProvider: { mutableBaseURLProvider.currentURL() },
+            tokenProvider: tokenStore,
+            accountContextProvider: selectedAccountContext,
+        )
         self.apiClient = apiClient
 
         let trainerService = TrainerLabService(apiClient: apiClient)
         self.trainerService = trainerService
         chatService = ChatLabService(apiClient: apiClient)
+
+        let accountSessionStore = AccountSessionStore(
+            apiClient: apiClient,
+            baseURLProvider: { mutableBaseURLProvider.currentURL() },
+            accountContext: selectedAccountContext,
+        )
+        self.accountSessionStore = accountSessionStore
+
+        billingService = AppleBillingService(
+            apiClient: apiClient,
+            accountSessionStore: accountSessionStore,
+        )
 
         let commandQueue: CommandQueueStoreProtocol
         do {
@@ -60,17 +82,32 @@ public final class AppShellModel: ObservableObject {
         self.commandQueue = commandQueue
 
         let authService = AuthService(apiClient: apiClient, tokenProvider: tokenStore)
-        authViewModel = AuthViewModel(authService: authService, trainerService: trainerService)
-        sessionHubViewModel = SessionHubViewModel(service: trainerService)
-        presetsViewModel = PresetsViewModel(service: trainerService)
+        authViewModel = AuthViewModel(authService: authService, sessionBootstrapper: accountSessionStore)
+        sessionHubViewModel = SessionHubViewModel(
+            service: trainerService,
+            accountUUIDProvider: { [weak accountSessionStore] in accountSessionStore?.selectedAccountUUID },
+        )
+        presetsViewModel = PresetsViewModel(
+            service: trainerService,
+            accountUUIDProvider: { [weak accountSessionStore] in accountSessionStore?.selectedAccountUUID },
+        )
         bindChildPublishers()
     }
 
     public func makeRunSessionStore(session: TrainerSessionDTO) -> RunSessionStore {
-        let sse = SSETransport(baseURLProvider: { self.mutableBaseURLProvider.currentURL() }, tokenProvider: tokenStore)
+        let sse = SSETransport(
+            baseURLProvider: { self.mutableBaseURLProvider.currentURL() },
+            tokenProvider: tokenStore,
+            accountContextProvider: selectedAccountContext,
+        )
         let polling = PollingTransport(service: trainerService)
         let realtime = RealtimeClient(sseTransport: sse, pollingTransport: polling)
-        let store = RunSessionStore(service: trainerService, realtimeClient: realtime, commandQueue: commandQueue)
+        let store = RunSessionStore(
+            service: trainerService,
+            realtimeClient: realtime,
+            commandQueue: commandQueue,
+            accountUUID: accountSessionStore.selectedAccountUUID,
+        )
         store.bind(session: session)
         return store
     }
@@ -87,6 +124,7 @@ public final class AppShellModel: ObservableObject {
         let realtime = ChatRealtimeClient(
             baseURLProvider: { self.mutableBaseURLProvider.currentURL() },
             tokenProvider: tokenStore,
+            accountContextProvider: selectedAccountContext,
             service: chatService,
         )
         return ChatRunStore(
@@ -104,8 +142,21 @@ public final class AppShellModel: ObservableObject {
         mutableBaseURLProvider.setURL(environmentStore.baseURL)
     }
 
+    public func resetScopedWorkspaceState() {
+        sessionHubViewModel.resetForAccountChange()
+        presetsViewModel.resetForAccountChange()
+    }
+
     private func bindChildPublishers() {
         authViewModel.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        accountSessionStore.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        billingService.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 

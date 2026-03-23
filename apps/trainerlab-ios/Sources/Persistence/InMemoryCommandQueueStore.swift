@@ -33,19 +33,19 @@ public actor InMemoryCommandQueueStore: CommandQueueStoreProtocol {
         storage[index].ackState = .failed
     }
 
-    public func nextRetryBatch(limit: Int, now: Date, simulationID: Int?) async throws -> [PendingCommandEnvelope] {
+    public func nextRetryBatch(limit: Int, now: Date, simulationID: Int?, accountUUID: String?) async throws -> [PendingCommandEnvelope] {
         Array(storage
             .filter {
                 ($0.nextRetryAt <= now || $0.ackState == .failed)
                     && $0.retryCount < $0.maxRetries
-                    && (simulationID == nil || $0.simulationID == simulationID || $0.simulationID == nil)
+                    && $0.matches(simulationID: simulationID, accountUUID: accountUUID)
             }
             .sorted(by: { $0.nextRetryAt < $1.nextRetryAt })
             .prefix(limit))
     }
 
-    public func pendingCount(simulationID: Int?) async throws -> Int {
-        storage.count(where: { $0.isActivePending && $0.matches(simulationID: simulationID) })
+    public func pendingCount(simulationID: Int?, accountUUID: String?) async throws -> Int {
+        storage.count(where: { $0.isActivePending && $0.matches(simulationID: simulationID, accountUUID: accountUUID) })
     }
 
     public func purgeAbandoned() async throws -> Int {

@@ -81,6 +81,154 @@ public struct LabAccess: Codable, Sendable {
     }
 }
 
+public struct AccountOut: Codable, Equatable, Identifiable, Sendable {
+    public let uuid: String
+    public let name: String
+    public let slug: String
+    public let accountType: String
+    public let isActive: Bool
+    public let requiresJoinApproval: Bool
+    public let parentAccountUUID: String?
+    public let membershipRole: String?
+    public let membershipStatus: String?
+    public let isActiveContext: Bool
+
+    public var id: String {
+        uuid
+    }
+
+    public init(
+        uuid: String,
+        name: String,
+        slug: String,
+        accountType: String,
+        isActive: Bool,
+        requiresJoinApproval: Bool,
+        parentAccountUUID: String?,
+        membershipRole: String?,
+        membershipStatus: String?,
+        isActiveContext: Bool,
+    ) {
+        self.uuid = uuid
+        self.name = name
+        self.slug = slug
+        self.accountType = accountType
+        self.isActive = isActive
+        self.requiresJoinApproval = requiresJoinApproval
+        self.parentAccountUUID = parentAccountUUID
+        self.membershipRole = membershipRole
+        self.membershipStatus = membershipStatus
+        self.isActiveContext = isActiveContext
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case uuid
+        case name
+        case slug
+        case accountType = "account_type"
+        case isActive = "is_active"
+        case requiresJoinApproval = "requires_join_approval"
+        case parentAccountUUID = "parent_account_uuid"
+        case membershipRole = "membership_role"
+        case membershipStatus = "membership_status"
+        case isActiveContext = "is_active_context"
+    }
+}
+
+public struct ProductAccessOut: Codable, Equatable, Sendable {
+    public let enabled: Bool
+    public let features: [String: JSONValue]
+    public let limits: [String: JSONValue]
+
+    public init(
+        enabled: Bool,
+        features: [String: JSONValue] = [:],
+        limits: [String: JSONValue] = [:],
+    ) {
+        self.enabled = enabled
+        self.features = features
+        self.limits = limits
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case features
+        case limits
+    }
+}
+
+public struct AccessSnapshotOut: Codable, Equatable, Sendable {
+    public let accountUUID: String
+    public let accountName: String
+    public let accountType: String
+    public let membershipRole: String?
+    public let products: [String: ProductAccessOut]
+
+    public init(
+        accountUUID: String,
+        accountName: String,
+        accountType: String,
+        membershipRole: String?,
+        products: [String: ProductAccessOut],
+    ) {
+        self.accountUUID = accountUUID
+        self.accountName = accountName
+        self.accountType = accountType
+        self.membershipRole = membershipRole
+        self.products = products
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case accountUUID = "account_uuid"
+        case accountName = "account_name"
+        case accountType = "account_type"
+        case membershipRole = "membership_role"
+        case products
+    }
+}
+
+public struct AppleBillingSyncRequest: Codable, Equatable, Sendable {
+    public let transactionID: String
+    public let originalTransactionID: String
+    public let productID: String
+    public let status: String
+    public let purchaseDate: Date
+    public let expiresDate: Date?
+    public let endedAt: Date?
+    public let metadata: [String: JSONValue]
+
+    public init(
+        transactionID: String,
+        originalTransactionID: String,
+        productID: String,
+        status: String,
+        purchaseDate: Date,
+        expiresDate: Date?,
+        endedAt: Date?,
+        metadata: [String: JSONValue] = [:],
+    ) {
+        self.transactionID = transactionID
+        self.originalTransactionID = originalTransactionID
+        self.productID = productID
+        self.status = status
+        self.purchaseDate = purchaseDate
+        self.expiresDate = expiresDate
+        self.endedAt = endedAt
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case transactionID = "transaction_id"
+        case originalTransactionID = "original_transaction_id"
+        case productID = "product_id"
+        case status
+        case purchaseDate = "purchase_date"
+        case expiresDate = "expires_date"
+        case endedAt = "ended_at"
+        case metadata
+    }
+}
+
 public enum TrainerSessionStatus: String, Codable, Sendable, CaseIterable {
     case seeding
     case seeded

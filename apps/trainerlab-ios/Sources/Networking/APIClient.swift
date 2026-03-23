@@ -5,6 +5,18 @@ import SharedModels
 
 private let logger = Logger(subsystem: "com.jackfruit.medsim", category: "Networking")
 
+public protocol AccountContextProvider: Sendable {
+    func selectedAccountUUID() async -> String?
+}
+
+public struct EmptyAccountContextProvider: AccountContextProvider {
+    public init() {}
+
+    public func selectedAccountUUID() async -> String? {
+        nil
+    }
+}
+
 public enum HTTPMethod: String, Sendable {
     case get = "GET"
     case post = "POST"
@@ -20,6 +32,7 @@ public struct Endpoint: Sendable {
     public let body: Data?
     public let headers: [String: String]
     public let requiresAuth: Bool
+    public let requiresAccountContext: Bool
     public let idempotencyKey: String?
     public let correlationID: String?
 
@@ -30,6 +43,7 @@ public struct Endpoint: Sendable {
         body: Data? = nil,
         headers: [String: String] = [:],
         requiresAuth: Bool = true,
+        requiresAccountContext: Bool = true,
         idempotencyKey: String? = nil,
         correlationID: String? = nil,
     ) {
@@ -39,6 +53,7 @@ public struct Endpoint: Sendable {
         self.body = body
         self.headers = headers
         self.requiresAuth = requiresAuth
+        self.requiresAccountContext = requiresAccountContext
         self.idempotencyKey = idempotencyKey
         self.correlationID = correlationID
     }
@@ -47,19 +62,25 @@ public struct Endpoint: Sendable {
 public struct EventStreamRoute: Sendable, Equatable {
     public let path: String
     public let query: [URLQueryItem]
+    public let requiresAccountContext: Bool
 
-    public init(path: String, query: [URLQueryItem] = []) {
+    public init(path: String, query: [URLQueryItem] = [], requiresAccountContext: Bool = true) {
         self.path = path
         self.query = query
+        self.requiresAccountContext = requiresAccountContext
     }
 
-    public func makeURLRequest(baseURL: URL, accessToken: String) throws -> URLRequest {
+    public func makeURLRequest(baseURL: URL, accessToken: String, accountUUID: String?) throws -> URLRequest {
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw URLError(.badURL)
         }
         components.path = path
-        if !query.isEmpty {
-            components.queryItems = query
+        var queryItems = query
+        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
+            queryItems.append(URLQueryItem(name: "account_uuid", value: accountUUID))
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
         }
         guard let url = components.url else {
             throw URLError(.badURL)
@@ -81,6 +102,7 @@ public enum AuthAPI {
             method: .post,
             body: body,
             requiresAuth: false,
+            requiresAccountContext: false,
         )
     }
 
@@ -90,6 +112,7 @@ public enum AuthAPI {
             method: .post,
             body: body,
             requiresAuth: false,
+            requiresAccountContext: false,
         )
     }
 
@@ -99,6 +122,39 @@ public enum AuthAPI {
             method: .post,
             body: body,
             requiresAuth: false,
+            requiresAccountContext: false,
+        )
+    }
+}
+
+public enum AccountsAPI {
+    public static func listAccounts() -> Endpoint {
+        Endpoint(
+            path: "/api/v1/accounts/",
+            requiresAccountContext: false,
+        )
+    }
+
+    public static func selectAccount(body: Data) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/accounts/select/",
+            method: .post,
+            body: body,
+            requiresAccountContext: false,
+        )
+    }
+
+    public static func accessSnapshot() -> Endpoint {
+        Endpoint(path: "/api/v1/accounts/me/access/")
+    }
+}
+
+public enum BillingAPI {
+    public static func appleSync(body: Data) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/billing/apple/sync/",
+            method: .post,
+            body: body,
         )
     }
 }
@@ -550,6 +606,7 @@ public protocol APIClientProtocol: Sendable {
 public final class APIClient: APIClientProtocol, @unchecked Sendable {
     private let baseURLProvider: () -> URL
     private let tokenProvider: AuthTokenProvider
+    private let accountContextProvider: AccountContextProvider
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -559,10 +616,12 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
+        accountContextProvider: AccountContextProvider = EmptyAccountContextProvider(),
         session: URLSession = .shared,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
+        self.accountContextProvider = accountContextProvider
         self.session = session
 
         let encoder = JSONEncoder()
@@ -679,6 +738,13 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
                 throw APIClientError.unauthorized
             }
             request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        if endpoint.requiresAccountContext,
+           let accountUUID = await accountContextProvider.selectedAccountUUID(),
+           !accountUUID.isEmpty
+        {
+            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
         }
 
         for (key, value) in endpoint.headers {

@@ -46,6 +46,8 @@ let package = Package(
             ],
             sources: [
                 "APIClient.swift",
+                "AccountSessionStore.swift",
+                "AppleBillingService.swift",
                 "AuthService.swift",
                 "EnvironmentStore.swift",
                 "MutableBaseURLProvider.swift",
