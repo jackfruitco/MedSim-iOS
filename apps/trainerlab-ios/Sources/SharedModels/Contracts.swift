@@ -73,11 +73,9 @@ public struct RefreshTokenResponse: Codable, Sendable {
 
 public struct LabAccess: Codable, Sendable {
     public let labSlug: String
-    public let accessLevel: String
 
     enum CodingKeys: String, CodingKey {
         case labSlug = "lab_slug"
-        case accessLevel = "access_level"
     }
 }
 

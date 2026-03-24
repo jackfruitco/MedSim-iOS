@@ -102,6 +102,17 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(summary.status, "completed")
     }
 
+    func testTrainerLabAccessProbeDecodesGuardedPayload() async throws {
+        let api = RecordingAPIClient()
+        api.responseDataByPath["/api/v1/trainerlab/access/me/"] = Data(#"{"lab_slug":"trainerlab"}"#.utf8)
+        let service = TrainerLabService(apiClient: api)
+
+        let access = try await service.accessMe()
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/trainerlab/access/me/")
+        XCTAssertEqual(access.labSlug, "trainerlab")
+    }
+
     func testSimulationStatusUpdatedEnvelopeDecodesFailurePayload() throws {
         let json = """
         {

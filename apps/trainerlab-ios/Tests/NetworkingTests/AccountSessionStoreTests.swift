@@ -544,6 +544,37 @@ final class AccountSessionStoreTests: XCTestCase {
         XCTAssertNil(payload?["ended_at"])
     }
 
+    func testAccessSnapshotDecodesFeatureDictionaryPayload() throws {
+        let json = """
+        {
+          "account_uuid": "acct-a",
+          "account_name": "Alpha",
+          "account_type": "personal",
+          "membership_role": "owner",
+          "products": {
+            "chatlab_go": {
+              "enabled": true,
+              "features": {
+                "advanced_search": true,
+                "priority": "plus"
+              },
+              "limits": {
+                "seat_count": 5
+              }
+            }
+          }
+        }
+        """
+
+        let snapshot = try JSONDecoder().decode(AccessSnapshotOut.self, from: Data(json.utf8))
+
+        XCTAssertEqual(snapshot.accountUUID, "acct-a")
+        XCTAssertEqual(snapshot.products["chatlab_go"]?.enabled, true)
+        XCTAssertEqual(snapshot.products["chatlab_go"]?.features["advanced_search"], .bool(true))
+        XCTAssertEqual(snapshot.products["chatlab_go"]?.features["priority"], .string("plus"))
+        XCTAssertEqual(snapshot.products["chatlab_go"]?.limits["seat_count"], .number(5))
+    }
+
     func testCanonicalTrainerAndChatLabProductsEnableExpectedLabs() async throws {
         let cases: [(LabProductAccess, String)] = [
             (.trainerLab, "trainerlab_go"),
