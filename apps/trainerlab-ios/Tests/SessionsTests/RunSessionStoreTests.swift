@@ -453,6 +453,63 @@ final class RunSessionStoreTests: XCTestCase {
         )
     }
 
+    func testBootstrapPaginatesHistoricalEventsUsingBackendMaxPageLimit() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResultsQueue = [
+            .success(PaginatedResponse(
+                items: [
+                    makeStatusUpdatedEvent(
+                        eventID: "seed-1",
+                        status: "seeded",
+                        stateRevision: 1,
+                        createdAt: Date(timeIntervalSince1970: 10),
+                    ),
+                ],
+                nextCursor: "evt-page-2",
+                hasMore: true,
+            )),
+            .success(PaginatedResponse(
+                items: [
+                    makeStatusUpdatedEvent(
+                        eventID: "run-1",
+                        status: "running",
+                        to: "running",
+                        stateRevision: 2,
+                        createdAt: Date(timeIntervalSince1970: 20),
+                    ),
+                ],
+                nextCursor: nil,
+                hasMore: false,
+            )),
+        ]
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 2.0) {
+            service.listEventsCalls.count == 2
+                && realtime.connectCalls.first?.cursor == "run-1"
+                && store.state.timeline.map(\.eventID) == ["seed-1", "run-1"]
+        }
+
+        XCTAssertEqual(service.listEventsCalls.count, 2)
+        XCTAssertEqual(service.listEventsCalls[0].simulationID, 420)
+        XCTAssertNil(service.listEventsCalls[0].cursor)
+        XCTAssertEqual(service.listEventsCalls[0].limit, 100)
+        XCTAssertEqual(service.listEventsCalls[1].simulationID, 420)
+        XCTAssertEqual(service.listEventsCalls[1].cursor, "evt-page-2")
+        XCTAssertEqual(service.listEventsCalls[1].limit, 100)
+    }
+
     func testBindSeedsHydratedSectionsFromSessionRuntimeStateAliases() {
         let store = RunSessionStore(
             service: MockTrainerLabService(),
