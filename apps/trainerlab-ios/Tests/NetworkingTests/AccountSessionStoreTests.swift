@@ -617,7 +617,7 @@ final class AccountSessionStoreTests: XCTestCase {
 
         let unavailableStore = makeStore(products: [:])
         try await unavailableStore.bootstrapSession()
-        XCTAssertEqual(unavailableStore.labAccessMessage(.trainerLab), "Unavailable for Alpha.")
+        XCTAssertEqual(unavailableStore.labAccessMessage(.trainerLab), "Not included for Alpha.")
 
         let disabledStore = makeStore(products: ["trainerlab_go": ProductAccessOut(enabled: false)])
         try await disabledStore.bootstrapSession()
@@ -640,7 +640,25 @@ final class AccountSessionStoreTests: XCTestCase {
 
         XCTAssertFalse(store.isLabEnabled(.trainerLab))
         XCTAssertFalse(store.isLabEnabled(.chatLab))
-        XCTAssertEqual(store.labAccessMessage(.trainerLab), "Unavailable for Alpha.")
-        XCTAssertEqual(store.labAccessMessage(.chatLab), "Unavailable for Alpha.")
+        XCTAssertEqual(store.labAccessMessage(.trainerLab), "Not included for Alpha.")
+        XCTAssertEqual(store.labAccessMessage(.chatLab), "Not included for Alpha.")
+    }
+
+    func testChatLabGoDoesNotEnableTrainerLab() async throws {
+        let store = makeStore(products: ["chatlab_go": ProductAccessOut(enabled: true)])
+
+        try await store.bootstrapSession()
+
+        XCTAssertFalse(store.isLabEnabled(.trainerLab))
+        XCTAssertTrue(store.isLabEnabled(.chatLab))
+    }
+
+    func testTrainerLabGoDoesNotEnableChatLab() async throws {
+        let store = makeStore(products: ["trainerlab_go": ProductAccessOut(enabled: true)])
+
+        try await store.bootstrapSession()
+
+        XCTAssertTrue(store.isLabEnabled(.trainerLab))
+        XCTAssertFalse(store.isLabEnabled(.chatLab))
     }
 }

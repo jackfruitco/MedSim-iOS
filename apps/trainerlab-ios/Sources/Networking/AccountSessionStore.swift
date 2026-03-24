@@ -112,10 +112,6 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         }
 
         let productAccessList = lab.canonicalProductCodes.compactMap(productAccess(code:))
-        guard !productAccessList.isEmpty else {
-            return "Unavailable for \(account.name)."
-        }
-
         return productAccessList.contains(where: \.enabled) ? nil : "Not included for \(account.name)."
     }
 
