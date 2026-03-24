@@ -13,9 +13,19 @@ public final class PresetsViewModel: ObservableObject {
 
     private var nextCursor: String?
     private let service: TrainerLabServiceProtocol
+    private let accountUUIDProvider: () -> String?
 
-    public init(service: TrainerLabServiceProtocol) {
+    public init(service: TrainerLabServiceProtocol, accountUUIDProvider: @escaping () -> String? = { nil }) {
         self.service = service
+        self.accountUUIDProvider = accountUUIDProvider
+    }
+
+    public func resetForAccountChange() {
+        presets = []
+        accountResults = []
+        nextCursor = nil
+        hasMore = false
+        errorMessage = nil
     }
 
     public func loadPresets() async {
@@ -107,7 +117,7 @@ public final class PresetsViewModel: ObservableObject {
     public func applyPreset(id: Int, simulationID: Int) async {
         do {
             let request = ScenarioInstructionApplyRequest(simulationID: simulationID)
-            let key = "ios.preset.apply.\(UUID().uuidString.lowercased())"
+            let key = makeIdempotencyKey(scope: "preset.apply")
             _ = try await service.applyPreset(presetID: id, request: request, idempotencyKey: key)
         } catch {
             errorMessage = error.localizedDescription
@@ -146,5 +156,14 @@ public final class PresetsViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func makeIdempotencyKey(scope: String) -> String {
+        let accountFragment = accountUUIDProvider()?
+            .split(separator: "-")
+            .first
+            .map(String.init)
+            .flatMap { $0.isEmpty ? nil : $0.lowercased() } ?? "global"
+        return "ios.\(scope).\(accountFragment).\(UUID().uuidString.lowercased())"
     }
 }

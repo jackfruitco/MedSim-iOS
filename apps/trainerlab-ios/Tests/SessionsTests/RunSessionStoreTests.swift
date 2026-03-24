@@ -985,7 +985,7 @@ final class RunSessionStoreTests: XCTestCase {
             !store.state.commandChannelAvailable && store.state.transportBanner.message == "Polling Fallback"
         }
 
-        let pending = try await queue.pendingCount(simulationID: 420)
+        let pending = try await queue.pendingCount(simulationID: 420, accountUUID: nil)
         XCTAssertEqual(pending, 0)
     }
 
@@ -1266,11 +1266,18 @@ final class RunSessionStoreTests: XCTestCase {
             service.replayPendingCalls.map(\.endpoint),
             [matching.endpoint, legacyMatch.endpoint],
         )
-        let pendingCount = try await queue.pendingCount(simulationID: 420)
-        let remainingEndpoints = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
+        let pendingCount = try await queue.pendingCount(simulationID: 420, accountUUID: nil)
+        let remainingEndpoints = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
             .map(\.endpoint)
+        let otherSimulationRemaining = try await queue.nextRetryBatch(
+            limit: 10,
+            now: .distantFuture,
+            simulationID: 421,
+            accountUUID: nil,
+        ).map(\.endpoint)
         XCTAssertEqual(pendingCount, 0)
-        XCTAssertEqual(remainingEndpoints, [legacyMismatch.endpoint])
+        XCTAssertTrue(remainingEndpoints.isEmpty)
+        XCTAssertEqual(otherSimulationRemaining, [otherSimulation.endpoint, legacyMismatch.endpoint])
     }
 
     func testReplayPendingCommandsTreatsTerminalHTTPFailuresAsNonRetryable() async throws {
@@ -1298,10 +1305,49 @@ final class RunSessionStoreTests: XCTestCase {
 
         await store.replayPendingCommands()
 
-        let pendingCount = try await queue.pendingCount(simulationID: 420)
-        let retryBatch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420)
+        let pendingCount = try await queue.pendingCount(simulationID: 420, accountUUID: nil)
+        let retryBatch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
         XCTAssertEqual(pendingCount, 0)
         XCTAssertTrue(retryBatch.isEmpty)
+    }
+
+    func testReplayPendingCommandsIgnoresDifferentAccountContext() async throws {
+        let service = MockTrainerLabService()
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: queue,
+            accountUUID: "acct-a",
+        )
+        store.bind(session: makeSession(status: .seeded))
+
+        try await queue.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420,
+            accountUUID: "acct-a",
+        ))
+        try await queue.enqueue(CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/run/start/",
+            method: HTTPMethod.post.rawValue,
+            body: Data(),
+            simulationID: 420,
+            accountUUID: "acct-b",
+        ))
+
+        await store.replayPendingCommands()
+
+        XCTAssertEqual(service.replayPendingCalls.count, 1)
+        XCTAssertEqual(service.replayPendingCalls.first?.idempotencyKey.hasPrefix("ios.acct"), true)
+        let remaining = try await queue.nextRetryBatch(
+            limit: 10,
+            now: .distantFuture,
+            simulationID: 420,
+            accountUUID: "acct-b",
+        )
+        XCTAssertEqual(remaining.count, 1)
     }
 
     func testStartConsoleScopesPendingCountToBoundSimulation() async throws {

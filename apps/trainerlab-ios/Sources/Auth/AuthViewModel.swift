@@ -1,6 +1,16 @@
 import Foundation
 import Networking
 
+private struct LegacyLabAccessBootstrapper: AuthSessionBootstrapper {
+    let trainerService: TrainerLabServiceProtocol
+
+    func bootstrapSession() async throws {
+        _ = try await trainerService.accessMe()
+    }
+
+    func clearSession() async {}
+}
+
 @MainActor
 public final class AuthViewModel: ObservableObject {
     @Published public var email = ""
@@ -10,12 +20,19 @@ public final class AuthViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
 
     private let authService: AuthServiceProtocol
-    private let trainerService: TrainerLabServiceProtocol
+    private let sessionBootstrapper: AuthSessionBootstrapper
 
-    public init(authService: AuthServiceProtocol, trainerService: TrainerLabServiceProtocol) {
+    public init(authService: AuthServiceProtocol, sessionBootstrapper: AuthSessionBootstrapper) {
         self.authService = authService
-        self.trainerService = trainerService
+        self.sessionBootstrapper = sessionBootstrapper
         isAuthenticated = authService.hasActiveTokens()
+    }
+
+    public convenience init(authService: AuthServiceProtocol, trainerService: TrainerLabServiceProtocol) {
+        self.init(
+            authService: authService,
+            sessionBootstrapper: LegacyLabAccessBootstrapper(trainerService: trainerService),
+        )
     }
 
     public func signIn() async {
@@ -30,9 +47,11 @@ public final class AuthViewModel: ObservableObject {
 
         do {
             _ = try await authService.signIn(email: email, password: password)
-            _ = try await trainerService.accessMe()
+            try await sessionBootstrapper.bootstrapSession()
             isAuthenticated = true
         } catch {
+            await authService.signOut()
+            await sessionBootstrapper.clearSession()
             isAuthenticated = false
             errorMessage = error.localizedDescription
         }
@@ -40,6 +59,7 @@ public final class AuthViewModel: ObservableObject {
 
     public func signOut() async {
         await authService.signOut()
+        await sessionBootstrapper.clearSession()
         isAuthenticated = false
         email = ""
         password = ""
@@ -53,10 +73,11 @@ public final class AuthViewModel: ObservableObject {
         }
 
         do {
-            _ = try await trainerService.accessMe()
+            try await sessionBootstrapper.bootstrapSession()
             isAuthenticated = true
         } catch {
             await authService.signOut()
+            await sessionBootstrapper.clearSession()
             isAuthenticated = false
         }
     }

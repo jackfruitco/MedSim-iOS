@@ -800,13 +800,13 @@ final class TrainerLabContractTests: XCTestCase {
         try seedLegacyQueueDatabase(at: dbURL)
 
         let store = try GRDBCommandQueueStore(fileURL: dbURL)
-        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture, simulationID: nil)
+        let rows = try await store.nextRetryBatch(limit: 10, now: Date.distantFuture, simulationID: nil, accountUUID: nil)
         let endpoints = Set(rows.map(\.endpoint))
 
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/77/adjust/"))
         XCTAssertTrue(endpoints.contains("/api/v1/trainerlab/simulations/"))
         XCTAssertFalse(endpoints.contains("/api/v1/trainerlab/sessions/55/run/start/"))
-        let pendingCount = try await store.pendingCount(simulationID: nil)
+        let pendingCount = try await store.pendingCount(simulationID: nil, accountUUID: nil)
         XCTAssertEqual(pendingCount, 2)
     }
 
@@ -854,9 +854,9 @@ final class TrainerLabContractTests: XCTestCase {
         try await store.enqueue(terminal)
         try await store.markTerminalFailure(idempotencyKey: terminal.idempotencyKey, error: "terminal")
 
-        let currentSimulationCount = try await store.pendingCount(simulationID: 420)
-        let otherSimulationCount = try await store.pendingCount(simulationID: 421)
-        let globalCount = try await store.pendingCount(simulationID: nil)
+        let currentSimulationCount = try await store.pendingCount(simulationID: 420, accountUUID: nil)
+        let otherSimulationCount = try await store.pendingCount(simulationID: 421, accountUUID: nil)
+        let globalCount = try await store.pendingCount(simulationID: nil, accountUUID: nil)
 
         XCTAssertEqual(currentSimulationCount, 2)
         XCTAssertEqual(otherSimulationCount, 2)

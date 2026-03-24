@@ -42,6 +42,7 @@ private actor SSEFreshnessTracker {
 public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
     private let baseURLProvider: () -> URL
     private let tokenProvider: AuthTokenProvider
+    private let accountContextProvider: AccountContextProvider
     private let session: URLSession
     private let decoder: JSONDecoder
     private let staleThresholdSeconds: TimeInterval
@@ -49,11 +50,13 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
     public init(
         baseURLProvider: @escaping () -> URL,
         tokenProvider: AuthTokenProvider,
+        accountContextProvider: AccountContextProvider = EmptyAccountContextProvider(),
         session: URLSession = .shared,
         staleThresholdSeconds: TimeInterval = 45,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
+        self.accountContextProvider = accountContextProvider
         self.session = session
         self.staleThresholdSeconds = staleThresholdSeconds
 
@@ -161,7 +164,12 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
         }
 
         let route = TrainerLabAPI.eventStream(simulationID: simulationID, cursor: cursor)
-        return try route.makeURLRequest(baseURL: baseURLProvider(), accessToken: tokens.accessToken)
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
+        return try route.makeURLRequest(
+            baseURL: baseURLProvider(),
+            accessToken: tokens.accessToken,
+            accountUUID: accountUUID,
+        )
     }
 
     private func parseEvent(dataString: String) throws -> EventEnvelope? {

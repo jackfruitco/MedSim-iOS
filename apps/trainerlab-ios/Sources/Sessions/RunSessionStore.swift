@@ -14,6 +14,7 @@ public final class RunSessionStore: ObservableObject {
     private let service: TrainerLabServiceProtocol
     private let realtimeClient: RealtimeClientProtocol
     private let commandQueue: CommandQueueStoreProtocol
+    private let accountUUID: String?
 
     @Published public private(set) var interventionDictionary: [InterventionGroup] = InterventionDictionary.bundled
     @Published public private(set) var injuryDictionary: InjuryDictionary?
@@ -65,10 +66,12 @@ public final class RunSessionStore: ObservableObject {
         service: TrainerLabServiceProtocol,
         realtimeClient: RealtimeClientProtocol,
         commandQueue: CommandQueueStoreProtocol,
+        accountUUID: String? = nil,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
         self.commandQueue = commandQueue
+        self.accountUUID = accountUUID
     }
 
     public func bind(session: TrainerSessionDTO) {
@@ -614,7 +617,7 @@ public final class RunSessionStore: ObservableObject {
                 let created = try await service.createAnnotation(
                     simulationID: simulationID,
                     request: request,
-                    idempotencyKey: UUID().uuidString,
+                    idempotencyKey: makeDirectIdempotencyKey(scope: "annotation"),
                 )
                 debriefAnnotations.insert(created, at: 0)
             } catch {
@@ -629,7 +632,7 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let key = UUID().uuidString
+            let key = makeDirectIdempotencyKey(scope: "steer")
             let request = SteerPromptRequest(prompt: String(trimmed.prefix(2000)))
             _ = try? await service.steerPrompt(
                 simulationID: simulationID,
@@ -685,7 +688,12 @@ public final class RunSessionStore: ObservableObject {
     public func replayPendingCommands() async {
         do {
             guard let simulationID = state.session?.simulationID else { return }
-            let batch = try await commandQueue.nextRetryBatch(limit: 25, now: Date(), simulationID: simulationID)
+            let batch = try await commandQueue.nextRetryBatch(
+                limit: 25,
+                now: Date(),
+                simulationID: simulationID,
+                accountUUID: accountUUID,
+            )
             for envelope in batch {
                 if let envelopeSimulationID = envelope.resolvedSimulationID, envelopeSimulationID != simulationID {
                     continue
@@ -739,7 +747,17 @@ public final class RunSessionStore: ObservableObject {
             method: endpoint.method.rawValue,
             body: endpoint.body,
             simulationID: simulationID,
+            accountUUID: accountUUID,
         )
+    }
+
+    private func makeDirectIdempotencyKey(scope: String) -> String {
+        let accountFragment = accountUUID?
+            .split(separator: "-")
+            .first
+            .map(String.init)
+            .flatMap { $0.isEmpty ? nil : $0.lowercased() } ?? "global"
+        return "ios.\(scope).\(accountFragment).\(UUID().uuidString.lowercased())"
     }
 
     private func sendRunCommand(_ command: RunCommand) async {
@@ -815,7 +833,10 @@ public final class RunSessionStore: ObservableObject {
                 return
             }
 
-            let count = try await commandQueue.pendingCount(simulationID: simulationID)
+            let count = try await commandQueue.pendingCount(
+                simulationID: simulationID,
+                accountUUID: accountUUID,
+            )
             state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(count))
         } catch {
             state.conflictBanner = error.localizedDescription
@@ -2048,7 +2069,7 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let key = UUID().uuidString
+            let key = makeDirectIdempotencyKey(scope: "scenario-brief")
             do {
                 let updated = try await service.updateScenarioBrief(
                     simulationID: simulationID,

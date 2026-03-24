@@ -23,6 +23,18 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(refresh.method, .post)
         XCTAssertEqual(refresh.body, body)
         XCTAssertFalse(refresh.requiresAuth)
+        XCTAssertFalse(refresh.requiresAccountContext)
+    }
+
+    func testAccountAndBillingRoutesUseExpectedPaths() {
+        let body = Data("{\"account_uuid\":\"acct-1\"}".utf8)
+
+        XCTAssertEqual(AccountsAPI.listAccounts().path, "/api/v1/accounts/")
+        XCTAssertFalse(AccountsAPI.listAccounts().requiresAccountContext)
+        XCTAssertEqual(AccountsAPI.selectAccount(body: body).path, "/api/v1/accounts/select/")
+        XCTAssertFalse(AccountsAPI.selectAccount(body: body).requiresAccountContext)
+        XCTAssertEqual(AccountsAPI.accessSnapshot().path, "/api/v1/accounts/me/access/")
+        XCTAssertEqual(BillingAPI.appleSync(body: body).path, "/api/v1/billing/apple/sync/")
     }
 
     func testTrainerLabAPIRoutesCoverSimulationAndPresetContracts() {
@@ -115,9 +127,10 @@ final class BackendRoutesTests: XCTestCase {
             .makeURLRequest(
                 baseURL: trainerBaseURL,
                 accessToken: "trainer-token",
+                accountUUID: "acct-12",
             )
 
-        XCTAssertEqual(trainerRequest.url?.absoluteString, "https://example.com/api/v1/trainerlab/simulations/12/events/stream/?cursor=evt-9")
+        XCTAssertEqual(trainerRequest.url?.absoluteString, "https://example.com/api/v1/trainerlab/simulations/12/events/stream/?cursor=evt-9&account_uuid=acct-12")
         XCTAssertEqual(trainerRequest.httpMethod, "GET")
         XCTAssertEqual(trainerRequest.value(forHTTPHeaderField: "Accept"), "text/event-stream")
         XCTAssertEqual(trainerRequest.value(forHTTPHeaderField: "Authorization"), "Bearer trainer-token")
@@ -129,9 +142,10 @@ final class BackendRoutesTests: XCTestCase {
             .makeURLRequest(
                 baseURL: chatBaseURL,
                 accessToken: "chat-token",
+                accountUUID: "acct-7",
             )
 
-        XCTAssertEqual(chatRequest.url?.absoluteString, "https://example.com/api/v1/simulations/7/events/stream/?cursor=evt-4")
+        XCTAssertEqual(chatRequest.url?.absoluteString, "https://example.com/api/v1/simulations/7/events/stream/?cursor=evt-4&account_uuid=acct-7")
         XCTAssertEqual(chatRequest.httpMethod, "GET")
         XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "Accept"), "text/event-stream")
         XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "Authorization"), "Bearer chat-token")

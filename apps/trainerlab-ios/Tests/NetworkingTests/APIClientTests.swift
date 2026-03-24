@@ -24,6 +24,14 @@ private final class MockTokenProvider: AuthTokenProvider, @unchecked Sendable {
     }
 }
 
+private struct StaticAccountContextProvider: AccountContextProvider {
+    let accountUUID: String?
+
+    func selectedAccountUUID() async -> String? {
+        accountUUID
+    }
+}
+
 private final class URLProtocolMock: URLProtocol {
     nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
@@ -112,6 +120,59 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(result.value, "ok")
         XCTAssertEqual(tokenProvider.loadTokens()?.accessToken, "new-token")
         XCTAssertEqual(tokenProvider.loadTokens()?.refreshToken, "refresh-2")
+    }
+
+    func testScopedRequestAddsAccountHeader() async throws {
+        let tokens = AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: tokens)
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolMock.self]
+        let session = URLSession(configuration: configuration)
+
+        URLProtocolMock.requestHandler = { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Account-UUID"), "acct-123")
+            let url = try XCTUnwrap(request.url)
+            let body = Data("{\"value\":\"ok\"}".utf8)
+            return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+        }
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            accountContextProvider: StaticAccountContextProvider(accountUUID: "acct-123"),
+            session: session,
+        )
+
+        let endpoint = Endpoint(path: "/api/v1/protected/")
+        let result: ProtectedResponse = try await client.request(endpoint, as: ProtectedResponse.self)
+        XCTAssertEqual(result.value, "ok")
+    }
+
+    func testAccountUnscopedRequestOmitsAccountHeader() async throws {
+        let tokens = AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: tokens)
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolMock.self]
+        let session = URLSession(configuration: configuration)
+
+        URLProtocolMock.requestHandler = { request in
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Account-UUID"))
+            let url = try XCTUnwrap(request.url)
+            let body = Data("[]".utf8)
+            return (HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, body)
+        }
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            accountContextProvider: StaticAccountContextProvider(accountUUID: "acct-123"),
+            session: session,
+        )
+
+        let result: [AccountOut] = try await client.request(AccountsAPI.listAccounts(), as: [AccountOut].self)
+        XCTAssertTrue(result.isEmpty)
     }
 }
 
