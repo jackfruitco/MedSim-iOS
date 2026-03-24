@@ -53,10 +53,10 @@ public struct AppShellRootView: View {
                         currentAccountName: model.accountSessionStore.currentAccount?.name ?? "No account selected",
                         currentAccountType: model.accountSessionStore.currentAccount?.accountType ?? model.accountSessionStore.accessSnapshot?.accountType,
                         accessMessage: model.accountSessionStore.errorMessage,
-                        trainerLabEnabled: model.accountSessionStore.isProductEnabled("trainerlab"),
-                        trainerLabMessage: availabilityMessage(for: "trainerlab"),
-                        chatLabEnabled: model.accountSessionStore.isProductEnabled("chatlab"),
-                        chatLabMessage: availabilityMessage(for: "chatlab"),
+                        trainerLabEnabled: model.accountSessionStore.isLabEnabled(.trainerLab),
+                        trainerLabMessage: model.accountSessionStore.labAccessMessage(.trainerLab),
+                        chatLabEnabled: model.accountSessionStore.isLabEnabled(.chatLab),
+                        chatLabMessage: model.accountSessionStore.labAccessMessage(.chatLab),
                         onOpenTrainerLab: {
                             selectedApp = .trainerLab
                         },
@@ -108,35 +108,6 @@ public struct AppShellRootView: View {
                 showAccountBilling = false
             }
         }
-    }
-
-    private func availabilityMessage(for productCode: String) -> String? {
-        if model.accountSessionStore.isBootstrapping {
-            return "Loading account access..."
-        }
-
-        guard let account = model.accountSessionStore.currentAccount ?? model.accountSessionStore.accessSnapshot.map({
-            AccountOut(
-                uuid: $0.accountUUID,
-                name: $0.accountName,
-                slug: "",
-                accountType: $0.accountType,
-                isActive: true,
-                requiresJoinApproval: false,
-                parentAccountUUID: nil,
-                membershipRole: $0.membershipRole,
-                membershipStatus: nil,
-                isActiveContext: true,
-            )
-        }) else {
-            return "Select an account to continue."
-        }
-
-        guard let access = model.accountSessionStore.productAccess(code: productCode) else {
-            return "Unavailable for \(account.name)."
-        }
-
-        return access.enabled ? nil : "Not included for \(account.name)."
     }
 }
 
