@@ -95,19 +95,17 @@ public enum AppErrorPresenter {
     }
 
     private static func present(_ error: APIClientError) -> PresentableAppError {
-        let message = error.errorDescription ?? "Something went wrong."
         let debugMessage = buildDebugMessage(for: error)
+
+        if error.isAuthorizationFailure {
+            return presentAuthorizationError(error, debugMessage: debugMessage)
+        }
+
+        let message = error.errorDescription ?? "Something went wrong."
 
         switch error {
         case .unauthorized, .missingRefreshToken:
-            return PresentableAppError(
-                title: "Session Expired",
-                message: message,
-                debugMessage: debugMessage,
-                correlationID: error.correlationID,
-                statusCode: error.statusCode,
-                recoveryActionLabel: "Sign In Again",
-            )
+            return presentAuthorizationError(error, debugMessage: debugMessage)
         case let .http(statusCode, _, _):
             return PresentableAppError(
                 title: title(forHTTPStatus: statusCode),
@@ -129,6 +127,29 @@ public enum AppErrorPresenter {
                 message: message,
                 debugMessage: debugMessage,
             )
+        }
+    }
+
+    private static func presentAuthorizationError(
+        _ error: APIClientError,
+        debugMessage: String,
+    ) -> PresentableAppError {
+        PresentableAppError(
+            title: "Session Expired",
+            message: authorizationMessage(for: error),
+            debugMessage: debugMessage,
+            correlationID: error.correlationID,
+            statusCode: error.statusCode,
+            recoveryActionLabel: "Sign In Again",
+        )
+    }
+
+    private static func authorizationMessage(for error: APIClientError) -> String {
+        switch error {
+        case .missingRefreshToken:
+            "Your session is incomplete. Please sign in again."
+        default:
+            "Your session expired. Please sign in again."
         }
     }
 

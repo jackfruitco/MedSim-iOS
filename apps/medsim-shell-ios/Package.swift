@@ -31,5 +31,12 @@ let package = Package(
                 .product(name: "ChatLabiOS", package: "chatlab-ios"),
             ],
         ),
+        .testTarget(
+            name: "AppShellTests",
+            dependencies: [
+                "AppShell",
+                .product(name: "Networking", package: "trainerlab-ios"),
+            ],
+        ),
     ],
 )

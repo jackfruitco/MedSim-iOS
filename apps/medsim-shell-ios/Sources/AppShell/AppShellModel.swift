@@ -10,8 +10,26 @@ import Sessions
 import SharedModels
 import Summary
 
-private final class AuthorizationFailureRelay: @unchecked Sendable {
-    var handler: (@Sendable (APIClientError) async -> Void)?
+actor AuthorizationFailureRelay {
+    private var handler: (@Sendable (APIClientError) async -> Void)?
+    private var pendingErrors: [APIClientError] = []
+
+    func install(_ handler: @escaping @Sendable (APIClientError) async -> Void) async {
+        self.handler = handler
+        let pendingErrors = pendingErrors
+        self.pendingErrors.removeAll()
+        for error in pendingErrors {
+            await handler(error)
+        }
+    }
+
+    func notify(_ error: APIClientError) async {
+        guard let handler else {
+            pendingErrors.append(error)
+            return
+        }
+        await handler(error)
+    }
 }
 
 @MainActor
@@ -53,7 +71,7 @@ public final class AppShellModel: ObservableObject {
             tokenProvider: tokenStore,
             accountContextProvider: selectedAccountContext,
             authorizationFailureHandler: { error in
-                await authorizationFailureRelay.handler?(error)
+                await authorizationFailureRelay.notify(error)
             },
         )
         self.apiClient = apiClient
@@ -99,8 +117,10 @@ public final class AppShellModel: ObservableObject {
             service: trainerService,
             accountUUIDProvider: { [weak accountSessionStore] in accountSessionStore?.selectedAccountUUID },
         )
-        authorizationFailureRelay.handler = { [weak self] error in
-            await self?.handleAuthorizationFailure(error)
+        Task {
+            await authorizationFailureRelay.install { [weak self] error in
+                await self?.handleAuthorizationFailure(error)
+            }
         }
         bindChildPublishers()
     }

@@ -17,6 +17,9 @@ final class AppErrorPresenterTests: XCTestCase {
     func testAuthorizationErrorsMapToSessionExpired() {
         let unauthorized = AppErrorPresenter.present(APIClientError.unauthorized)
         let missingRefresh = AppErrorPresenter.present(APIClientError.missingRefreshToken)
+        let httpUnauthorized = AppErrorPresenter.present(
+            APIClientError.http(statusCode: 401, detail: "expired", correlationID: "corr-401"),
+        )
 
         XCTAssertEqual(unauthorized?.title, "Session Expired")
         XCTAssertEqual(unauthorized?.message, "Your session expired. Please sign in again.")
@@ -25,6 +28,11 @@ final class AppErrorPresenterTests: XCTestCase {
         XCTAssertEqual(missingRefresh?.title, "Session Expired")
         XCTAssertEqual(missingRefresh?.message, "Your session is incomplete. Please sign in again.")
         XCTAssertEqual(missingRefresh?.recoveryActionLabel, "Sign In Again")
+
+        XCTAssertEqual(httpUnauthorized?.title, "Session Expired")
+        XCTAssertEqual(httpUnauthorized?.message, "Your session expired. Please sign in again.")
+        XCTAssertEqual(httpUnauthorized?.recoveryActionLabel, "Sign In Again")
+        XCTAssertEqual(httpUnauthorized?.correlationID, "corr-401")
     }
 
     func testHTTPSafeDetailIsShownForActionable4xx() {
@@ -61,7 +69,6 @@ final class AppErrorPresenterTests: XCTestCase {
     func testHTTPStatusFallbacksCoverExpectedMappings() {
         let expectations: [(Int, String)] = [
             (400, "The request was invalid."),
-            (401, "Please sign in again."),
             (403, "You don’t have permission to do that."),
             (404, "That item could not be found."),
             (409, "That change conflicts with the current state."),

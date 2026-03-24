@@ -300,6 +300,26 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertTrue(authService.signOutCalled)
     }
 
+    func testHandleAuthorizationFailureShowsSessionExpiredMessage() async {
+        let authService = MockAuthService()
+        authService.hasActiveTokensValue = true
+        let vm = AuthViewModel(authService: authService, trainerService: MockTrainerLabService())
+
+        vm.email = "user@example.com"
+        vm.password = "secret"
+        await vm.signIn()
+        XCTAssertTrue(vm.isAuthenticated)
+
+        let presentableError = AppErrorPresenter.present(
+            APIClientError.http(statusCode: 401, detail: "expired", correlationID: "corr-401"),
+        )
+        await vm.handleAuthorizationFailure(presentableError)
+
+        XCTAssertFalse(vm.isAuthenticated)
+        XCTAssertEqual(vm.errorMessage, "Your session expired. Please sign in again.")
+        XCTAssertTrue(authService.signOutCalled)
+    }
+
     func testRestoreWithNoTokensStaysUnauthenticated() async {
         let authService = MockAuthService()
         authService.hasActiveTokensValue = false
