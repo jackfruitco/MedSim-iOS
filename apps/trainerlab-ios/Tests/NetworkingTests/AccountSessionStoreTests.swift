@@ -79,6 +79,93 @@ private final class MockAccountAPIClient: APIClientProtocol, @unchecked Sendable
     }
 }
 
+private actor BootstrapBarrier {
+    private var didStart = false
+    private var shouldResume = false
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func markStarted() {
+        didStart = true
+        startContinuation?.resume()
+        startContinuation = nil
+    }
+
+    func waitUntilStarted() async {
+        if didStart { return }
+        await withCheckedContinuation { continuation in
+            startContinuation = continuation
+        }
+    }
+
+    func waitForResume() async {
+        if shouldResume {
+            shouldResume = false
+            return
+        }
+        await withCheckedContinuation { continuation in
+            resumeContinuation = continuation
+        }
+    }
+
+    func resume() {
+        if let resumeContinuation {
+            resumeContinuation.resume()
+            self.resumeContinuation = nil
+        } else {
+            shouldResume = true
+        }
+    }
+}
+
+private final class BlockingBootstrapAPIClient: APIClientProtocol, @unchecked Sendable {
+    private let accounts: [AccountOut]
+    private let snapshot: AccessSnapshotOut
+    private let barrier = BootstrapBarrier()
+
+    init(accounts: [AccountOut], snapshot: AccessSnapshotOut) {
+        self.accounts = accounts
+        self.snapshot = snapshot
+    }
+
+    func request<T: Decodable & Sendable>(_ endpoint: Endpoint, as _: T.Type) async throws -> T {
+        switch endpoint.path {
+        case "/api/v1/accounts/":
+            await barrier.markStarted()
+            await barrier.waitForResume()
+            return try cast(accounts, as: T.self)
+        case "/api/v1/accounts/me/access/":
+            return try cast(snapshot, as: T.self)
+        default:
+            throw APIClientError.http(statusCode: 500, detail: "Unhandled path \(endpoint.path)", correlationID: nil)
+        }
+    }
+
+    func requestData(_ endpoint: Endpoint) async throws -> Data {
+        let _: EmptyResponse = try await request(endpoint, as: EmptyResponse.self)
+        return Data()
+    }
+
+    func baseURL() async -> URL {
+        URL(string: "https://example.com")!
+    }
+
+    func waitUntilBootstrapStarts() async {
+        await barrier.waitUntilStarted()
+    }
+
+    func resumeBootstrap() async {
+        await barrier.resume()
+    }
+
+    private func cast<T>(_ value: some Sendable, as _: T.Type) throws -> T {
+        guard let typed = value as? T else {
+            throw APIClientError.decoding("Unexpected mock response type for \(T.self)")
+        }
+        return typed
+    }
+}
+
 private struct AccountSelectionPayload: Decodable {
     let accountUUID: String
 
@@ -89,6 +176,44 @@ private struct AccountSelectionPayload: Decodable {
 
 @MainActor
 final class AccountSessionStoreTests: XCTestCase {
+    private func makeStore(
+        products: [String: ProductAccessOut],
+        accountUUID: String = "acct-a",
+        accountName: String = "Alpha",
+    ) -> AccountSessionStore {
+        let accounts = [
+            AccountOut(
+                uuid: accountUUID,
+                name: accountName,
+                slug: accountName.lowercased(),
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "owner",
+                membershipStatus: "active",
+                isActiveContext: true,
+            ),
+        ]
+        let snapshots = [
+            accountUUID: AccessSnapshotOut(
+                accountUUID: accountUUID,
+                accountName: accountName,
+                accountType: "personal",
+                membershipRole: "owner",
+                products: products,
+            ),
+        ]
+        let apiClient = MockAccountAPIClient(accounts: accounts, accessSnapshotsByAccountUUID: snapshots)
+
+        return AccountSessionStore(
+            apiClient: apiClient,
+            baseURLProvider: { URL(string: "https://example.com")! },
+            accountContext: SelectedAccountContext(accountUUID: accountUUID),
+            userDefaults: UserDefaults(suiteName: "AccountSessionStoreTests.\(UUID().uuidString)")!,
+        )
+    }
+
     func testBootstrapUsesPersistedSelectionAndRefreshesAccessSnapshot() async throws {
         let suiteName = "AccountSessionStoreTests.bootstrap.\(UUID().uuidString)"
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -417,5 +542,126 @@ final class AccountSessionStoreTests: XCTestCase {
         XCTAssertNotNil(payload?["purchase_date"])
         XCTAssertNotNil(payload?["expires_date"])
         XCTAssertNil(payload?["ended_at"])
+    }
+
+    func testCanonicalTrainerAndChatLabProductsEnableExpectedLabs() async throws {
+        let cases: [(LabProductAccess, String)] = [
+            (.trainerLab, "trainerlab_go"),
+            (.trainerLab, "trainerlab_plus"),
+            (.chatLab, "chatlab_go"),
+            (.chatLab, "chatlab_plus"),
+        ]
+
+        for (lab, productCode) in cases {
+            let store = makeStore(products: [productCode: ProductAccessOut(enabled: true)])
+
+            try await store.bootstrapSession()
+
+            XCTAssertTrue(store.isLabEnabled(lab), "Expected \(productCode) to enable \(lab)")
+        }
+    }
+
+    func testMedsimProductsEnableBothLabs() async throws {
+        let productCodes = ["medsim_one", "medsim_one_plus"]
+
+        for productCode in productCodes {
+            let store = makeStore(products: [productCode: ProductAccessOut(enabled: true)])
+
+            try await store.bootstrapSession()
+
+            XCTAssertTrue(store.isLabEnabled(.trainerLab), "Expected \(productCode) to enable TrainerLab")
+            XCTAssertTrue(store.isLabEnabled(.chatLab), "Expected \(productCode) to enable ChatLab")
+        }
+    }
+
+    func testLabAccessMessageReturnsExpectedStates() async throws {
+        let loadingAccounts = [
+            AccountOut(
+                uuid: "acct-a",
+                name: "Alpha",
+                slug: "alpha",
+                accountType: "personal",
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: "owner",
+                membershipStatus: "active",
+                isActiveContext: true,
+            ),
+        ]
+        let loadingSnapshot = AccessSnapshotOut(
+            accountUUID: "acct-a",
+            accountName: "Alpha",
+            accountType: "personal",
+            membershipRole: "owner",
+            products: [:],
+        )
+        let loadingAPIClient = BlockingBootstrapAPIClient(accounts: loadingAccounts, snapshot: loadingSnapshot)
+        let loadingUserDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: "AccountSessionStoreTests.loading.\(UUID().uuidString)"),
+        )
+        let loadingStore = AccountSessionStore(
+            apiClient: loadingAPIClient,
+            baseURLProvider: { URL(string: "https://example.com")! },
+            accountContext: SelectedAccountContext(accountUUID: "acct-a"),
+            userDefaults: loadingUserDefaults,
+        )
+        let bootstrapTask = Task {
+            try await loadingStore.bootstrapSession()
+        }
+
+        await loadingAPIClient.waitUntilBootstrapStarts()
+        XCTAssertEqual(loadingStore.labAccessMessage(.trainerLab), "Loading account access...")
+        await loadingAPIClient.resumeBootstrap()
+        try await bootstrapTask.value
+
+        let noAccountStore = makeStore(products: [:])
+        XCTAssertEqual(noAccountStore.labAccessMessage(.trainerLab), "Select an account to continue.")
+
+        let unavailableStore = makeStore(products: [:])
+        try await unavailableStore.bootstrapSession()
+        XCTAssertEqual(unavailableStore.labAccessMessage(.trainerLab), "Not included for Alpha.")
+
+        let disabledStore = makeStore(products: ["trainerlab_go": ProductAccessOut(enabled: false)])
+        try await disabledStore.bootstrapSession()
+        XCTAssertEqual(disabledStore.labAccessMessage(.trainerLab), "Not included for Alpha.")
+
+        let enabledStore = makeStore(products: ["trainerlab_plus": ProductAccessOut(enabled: true)])
+        try await enabledStore.bootstrapSession()
+        XCTAssertNil(enabledStore.labAccessMessage(.trainerLab))
+    }
+
+    func testLegacyLabCodesDoNotEnableLabAccess() async throws {
+        let store = makeStore(
+            products: [
+                "trainerlab": ProductAccessOut(enabled: true),
+                "chatlab": ProductAccessOut(enabled: true),
+            ],
+        )
+
+        try await store.bootstrapSession()
+
+        XCTAssertFalse(store.isLabEnabled(.trainerLab))
+        XCTAssertFalse(store.isLabEnabled(.chatLab))
+        XCTAssertEqual(store.labAccessMessage(.trainerLab), "Not included for Alpha.")
+        XCTAssertEqual(store.labAccessMessage(.chatLab), "Not included for Alpha.")
+    }
+
+    func testChatLabGoDoesNotEnableTrainerLab() async throws {
+        let store = makeStore(products: ["chatlab_go": ProductAccessOut(enabled: true)])
+
+        try await store.bootstrapSession()
+
+        XCTAssertFalse(store.isLabEnabled(.trainerLab))
+        XCTAssertTrue(store.isLabEnabled(.chatLab))
+    }
+
+    func testTrainerLabGoDoesNotEnableChatLab() async throws {
+        let store = makeStore(products: ["trainerlab_go": ProductAccessOut(enabled: true)])
+
+        try await store.bootstrapSession()
+
+        XCTAssertTrue(store.isLabEnabled(.trainerLab))
+        XCTAssertFalse(store.isLabEnabled(.chatLab))
     }
 }

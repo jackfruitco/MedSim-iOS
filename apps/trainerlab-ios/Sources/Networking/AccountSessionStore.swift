@@ -31,6 +31,20 @@ private struct AccountSelectionRequest: Codable {
     }
 }
 
+public enum LabProductAccess: Sendable {
+    case trainerLab
+    case chatLab
+
+    var canonicalProductCodes: [String] {
+        switch self {
+        case .trainerLab:
+            ["trainerlab_go", "trainerlab_plus", "medsim_one", "medsim_one_plus"]
+        case .chatLab:
+            ["chatlab_go", "chatlab_plus", "medsim_one", "medsim_one_plus"]
+        }
+    }
+}
+
 @MainActor
 public final class AccountSessionStore: ObservableObject, AuthSessionBootstrapper {
     @Published public private(set) var availableAccounts: [AccountOut] = []
@@ -82,6 +96,23 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
 
     public func isProductEnabled(_ code: String) -> Bool {
         productAccess(code: code)?.enabled == true
+    }
+
+    public func isLabEnabled(_ lab: LabProductAccess) -> Bool {
+        lab.canonicalProductCodes.contains(where: isProductEnabled)
+    }
+
+    public func labAccessMessage(_ lab: LabProductAccess) -> String? {
+        if isBootstrapping {
+            return "Loading account access..."
+        }
+
+        guard let account = resolvedAccountForAccessMessaging() else {
+            return "Select an account to continue."
+        }
+
+        let productAccessList = lab.canonicalProductCodes.compactMap(productAccess(code:))
+        return productAccessList.contains(where: \.enabled) ? nil : "Not included for \(account.name)."
     }
 
     public func hasFeature(_ feature: String, in productCode: String) -> Bool {
@@ -257,6 +288,23 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
 
     private func persistedSelectedAccountUUID() -> String? {
         userDefaults.string(forKey: persistedSelectionKey())
+    }
+
+    private func resolvedAccountForAccessMessaging() -> AccountOut? {
+        currentAccount ?? accessSnapshot.map {
+            AccountOut(
+                uuid: $0.accountUUID,
+                name: $0.accountName,
+                slug: "",
+                accountType: $0.accountType,
+                isActive: true,
+                requiresJoinApproval: false,
+                parentAccountUUID: nil,
+                membershipRole: $0.membershipRole,
+                membershipStatus: nil,
+                isActiveContext: true,
+            )
+        }
     }
 
     private func clearPersistedSelection() {
