@@ -5,7 +5,12 @@ private struct LegacyLabAccessBootstrapper: AuthSessionBootstrapper {
     let trainerService: TrainerLabServiceProtocol
 
     func bootstrapSession() async throws {
-        _ = try await trainerService.accessMe()
+        do {
+            _ = try await trainerService.accessMe()
+        } catch let APIClientError.http(statusCode, _, _) where statusCode == 403 {
+            // Guarded probes treat 403 as "authenticated but not entitled."
+            return
+        }
     }
 
     func clearSession() async {}

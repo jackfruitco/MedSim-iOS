@@ -37,7 +37,7 @@ private final class MockAuthService: AuthServiceProtocol, @unchecked Sendable {
 }
 
 private func makeLabAccess() -> LabAccess {
-    let json = Data(#"{"lab_slug":"test-lab","access_level":"trainer"}"#.utf8)
+    let json = Data(#"{"lab_slug":"test-lab"}"#.utf8)
     do {
         return try JSONDecoder().decode(LabAccess.self, from: json)
     } catch {
@@ -245,6 +245,27 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
     }
 
+    func testSignInForbiddenTrainerProbeStillAuthenticates() async {
+        let authService = MockAuthService()
+        let trainerService = MockTrainerLabService()
+        trainerService.accessMeResult = .failure(
+            APIClientError.http(
+                statusCode: 403,
+                detail: "TrainerLab access required",
+                correlationID: "corr-403",
+            ),
+        )
+        let vm = AuthViewModel(authService: authService, trainerService: trainerService)
+
+        vm.email = "user@example.com"
+        vm.password = "secret"
+        await vm.signIn()
+
+        XCTAssertTrue(vm.isAuthenticated)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertFalse(authService.signOutCalled)
+    }
+
     func testSignInAuthFailureSetsError() async {
         let authService = MockAuthService()
         authService.signInResult = .failure(MockError.signInFailed)
@@ -341,11 +362,37 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertTrue(vm.isAuthenticated)
     }
 
-    func testRestoreWithTokensButExpiredSessionSignsOut() async {
+    func testRestoreWithForbiddenTrainerProbeKeepsAuthenticated() async {
         let authService = MockAuthService()
         authService.hasActiveTokensValue = true
         let trainerService = MockTrainerLabService()
-        trainerService.accessMeResult = .failure(MockError.accessMeFailed)
+        trainerService.accessMeResult = .failure(
+            APIClientError.http(
+                statusCode: 403,
+                detail: "TrainerLab access required",
+                correlationID: "corr-403",
+            ),
+        )
+        let vm = AuthViewModel(authService: authService, trainerService: trainerService)
+
+        await vm.restoreSessionIfAvailable()
+
+        XCTAssertTrue(vm.isAuthenticated)
+        XCTAssertFalse(authService.signOutCalled)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    func testRestoreWithTrainerProbe401SignsOut() async {
+        let authService = MockAuthService()
+        authService.hasActiveTokensValue = true
+        let trainerService = MockTrainerLabService()
+        trainerService.accessMeResult = .failure(
+            APIClientError.http(
+                statusCode: 401,
+                detail: "expired",
+                correlationID: "corr-401",
+            ),
+        )
         let vm = AuthViewModel(authService: authService, trainerService: trainerService)
 
         await vm.restoreSessionIfAvailable()
