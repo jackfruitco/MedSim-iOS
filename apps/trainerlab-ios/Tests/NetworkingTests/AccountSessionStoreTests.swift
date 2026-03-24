@@ -597,11 +597,14 @@ final class AccountSessionStoreTests: XCTestCase {
             products: [:],
         )
         let loadingAPIClient = BlockingBootstrapAPIClient(accounts: loadingAccounts, snapshot: loadingSnapshot)
+        let loadingUserDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: "AccountSessionStoreTests.loading.\(UUID().uuidString)"),
+        )
         let loadingStore = AccountSessionStore(
             apiClient: loadingAPIClient,
             baseURLProvider: { URL(string: "https://example.com")! },
             accountContext: SelectedAccountContext(accountUUID: "acct-a"),
-            userDefaults: UserDefaults(suiteName: "AccountSessionStoreTests.loading.\(UUID().uuidString)")!,
+            userDefaults: loadingUserDefaults,
         )
         let bootstrapTask = Task {
             try await loadingStore.bootstrapSession()
