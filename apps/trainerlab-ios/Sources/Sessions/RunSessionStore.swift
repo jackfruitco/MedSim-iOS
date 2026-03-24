@@ -43,7 +43,8 @@ public final class RunSessionStore: ObservableObject {
     private var pendingRuntimeRefresh = false
 
     private let runtimeRefreshDebounceNanoseconds: UInt64 = 150_000_000
-    private let maxTimelineEvents = 400
+    private let maxStoredTimelineEvents = 400
+    private let trainerLabEventsPageLimit = 100
 
     private struct SessionLifecycleSnapshot {
         let status: TrainerSessionStatus
@@ -251,7 +252,11 @@ public final class RunSessionStore: ObservableObject {
 
         while !Task.isCancelled {
             do {
-                let page = try await service.listEvents(simulationID: simulationID, cursor: cursor, limit: maxTimelineEvents)
+                let page = try await service.listEvents(
+                    simulationID: simulationID,
+                    cursor: cursor,
+                    limit: trainerLabEventsPageLimit,
+                )
                 logger.info(
                     "Fetched \(page.items.count, privacy: .public) historical events for simulation \(simulationID, privacy: .public) cursor \(cursor ?? "nil", privacy: .public)",
                 )
@@ -320,8 +325,8 @@ public final class RunSessionStore: ObservableObject {
             deduped.append(event)
         }
 
-        if deduped.count > maxTimelineEvents {
-            deduped.removeFirst(deduped.count - maxTimelineEvents)
+        if deduped.count > maxStoredTimelineEvents {
+            deduped.removeFirst(deduped.count - maxStoredTimelineEvents)
         }
         return deduped
     }
@@ -1408,8 +1413,8 @@ public final class RunSessionStore: ObservableObject {
             return lhs.dedupeKey > rhs.dedupeKey
         }
 
-        if state.clinicalTimelineEntries.count > maxTimelineEvents {
-            state.clinicalTimelineEntries.removeLast(state.clinicalTimelineEntries.count - maxTimelineEvents)
+        if state.clinicalTimelineEntries.count > maxStoredTimelineEvents {
+            state.clinicalTimelineEntries.removeLast(state.clinicalTimelineEntries.count - maxStoredTimelineEvents)
         }
     }
 
