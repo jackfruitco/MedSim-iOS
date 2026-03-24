@@ -1,3 +1,4 @@
+import DesignSystem
 import SharedModels
 import SwiftUI
 #if os(iOS)
@@ -197,6 +198,10 @@ public struct ChatRunView: View {
 
     private var regularFailureBanners: some View {
         VStack(spacing: 10) {
+            if let error = store.presentableError {
+                InlineAppErrorView(error: error)
+            }
+
             if let failure = store.simulationFailureText, store.showsInitialGenerationFailureScreen == false {
                 failureBanner(
                     title: "Simulation failed",
@@ -221,6 +226,10 @@ public struct ChatRunView: View {
 
     private var compactFailureBanners: some View {
         VStack(spacing: 6) {
+            if let error = store.presentableError {
+                InlineAppErrorView(error: error)
+            }
+
             if let failure = store.simulationFailureText, store.showsInitialGenerationFailureScreen == false {
                 failureBanner(
                     title: "Simulation failed",
@@ -588,10 +597,8 @@ public struct ChatRunView: View {
                 }
             }
 
-            if let errorMessage = toolsStore.errorMessage, !errorMessage.isEmpty {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+            if let error = toolsStore.presentableError {
+                InlineAppErrorView(error: error)
             }
         }
     }

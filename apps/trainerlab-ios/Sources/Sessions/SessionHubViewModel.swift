@@ -8,7 +8,7 @@ public final class SessionHubViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var isLoadingMore = false
     @Published public private(set) var hasMore = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
     @Published public var searchQuery: String = ""
 
     private var nextCursor: String?
@@ -21,11 +21,15 @@ public final class SessionHubViewModel: ObservableObject {
         self.accountUUIDProvider = accountUUIDProvider
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     public func resetForAccountChange() {
         sessions = []
         nextCursor = nil
         hasMore = false
-        errorMessage = nil
+        presentableError = nil
     }
 
     public func onSearchQueryChanged() {
@@ -39,7 +43,7 @@ public final class SessionHubViewModel: ObservableObject {
 
     public func loadSessions() async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         nextCursor = nil
         defer { isLoading = false }
 
@@ -50,7 +54,7 @@ public final class SessionHubViewModel: ObservableObject {
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -66,13 +70,13 @@ public final class SessionHubViewModel: ObservableObject {
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
     public func createSession() async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         defer { isLoading = false }
 
         let request = TrainerSessionCreateRequest(
@@ -90,7 +94,7 @@ public final class SessionHubViewModel: ObservableObject {
             let session = try await service.createSession(request: request, idempotencyKey: idempotencyKey)
             sessions.insert(session, at: 0)
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 

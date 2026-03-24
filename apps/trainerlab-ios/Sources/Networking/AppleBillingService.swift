@@ -53,8 +53,8 @@ public final class AppleBillingService: ObservableObject {
     @Published public private(set) var catalogEntries: [BillingCatalogEntry]
     @Published public private(set) var isLoadingProducts = false
     @Published public private(set) var isProcessing = false
-    @Published public private(set) var catalogErrorMessage: String?
-    @Published public private(set) var syncErrorMessage: String?
+    @Published public private(set) var catalogError: PresentableAppError?
+    @Published public private(set) var syncError: PresentableAppError?
     @Published public private(set) var hasPendingSyncRetry = false
 
     private let apiClient: APIClientProtocol
@@ -83,6 +83,14 @@ public final class AppleBillingService: ObservableObject {
         catalogEntries.filter { $0.group == group }
     }
 
+    public var catalogErrorMessage: String? {
+        catalogError?.message
+    }
+
+    public var syncErrorMessage: String? {
+        syncError?.message
+    }
+
     public func loadProductsIfNeeded() async {
         guard productsByID.isEmpty else { return }
         await reloadProducts()
@@ -90,7 +98,7 @@ public final class AppleBillingService: ObservableObject {
 
     public func reloadProducts() async {
         isLoadingProducts = true
-        catalogErrorMessage = nil
+        catalogError = nil
         defer { isLoadingProducts = false }
 
         do {
@@ -117,19 +125,22 @@ public final class AppleBillingService: ObservableObject {
                 )
             }
         } catch {
-            catalogErrorMessage = error.localizedDescription
+            catalogError = AppErrorPresenter.present(error)
             catalogEntries = Self.makeFallbackEntries(from: catalog)
         }
     }
 
     public func purchase(productID: String) async {
         guard let product = productsByID[productID] else {
-            syncErrorMessage = "This App Store product is not available yet."
+            syncError = PresentableAppError(
+                title: "Purchase Unavailable",
+                message: "This App Store product is not available yet.",
+            )
             return
         }
 
         isProcessing = true
-        syncErrorMessage = nil
+        syncError = nil
         defer { isProcessing = false }
 
         do {
@@ -142,26 +153,32 @@ public final class AppleBillingService: ObservableObject {
                 await transaction.finish()
                 if let syncError {
                     storePendingSyncRetry([request], accountUUID: accountSessionStore.selectedAccountUUID)
-                    syncErrorMessage = syncError.localizedDescription
+                    self.syncError = AppErrorPresenter.present(syncError)
                     return
                 }
                 clearPendingSyncRetry()
                 try await accountSessionStore.refreshAfterBillingSync()
             case .pending:
-                syncErrorMessage = "Purchase is pending approval."
+                syncError = PresentableAppError(
+                    title: "Purchase Pending",
+                    message: "Purchase is pending approval.",
+                )
             case .userCancelled:
                 break
             @unknown default:
-                syncErrorMessage = "The App Store returned an unsupported purchase result."
+                syncError = PresentableAppError(
+                    title: "Purchase Unavailable",
+                    message: "The App Store returned an unsupported purchase result.",
+                )
             }
         } catch {
-            syncErrorMessage = error.localizedDescription
+            syncError = AppErrorPresenter.present(error)
         }
     }
 
     public func restorePurchases() async {
         isProcessing = true
-        syncErrorMessage = nil
+        syncError = nil
         defer { isProcessing = false }
 
         do {
@@ -169,7 +186,10 @@ public final class AppleBillingService: ObservableObject {
             let transactions = try await currentVerifiedEntitlements()
             guard !transactions.isEmpty else {
                 clearPendingSyncRetry()
-                syncErrorMessage = "No active App Store purchases were found to restore."
+                syncError = PresentableAppError(
+                    title: "Nothing to Restore",
+                    message: "No active App Store purchases were found to restore.",
+                )
                 return
             }
 
@@ -181,14 +201,14 @@ public final class AppleBillingService: ObservableObject {
 
             if let syncError {
                 storePendingSyncRetry(requests, accountUUID: accountSessionStore.selectedAccountUUID)
-                syncErrorMessage = syncError.localizedDescription
+                self.syncError = AppErrorPresenter.present(syncError)
                 return
             }
 
             clearPendingSyncRetry()
             try await accountSessionStore.refreshAfterBillingSync()
         } catch {
-            syncErrorMessage = error.localizedDescription
+            syncError = AppErrorPresenter.present(error)
         }
     }
 
@@ -196,17 +216,20 @@ public final class AppleBillingService: ObservableObject {
         guard let retryContext = pendingSyncRetryContext, !retryContext.requests.isEmpty else { return }
 
         isProcessing = true
-        syncErrorMessage = nil
+        syncError = nil
         defer { isProcessing = false }
 
         guard retryContext.accountUUID == accountSessionStore.selectedAccountUUID else {
-            syncErrorMessage = retryScopeMismatchMessage(originAccountUUID: retryContext.accountUUID)
+            syncError = PresentableAppError(
+                title: "Wrong Account",
+                message: retryScopeMismatchMessage(originAccountUUID: retryContext.accountUUID),
+            )
             hasPendingSyncRetry = true
             return
         }
 
         if let syncError = await syncRequestsHandlingError(retryContext.requests) {
-            syncErrorMessage = syncError.localizedDescription
+            self.syncError = AppErrorPresenter.present(syncError)
             hasPendingSyncRetry = true
             return
         }
@@ -216,7 +239,7 @@ public final class AppleBillingService: ObservableObject {
         do {
             try await accountSessionStore.refreshAfterBillingSync()
         } catch {
-            syncErrorMessage = error.localizedDescription
+            syncError = AppErrorPresenter.present(error)
         }
     }
 

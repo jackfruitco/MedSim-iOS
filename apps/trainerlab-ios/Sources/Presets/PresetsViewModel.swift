@@ -9,7 +9,7 @@ public final class PresetsViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var isLoadingMore = false
     @Published public private(set) var hasMore = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
 
     private var nextCursor: String?
     private let service: TrainerLabServiceProtocol
@@ -20,17 +20,21 @@ public final class PresetsViewModel: ObservableObject {
         self.accountUUIDProvider = accountUUIDProvider
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     public func resetForAccountChange() {
         presets = []
         accountResults = []
         nextCursor = nil
         hasMore = false
-        errorMessage = nil
+        presentableError = nil
     }
 
     public func loadPresets() async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         nextCursor = nil
         defer { isLoading = false }
 
@@ -40,7 +44,7 @@ public final class PresetsViewModel: ObservableObject {
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -55,13 +59,13 @@ public final class PresetsViewModel: ObservableObject {
             nextCursor = response.nextCursor
             hasMore = response.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
     public func createPreset(title: String, description: String, instruction: String, severity: String) async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         defer { isLoading = false }
 
         let request = ScenarioInstructionCreateRequest(
@@ -76,7 +80,7 @@ public final class PresetsViewModel: ObservableObject {
             let created = try await service.createPreset(request: request)
             presets.insert(created, at: 0)
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -85,7 +89,7 @@ public final class PresetsViewModel: ObservableObject {
             _ = try await service.duplicatePreset(presetID: id)
             await loadPresets()
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -101,7 +105,7 @@ public final class PresetsViewModel: ObservableObject {
                 presets.insert(updated, at: 0)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -110,7 +114,7 @@ public final class PresetsViewModel: ObservableObject {
             try await service.deletePreset(presetID: id)
             presets.removeAll(where: { $0.id == id })
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -120,7 +124,7 @@ public final class PresetsViewModel: ObservableObject {
             let key = makeIdempotencyKey(scope: "preset.apply")
             _ = try await service.applyPreset(presetID: id, request: request, idempotencyKey: key)
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -134,7 +138,7 @@ public final class PresetsViewModel: ObservableObject {
             let response = try await service.listAccounts(query: query, cursor: nil, limit: 15)
             accountResults = response.items
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -144,7 +148,7 @@ public final class PresetsViewModel: ObservableObject {
             _ = try await service.sharePreset(presetID: id, request: request)
             await loadPresets()
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -154,7 +158,7 @@ public final class PresetsViewModel: ObservableObject {
             try await service.unsharePreset(presetID: id, request: request)
             await loadPresets()
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 

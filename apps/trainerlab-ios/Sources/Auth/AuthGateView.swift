@@ -70,10 +70,8 @@ public struct AuthGateView: View {
                         }
                         .textFieldStyle(.roundedBorder)
 
-                    if let error = viewModel.errorMessage {
-                        Text(error)
-                            .foregroundStyle(TrainerLabTheme.danger)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    if let error = viewModel.presentableError {
+                        InlineAppErrorView(error: error)
                             .font(.footnote)
                     }
 

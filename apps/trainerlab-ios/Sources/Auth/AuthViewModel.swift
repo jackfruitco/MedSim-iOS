@@ -17,7 +17,7 @@ public final class AuthViewModel: ObservableObject {
     @Published public var password = ""
     @Published public private(set) var isLoading = false
     @Published public private(set) var isAuthenticated = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
 
     private let authService: AuthServiceProtocol
     private let sessionBootstrapper: AuthSessionBootstrapper
@@ -35,14 +35,21 @@ public final class AuthViewModel: ObservableObject {
         )
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     public func signIn() async {
         guard !email.isEmpty, !password.isEmpty else {
-            errorMessage = "Email and password are required."
+            presentableError = PresentableAppError(
+                title: "Sign In Required",
+                message: "Email and password are required.",
+            )
             return
         }
 
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         defer { isLoading = false }
 
         do {
@@ -53,7 +60,7 @@ public final class AuthViewModel: ObservableObject {
             await authService.signOut()
             await sessionBootstrapper.clearSession()
             isAuthenticated = false
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -63,7 +70,15 @@ public final class AuthViewModel: ObservableObject {
         isAuthenticated = false
         email = ""
         password = ""
-        errorMessage = nil
+        presentableError = nil
+    }
+
+    public func handleAuthorizationFailure(_ error: PresentableAppError?) async {
+        await authService.signOut()
+        await sessionBootstrapper.clearSession()
+        isAuthenticated = false
+        password = ""
+        presentableError = error
     }
 
     public func restoreSessionIfAvailable() async {

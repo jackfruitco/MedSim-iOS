@@ -90,15 +90,9 @@ public struct PresetsLibraryView: View {
                 presetSearchField
                 presetEditorCard(layoutMode: layoutMode)
 
-                if let error = viewModel.errorMessage {
-                    HStack(spacing: 12) {
-                        Text(error)
-                            .foregroundStyle(TrainerLabTheme.danger)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Retry") {
-                            Task { await viewModel.loadPresets() }
-                        }
-                        .buttonStyle(.bordered)
+                if let error = viewModel.presentableError {
+                    InlineAppErrorView(error: error, actionLabel: "Retry") {
+                        Task { await viewModel.loadPresets() }
                     }
                 }
 
@@ -154,15 +148,9 @@ public struct PresetsLibraryView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let error = viewModel.errorMessage, showRefreshCard {
-                HStack(spacing: 12) {
-                    Text(error)
-                        .foregroundStyle(TrainerLabTheme.danger)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Retry") {
-                        Task { await viewModel.loadPresets() }
-                    }
-                    .buttonStyle(.bordered)
+            if let error = viewModel.presentableError, showRefreshCard {
+                InlineAppErrorView(error: error, actionLabel: "Retry") {
+                    Task { await viewModel.loadPresets() }
                 }
             }
         }

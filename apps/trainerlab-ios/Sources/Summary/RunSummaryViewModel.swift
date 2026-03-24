@@ -8,7 +8,7 @@ public final class RunSummaryViewModel: ObservableObject {
 
     @Published public private(set) var summary: RunSummary?
     @Published public private(set) var isLoading = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
     @Published public private(set) var notReadyMessage: String?
 
     private let service: TrainerLabServiceProtocol
@@ -19,9 +19,13 @@ public final class RunSummaryViewModel: ObservableObject {
         self.simulationID = simulationID
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     public func load() async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         notReadyMessage = nil
         summary = nil
         defer { isLoading = false }
@@ -31,7 +35,7 @@ public final class RunSummaryViewModel: ObservableObject {
         } catch let APIClientError.http(statusCode, _, _) where statusCode == 404 {
             notReadyMessage = Self.notReadyCopy
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 }

@@ -8,7 +8,7 @@ public final class ChatLabHomeStore: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var isLoadingMore = false
     @Published public private(set) var isCreating = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
     @Published public var searchQuery = ""
     @Published public var includeMessageSearch = false
     @Published public private(set) var modifierGroups: [ModifierGroup] = []
@@ -23,13 +23,17 @@ public final class ChatLabHomeStore: ObservableObject {
         self.service = service
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     deinit {
         autoRefreshTask?.cancel()
     }
 
     public func loadInitial() async {
         isLoading = true
-        errorMessage = nil
+        presentableError = nil
         defer { isLoading = false }
 
         do {
@@ -44,7 +48,7 @@ public final class ChatLabHomeStore: ObservableObject {
             nextCursor = page.nextCursor
             hasMore = page.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -67,7 +71,7 @@ public final class ChatLabHomeStore: ObservableObject {
             nextCursor = page.nextCursor
             hasMore = page.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -84,7 +88,7 @@ public final class ChatLabHomeStore: ObservableObject {
             nextCursor = page.nextCursor
             hasMore = page.hasMore
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -96,7 +100,7 @@ public final class ChatLabHomeStore: ObservableObject {
         do {
             modifierGroups = try await service.listModifierGroups(groups: ["ClinicalScenario", "ClinicalDuration"])
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -110,7 +114,7 @@ public final class ChatLabHomeStore: ObservableObject {
 
     public func quickCreateSimulation() async -> ChatSimulation? {
         isCreating = true
-        errorMessage = nil
+        presentableError = nil
         defer { isCreating = false }
 
         do {
@@ -120,7 +124,7 @@ public final class ChatLabHomeStore: ObservableObject {
             simulations.insert(created, at: 0)
             return created
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
             return nil
         }
     }

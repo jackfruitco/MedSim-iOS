@@ -29,7 +29,9 @@ let package = Package(
         ),
         .target(
             name: "DesignSystem",
-            dependencies: [],
+            dependencies: [
+                "Networking",
+            ],
         ),
         .target(
             name: "Persistence",
@@ -46,6 +48,7 @@ let package = Package(
             ],
             sources: [
                 "APIClient.swift",
+                "AppErrorPresenter.swift",
                 "AccountSessionStore.swift",
                 "AppleBillingService.swift",
                 "AuthService.swift",

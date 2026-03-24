@@ -413,13 +413,19 @@ public struct RunConsoleView: View {
     // MARK: - Conflict banner
 
     private var conflictBanner: some View {
-        Text(store.state.conflictBanner ?? "")
-            .font(.caption)
-            .foregroundStyle(.white)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(TrainerLabTheme.danger.opacity(0.9))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        Group {
+            if let error = store.conflictError {
+                InlineAppErrorView(error: error)
+            } else {
+                Text(store.state.conflictBanner ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(TrainerLabTheme.danger.opacity(0.9))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
     }
 
     // MARK: - Patient pane (body diagram + detail panels + AVPU)

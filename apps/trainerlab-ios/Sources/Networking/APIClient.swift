@@ -588,13 +588,136 @@ public struct EmptyResponse: Decodable, Sendable {
     public init() {}
 }
 
-public enum APIClientError: Error, Equatable {
+public enum APIClientError: Error, Equatable, LocalizedError {
     case invalidURL
     case invalidResponse
     case unauthorized
     case http(statusCode: Int, detail: String, correlationID: String?)
     case decoding(String)
     case missingRefreshToken
+
+    public var statusCode: Int? {
+        switch self {
+        case let .http(statusCode, _, _):
+            statusCode
+        case .unauthorized:
+            401
+        default:
+            nil
+        }
+    }
+
+    public var backendDetail: String? {
+        guard case let .http(_, detail, _) = self else {
+            return nil
+        }
+
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    public var correlationID: String? {
+        guard case let .http(_, _, correlationID) = self else {
+            return nil
+        }
+        return correlationID
+    }
+
+    public var isAuthorizationFailure: Bool {
+        switch self {
+        case .unauthorized, .missingRefreshToken:
+            true
+        case let .http(statusCode, _, _):
+            statusCode == 401
+        default:
+            false
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "The app generated an invalid request."
+        case .invalidResponse:
+            return "The server returned an invalid response."
+        case .unauthorized:
+            return "Your session expired. Please sign in again."
+        case .missingRefreshToken:
+            return "Your session is incomplete. Please sign in again."
+        case .decoding:
+            return "The app couldn’t read the server response."
+        case let .http(statusCode, detail, _):
+            if let safeDetail = Self.safeUserFacingDetail(statusCode: statusCode, detail: detail) {
+                return safeDetail
+            }
+            return Self.fallbackMessage(forHTTPStatus: statusCode)
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .unauthorized, .missingRefreshToken:
+            "Please sign in again."
+        case let .http(statusCode, _, _) where statusCode == 429:
+            "Please try again shortly."
+        case let .http(statusCode, _, _) where statusCode >= 500:
+            "Please try again."
+        default:
+            nil
+        }
+    }
+
+    public static func fallbackMessage(forHTTPStatus statusCode: Int) -> String {
+        switch statusCode {
+        case 400:
+            "The request was invalid."
+        case 401:
+            "Please sign in again."
+        case 403:
+            "You don’t have permission to do that."
+        case 404:
+            "That item could not be found."
+        case 409:
+            "That change conflicts with the current state."
+        case 422:
+            "The submitted data was invalid."
+        case 429:
+            "Too many requests. Please try again shortly."
+        case 500...:
+            "Something went wrong on the server."
+        default:
+            "Something went wrong."
+        }
+    }
+
+    static func safeUserFacingDetail(statusCode: Int, detail: String) -> String? {
+        guard (400 ..< 500).contains(statusCode), statusCode != 401 else {
+            return nil
+        }
+
+        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 180 else {
+            return nil
+        }
+
+        let blockedMarkers = [
+            "traceback",
+            "exception",
+            "nserror",
+            "nslocalizeddescription",
+            "<html",
+            "<!doctype html",
+            "stack trace",
+        ]
+        let normalized = trimmed.lowercased()
+        guard trimmed.contains(where: \.isNewline) == false,
+              blockedMarkers.allSatisfy({ normalized.contains($0) == false })
+        else {
+            return nil
+        }
+
+        return trimmed
+    }
 }
 
 public protocol APIClientProtocol: Sendable {
@@ -608,6 +731,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     private let tokenProvider: AuthTokenProvider
     private let accountContextProvider: AccountContextProvider
     private let session: URLSession
+    private let authorizationFailureHandler: (@Sendable (APIClientError) async -> Void)?
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
@@ -618,11 +742,13 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         tokenProvider: AuthTokenProvider,
         accountContextProvider: AccountContextProvider = EmptyAccountContextProvider(),
         session: URLSession = .shared,
+        authorizationFailureHandler: (@Sendable (APIClientError) async -> Void)? = nil,
     ) {
         self.baseURLProvider = baseURLProvider
         self.tokenProvider = tokenProvider
         self.accountContextProvider = accountContextProvider
         self.session = session
+        self.authorizationFailureHandler = authorizationFailureHandler
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -666,7 +792,15 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     }
 
     private func execute(endpoint: Endpoint, allowRefreshRetry: Bool, retryCount: Int = 0) async throws -> Data {
-        let request = try await buildRequest(for: endpoint)
+        let request: URLRequest
+        do {
+            request = try await buildRequest(for: endpoint)
+        } catch let error as APIClientError {
+            if endpoint.requiresAuth, error.isAuthorizationFailure {
+                await notifyAuthorizationFailure(error)
+            }
+            throw error
+        }
         logger.debug("\(endpoint.method.rawValue) \(request.url?.absoluteString ?? endpoint.path)")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -675,7 +809,14 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
 
         if http.statusCode == 401, allowRefreshRetry {
             logger.info("401 on \(endpoint.path) — attempting token refresh")
-            _ = try await refreshAccessTokenSingleFlight()
+            do {
+                _ = try await refreshAccessTokenSingleFlight()
+            } catch let error as APIClientError {
+                if error.isAuthorizationFailure {
+                    await notifyAuthorizationFailure(error)
+                }
+                throw error
+            }
             return try await execute(endpoint: endpoint, allowRefreshRetry: false)
         }
 
@@ -687,12 +828,12 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         }
 
         guard (200 ..< 300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "<binary>"
-            logger.error("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path): \(body)")
-            if http.statusCode == 503 {
-                throw APIClientError.http(statusCode: 503, detail: "Service temporarily unavailable. Please try again.", correlationID: nil)
+            let apiError = parseHTTPError(data: data, response: http)
+            logFailure(for: endpoint, error: apiError)
+            if endpoint.requiresAuth, apiError.isAuthorizationFailure {
+                await notifyAuthorizationFailure(apiError)
             }
-            throw parseHTTPError(data: data, response: http)
+            throw apiError
         }
 
         logger.debug("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path)")
@@ -755,18 +896,27 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
     }
 
     private func parseHTTPError(data: Data, response: HTTPURLResponse) -> APIClientError {
+        let responseCorrelationID = response.value(forHTTPHeaderField: "X-Correlation-ID")
         if let payload = try? decoder.decode(APIErrorPayload.self, from: data) {
-            if response.statusCode == 401 {
-                return .unauthorized
-            }
-            return .http(statusCode: response.statusCode, detail: payload.detail, correlationID: payload.correlationID)
+            return .http(
+                statusCode: response.statusCode,
+                detail: payload.detail,
+                correlationID: payload.correlationID ?? responseCorrelationID,
+            )
         }
 
         let detail = String(data: data, encoding: .utf8) ?? "Request failed"
-        if response.statusCode == 401 {
-            return .unauthorized
-        }
-        return .http(statusCode: response.statusCode, detail: detail, correlationID: nil)
+        return .http(statusCode: response.statusCode, detail: detail, correlationID: responseCorrelationID)
+    }
+
+    private func logFailure(for endpoint: Endpoint, error: APIClientError) {
+        logger.error(
+            "HTTP failure method=\(endpoint.method.rawValue, privacy: .public) path=\(endpoint.path, privacy: .public) status=\(error.statusCode ?? -1, privacy: .public) correlation_id=\(error.correlationID ?? "-", privacy: .public) detail=\(error.backendDetail ?? String(reflecting: error), privacy: .private)",
+        )
+    }
+
+    private func notifyAuthorizationFailure(_ error: APIClientError) async {
+        await authorizationFailureHandler?(error)
     }
 
     private func refreshAccessTokenSingleFlight() async throws -> AuthTokens {
