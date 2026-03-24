@@ -31,9 +31,8 @@ public struct RunSummaryView: View {
                     } else if let notReadyMessage = viewModel.notReadyMessage {
                         Text(notReadyMessage)
                             .foregroundStyle(.secondary)
-                    } else if let error = viewModel.errorMessage {
-                        Text(error)
-                            .foregroundStyle(TrainerLabTheme.danger)
+                    } else if let error = viewModel.presentableError {
+                        InlineAppErrorView(error: error)
                     } else if let summary = viewModel.summary {
                         summaryMetrics(summary, layoutMode: layoutMode)
 

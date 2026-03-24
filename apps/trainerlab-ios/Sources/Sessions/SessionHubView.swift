@@ -36,15 +36,9 @@ public struct SessionHubView: View {
                             viewModel.onSearchQueryChanged()
                         }
 
-                    if let error = viewModel.errorMessage {
-                        HStack(spacing: 12) {
-                            Text(error)
-                                .foregroundStyle(TrainerLabTheme.danger)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Button("Retry") {
-                                Task { await viewModel.loadSessions() }
-                            }
-                            .buttonStyle(.bordered)
+                    if let error = viewModel.presentableError {
+                        InlineAppErrorView(error: error, actionLabel: "Retry") {
+                            Task { await viewModel.loadSessions() }
                         }
                     }
 

@@ -1,3 +1,4 @@
+import DesignSystem
 import SharedModels
 import SwiftUI
 #if canImport(UIKit)
@@ -35,10 +36,8 @@ public struct ChatLabHomeView: View {
                     Toggle("Include message content in search", isOn: $store.includeMessageSearch)
                         .font(.footnote)
 
-                    if let error = store.errorMessage {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    if let error = store.presentableError {
+                        InlineAppErrorView(error: error)
                     }
 
                     content(layoutMode: layoutMode)

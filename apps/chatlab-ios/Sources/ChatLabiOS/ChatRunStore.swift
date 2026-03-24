@@ -57,7 +57,7 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var simulationRetryable = true
     @Published public private(set) var feedbackFailureText: String?
     @Published public private(set) var feedbackRetryable = true
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
     @Published public private(set) var toolRefreshToken = UUID()
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
@@ -107,6 +107,10 @@ public final class ChatRunStore: ObservableObject {
     public var activeMessages: [ChatMessageItem] {
         guard let activeConversationID else { return [] }
         return messagesByConversation[activeConversationID] ?? []
+    }
+
+    public var errorMessage: String? {
+        presentableError?.message
     }
 
     public var activeTypingUsers: [String] {
@@ -201,7 +205,7 @@ public final class ChatRunStore: ObservableObject {
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -228,7 +232,7 @@ public final class ChatRunStore: ObservableObject {
                 }
                 switchConversation(created.id)
             } catch {
-                errorMessage = error.localizedDescription
+                presentableError = AppErrorPresenter.present(error)
             }
         }
     }
@@ -255,7 +259,7 @@ public final class ChatRunStore: ObservableObject {
             reconcileAwaitingReplyAfterMessageLoad(conversationID: conversationID)
             markConversationRead(conversationID: conversationID)
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -284,7 +288,7 @@ public final class ChatRunStore: ObservableObject {
                 seenMessageIDs.insert(msg.id)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -337,7 +341,7 @@ public final class ChatRunStore: ObservableObject {
                     )
                 }
             } catch {
-                markPendingFailed(localID: localID, errorText: error.localizedDescription)
+                markPendingFailed(localID: localID, errorText: messageText(for: error))
             }
         }
     }
@@ -362,7 +366,7 @@ public final class ChatRunStore: ObservableObject {
                         )
                     }
                 } catch {
-                    errorMessage = error.localizedDescription
+                    presentableError = AppErrorPresenter.present(error)
                 }
             }
             return
@@ -384,7 +388,7 @@ public final class ChatRunStore: ObservableObject {
                 let updated = try await service.endSimulation(simulationID: simulation.id)
                 applySimulation(updated)
             } catch {
-                errorMessage = error.localizedDescription
+                presentableError = AppErrorPresenter.present(error)
             }
         }
     }
@@ -397,7 +401,7 @@ public final class ChatRunStore: ObservableObject {
                 simulationFailureText = nil
                 startInitialAwaitingReplyIfNeeded(forceRestart: true)
             } catch {
-                errorMessage = error.localizedDescription
+                presentableError = AppErrorPresenter.present(error)
             }
         }
     }
@@ -408,7 +412,7 @@ public final class ChatRunStore: ObservableObject {
                 _ = try await service.retryFeedback(simulationID: simulation.id)
                 feedbackFailureText = nil
             } catch {
-                errorMessage = error.localizedDescription
+                presentableError = AppErrorPresenter.present(error)
             }
         }
     }
@@ -768,6 +772,10 @@ public final class ChatRunStore: ObservableObject {
         messagesByConversation[pending.conversationID] = items
     }
 
+    private func messageText(for error: Error) -> String {
+        AppErrorPresenter.present(error)?.message ?? "Something went wrong."
+    }
+
     private func reconcileLocalEcho(
         conversationID: Int,
         serverID: Int,
@@ -878,7 +886,7 @@ public final class ChatRunStore: ObservableObject {
                 await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 

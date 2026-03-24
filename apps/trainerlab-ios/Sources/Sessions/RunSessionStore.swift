@@ -10,6 +10,7 @@ private let logger = Logger(subsystem: "com.jackfruit.medsim", category: "Traine
 @MainActor
 public final class RunSessionStore: ObservableObject {
     @Published public private(set) var state: RunSessionState = .init()
+    @Published public private(set) var conflictError: PresentableAppError?
 
     private let service: TrainerLabServiceProtocol
     private let realtimeClient: RealtimeClientProtocol
@@ -76,6 +77,7 @@ public final class RunSessionStore: ObservableObject {
 
     public func bind(session: TrainerSessionDTO) {
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
+        conflictError = nil
         seedHydrationFromSessionRuntimeState(session)
         syncStopwatchState()
         syncTransportPresentation(for: state.transportState)
@@ -370,10 +372,11 @@ public final class RunSessionStore: ObservableObject {
             let previousStatus = state.session?.status
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(latest))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            conflictError = nil
             seedHydrationFromSessionRuntimeState(latest)
             syncStopwatchState(previousStatus: previousStatus)
         } catch {
-            state.conflictBanner = error.localizedDescription
+            presentConflict(error)
         }
     }
 
@@ -386,11 +389,12 @@ public final class RunSessionStore: ObservableObject {
                 let previousStatus = state.session?.status
                 state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updated))
                 state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+                conflictError = nil
                 seedHydrationFromSessionRuntimeState(updated)
                 syncStopwatchState(previousStatus: previousStatus)
                 _ = await loadRuntimeState(reason: "retry initial simulation")
             } catch {
-                state.conflictBanner = error.localizedDescription
+                presentConflict(error)
             }
         }
     }
@@ -621,7 +625,7 @@ public final class RunSessionStore: ObservableObject {
                 )
                 debriefAnnotations.insert(created, at: 0)
             } catch {
-                state.conflictBanner = error.localizedDescription
+                presentConflict(error)
             }
         }
     }
@@ -681,7 +685,7 @@ public final class RunSessionStore: ObservableObject {
             _ = try await commandQueue.purgeAbandoned()
             await refreshPendingCount()
         } catch {
-            state.conflictBanner = error.localizedDescription
+            presentConflict(error)
         }
     }
 
@@ -711,13 +715,13 @@ public final class RunSessionStore: ObservableObject {
                     if isTerminalReplayFailure(error) {
                         try await commandQueue.markTerminalFailure(
                             idempotencyKey: envelope.idempotencyKey,
-                            error: error.localizedDescription,
+                            error: messageText(for: error),
                         )
                     } else {
                         let nextRetryAt = Date().addingTimeInterval(nextBackoffSeconds(for: envelope.retryCount))
                         try await commandQueue.markFailed(
                             idempotencyKey: envelope.idempotencyKey,
-                            error: error.localizedDescription,
+                            error: messageText(for: error),
                             nextRetryAt: nextRetryAt,
                         )
                     }
@@ -725,7 +729,7 @@ public final class RunSessionStore: ObservableObject {
             }
             await refreshPendingCount()
         } catch {
-            state.conflictBanner = error.localizedDescription
+            presentConflict(error)
         }
     }
 
@@ -809,7 +813,8 @@ public final class RunSessionStore: ObservableObject {
 
     private func handleCommandError(_ error: Error, envelope: PendingCommandEnvelope) async {
         if let apiError = error as? APIClientError, case let .http(statusCode, detail, _) = apiError, statusCode == 409 {
-            state = RunSessionReducer.reduce(state: state, action: .conflict(detail))
+            state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
+            conflictError = AppErrorPresenter.present(apiError)
             await refreshSession()
         }
 
@@ -817,13 +822,27 @@ public final class RunSessionStore: ObservableObject {
         do {
             try await commandQueue.markFailed(
                 idempotencyKey: envelope.idempotencyKey,
-                error: error.localizedDescription,
+                error: messageText(for: error),
                 nextRetryAt: nextRetryAt,
             )
             await refreshPendingCount()
         } catch {
-            state.conflictBanner = error.localizedDescription
+            presentConflict(error)
         }
+    }
+
+    private func presentConflict(_ error: Error) {
+        let presentable = AppErrorPresenter.present(error)
+        conflictError = presentable
+        state.conflictBanner = presentable?.message
+    }
+
+    private func messageText(for error: Error) -> String {
+        AppErrorPresenter.present(error)?.message ?? "Something went wrong."
+    }
+
+    private func conflictMessage(for error: APIClientError, fallbackDetail: String) -> String {
+        AppErrorPresenter.present(error)?.message ?? fallbackDetail
     }
 
     private func refreshPendingCount() async {
@@ -839,7 +858,7 @@ public final class RunSessionStore: ObservableObject {
             )
             state = RunSessionReducer.reduce(state: state, action: .pendingCommandCountChanged(count))
         } catch {
-            state.conflictBanner = error.localizedDescription
+            presentConflict(error)
         }
     }
 
@@ -969,6 +988,7 @@ public final class RunSessionStore: ObservableObject {
 
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(updatedSession))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
+            conflictError = nil
             if let revision = payload.stateRevision {
                 noteLifecycleRevision(revision)
             }
@@ -2078,7 +2098,7 @@ public final class RunSessionStore: ObservableObject {
                 )
                 scenarioBrief = updated
             } catch {
-                state.conflictBanner = error.localizedDescription
+                presentConflict(error)
             }
         }
     }

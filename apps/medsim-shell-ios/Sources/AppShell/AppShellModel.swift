@@ -10,6 +10,10 @@ import Sessions
 import SharedModels
 import Summary
 
+private final class AuthorizationFailureRelay: @unchecked Sendable {
+    var handler: (@Sendable (APIClientError) async -> Void)?
+}
+
 @MainActor
 public final class AppShellModel: ObservableObject {
     public let environmentStore: APIEnvironmentStore
@@ -42,11 +46,15 @@ public final class AppShellModel: ObservableObject {
 
         let selectedAccountContext = SelectedAccountContext()
         self.selectedAccountContext = selectedAccountContext
+        let authorizationFailureRelay = AuthorizationFailureRelay()
 
         let apiClient = APIClient(
             baseURLProvider: { mutableBaseURLProvider.currentURL() },
             tokenProvider: tokenStore,
             accountContextProvider: selectedAccountContext,
+            authorizationFailureHandler: { error in
+                await authorizationFailureRelay.handler?(error)
+            },
         )
         self.apiClient = apiClient
 
@@ -91,6 +99,9 @@ public final class AppShellModel: ObservableObject {
             service: trainerService,
             accountUUIDProvider: { [weak accountSessionStore] in accountSessionStore?.selectedAccountUUID },
         )
+        authorizationFailureRelay.handler = { [weak self] error in
+            await self?.handleAuthorizationFailure(error)
+        }
         bindChildPublishers()
     }
 
@@ -145,6 +156,14 @@ public final class AppShellModel: ObservableObject {
     public func resetScopedWorkspaceState() {
         sessionHubViewModel.resetForAccountChange()
         presetsViewModel.resetForAccountChange()
+    }
+
+    private func handleAuthorizationFailure(_ error: APIClientError) async {
+        tokenStore.clearTokens()
+        resetScopedWorkspaceState()
+        let presentableError = AppErrorPresenter.present(error)
+        await accountSessionStore.clearSession()
+        await authViewModel.handleAuthorizationFailure(presentableError)
     }
 
     private func bindChildPublishers() {

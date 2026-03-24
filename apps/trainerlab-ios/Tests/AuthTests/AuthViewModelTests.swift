@@ -256,7 +256,7 @@ final class AuthViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.isAuthenticated)
         XCTAssertNotNil(vm.errorMessage)
-        XCTAssertEqual(vm.errorMessage, MockError.signInFailed.localizedDescription)
+        XCTAssertEqual(vm.errorMessage, "Something went wrong.")
     }
 
     func testSignInTrainerAccessFailureSetsError() async {

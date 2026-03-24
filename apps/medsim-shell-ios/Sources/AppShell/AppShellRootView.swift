@@ -102,6 +102,12 @@ public struct AppShellRootView: View {
         .task {
             await model.authViewModel.restoreSessionIfAvailable()
         }
+        .onChange(of: model.authViewModel.isAuthenticated) { _, isAuthenticated in
+            if !isAuthenticated {
+                selectedApp = nil
+                showAccountBilling = false
+            }
+        }
     }
 
     private func availabilityMessage(for productCode: String) -> String? {
@@ -407,10 +413,9 @@ private struct AccountBillingSheet: View {
                         }
                     }
 
-                    if let errorMessage = accountStore.errorMessage, !errorMessage.isEmpty {
-                        Text(errorMessage)
+                    if let error = accountStore.presentableError {
+                        InlineAppErrorView(error: error)
                             .font(.footnote)
-                            .foregroundStyle(TrainerLabTheme.danger)
                     }
                 }
 
@@ -462,16 +467,14 @@ private struct AccountBillingSheet: View {
                             .disabled(billingService.isProcessing)
                         }
 
-                        if let catalogErrorMessage = billingService.catalogErrorMessage, !catalogErrorMessage.isEmpty {
-                            Text(catalogErrorMessage)
+                        if let error = billingService.catalogError {
+                            InlineAppErrorView(error: error)
                                 .font(.footnote)
-                                .foregroundStyle(TrainerLabTheme.warning)
                         }
 
-                        if let syncErrorMessage = billingService.syncErrorMessage, !syncErrorMessage.isEmpty {
-                            Text(syncErrorMessage)
+                        if let error = billingService.syncError {
+                            InlineAppErrorView(error: error)
                                 .font(.footnote)
-                                .foregroundStyle(TrainerLabTheme.danger)
                         }
                     }
                 } else {

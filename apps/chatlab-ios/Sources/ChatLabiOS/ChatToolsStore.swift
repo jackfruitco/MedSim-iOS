@@ -7,7 +7,7 @@ public final class ChatToolsStore: ObservableObject {
     @Published public private(set) var toolsByName: [String: ChatToolState] = [:]
     @Published public private(set) var isLoading = false
     @Published public private(set) var isSubmittingOrders = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
     @Published public var stagedOrders: [String] = []
 
     private let service: ChatLabServiceProtocol
@@ -18,14 +18,19 @@ public final class ChatToolsStore: ObservableObject {
         self.simulationID = simulationID
     }
 
+    public var errorMessage: String? {
+        presentableError?.message
+    }
+
     public func loadTools() async {
         isLoading = true
+        presentableError = nil
         defer { isLoading = false }
         do {
             let response = try await service.listTools(simulationID: simulationID, names: nil)
             toolsByName = Dictionary(uniqueKeysWithValues: response.items.map { ($0.name, $0) })
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -34,7 +39,7 @@ public final class ChatToolsStore: ObservableObject {
             let response = try await service.listTools(simulationID: simulationID, names: nil)
             toolsByName = Dictionary(uniqueKeysWithValues: response.items.map { ($0.name, $0) })
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 
@@ -55,6 +60,7 @@ public final class ChatToolsStore: ObservableObject {
             return
         }
         isSubmittingOrders = true
+        presentableError = nil
         defer { isSubmittingOrders = false }
         do {
             _ = try await service.signOrders(
@@ -64,7 +70,7 @@ public final class ChatToolsStore: ObservableObject {
             stagedOrders.removeAll()
             await refreshTools()
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
         }
     }
 

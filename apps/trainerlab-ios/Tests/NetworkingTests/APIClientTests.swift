@@ -66,6 +66,14 @@ private struct ProtectedResponse: Decodable {
     let value: String
 }
 
+private actor APIClientErrorRecorder {
+    private(set) var errors: [APIClientError] = []
+
+    func record(_ error: APIClientError) {
+        errors.append(error)
+    }
+}
+
 final class APIClientTests: XCTestCase {
     override func tearDown() {
         super.tearDown()
@@ -173,6 +181,104 @@ final class APIClientTests: XCTestCase {
 
         let result: [AccountOut] = try await client.request(AccountsAPI.listAccounts(), as: [AccountOut].self)
         XCTAssertTrue(result.isEmpty)
+    }
+
+    func testHTTPErrorPreservesCorrelationIDFromPayload() async {
+        let tokens = AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: tokens)
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolMock.self]
+        let session = URLSession(configuration: configuration)
+
+        URLProtocolMock.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            let body = Data(#"{"detail":"Conflict detected","correlation_id":"corr-409","status":409,"title":"Conflict","type":"http_error"}"#.utf8)
+            return (HTTPURLResponse(url: url, statusCode: 409, httpVersion: nil, headerFields: nil)!, body)
+        }
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            session: session,
+        )
+
+        do {
+            let _: ProtectedResponse = try await client.request(Endpoint(path: "/api/v1/protected/"), as: ProtectedResponse.self)
+            XCTFail("Expected request to fail")
+        } catch let error as APIClientError {
+            guard case let .http(statusCode, detail, correlationID) = error else {
+                return XCTFail("Expected HTTP APIClientError")
+            }
+            XCTAssertEqual(statusCode, 409)
+            XCTAssertEqual(detail, "Conflict detected")
+            XCTAssertEqual(correlationID, "corr-409")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testAuthorizationFailureHandlerRunsOnTerminalAuthExpiry() async {
+        let initial = AuthTokens(accessToken: "old-token", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: initial)
+        let recorder = APIClientErrorRecorder()
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolMock.self]
+        let session = URLSession(configuration: configuration)
+
+        URLProtocolMock.requestHandler = { request in
+            let url = try XCTUnwrap(request.url)
+            let path = normalizedPath(url.path)
+            let auth = request.value(forHTTPHeaderField: "Authorization") ?? ""
+
+            if path == "/api/v1/protected" {
+                let body = Data(#"{"detail":"expired","correlation_id":"corr-auth","status":401,"title":"Unauthorized","type":"http_error"}"#.utf8)
+                return (HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!, body)
+            }
+
+            if path == "/api/v1/auth/token/refresh" {
+                XCTAssertEqual(auth, "")
+                let body = Data(#"{"detail":"refresh expired","correlation_id":"corr-refresh","status":401,"title":"Unauthorized","type":"http_error"}"#.utf8)
+                return (HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!, body)
+            }
+
+            XCTFail("Unhandled request in URLProtocolMock: \(path)")
+            let body = Data()
+            return (HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!, body)
+        }
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            session: session,
+            authorizationFailureHandler: { error in
+                await recorder.record(error)
+            },
+        )
+
+        do {
+            let _: ProtectedResponse = try await client.request(Endpoint(path: "/api/v1/protected/"), as: ProtectedResponse.self)
+            XCTFail("Expected auth failure")
+        } catch let error as APIClientError {
+            guard case let .http(statusCode, _, correlationID) = error else {
+                return XCTFail("Expected HTTP APIClientError")
+            }
+            XCTAssertEqual(statusCode, 401)
+            XCTAssertEqual(correlationID, "corr-refresh")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        for _ in 0 ..< 20 {
+            if await recorder.errors.count == 1 {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        let recorded = await recorder.errors
+        XCTAssertEqual(recorded.count, 1)
+        XCTAssertTrue(recorded.first?.isAuthorizationFailure == true)
     }
 }
 

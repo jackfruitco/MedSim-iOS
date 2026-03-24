@@ -38,7 +38,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
     @Published public private(set) var selectedAccountUUID: String?
     @Published public private(set) var isBootstrapping = false
     @Published public private(set) var isSwitching = false
-    @Published public private(set) var errorMessage: String?
+    @Published public private(set) var presentableError: PresentableAppError?
 
     private let apiClient: APIClientProtocol
     private let baseURLProvider: () -> URL
@@ -66,6 +66,10 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         let resolvedUUID = accessSnapshot?.accountUUID ?? selectedAccountUUID
         guard let resolvedUUID else { return nil }
         return availableAccounts.first(where: { $0.uuid == resolvedUUID })
+    }
+
+    public var errorMessage: String? {
+        presentableError?.message
     }
 
     public var isCurrentAccountPersonal: Bool {
@@ -104,7 +108,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
     /// and refresh access after account switch or billing sync.
     public func bootstrapSession() async throws {
         isBootstrapping = true
-        errorMessage = nil
+        presentableError = nil
         defer { isBootstrapping = false }
 
         do {
@@ -114,7 +118,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
             )
         } catch {
             clearLoadedState()
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
             throw error
         }
     }
@@ -123,7 +127,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         guard accountUUID != selectedAccountUUID else { return }
 
         isSwitching = true
-        errorMessage = nil
+        presentableError = nil
         defer { isSwitching = false }
 
         do {
@@ -133,20 +137,20 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
                 alignBackendSelection: false,
             )
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
             throw error
         }
     }
 
     public func refreshAccountsAndAccess() async throws {
-        errorMessage = nil
+        presentableError = nil
         do {
             try await reloadAccountsAndAccess(
                 preferredAccountUUID: selectedAccountUUID ?? persistedSelectedAccountUUID(),
                 alignBackendSelection: false,
             )
         } catch {
-            errorMessage = error.localizedDescription
+            presentableError = AppErrorPresenter.present(error)
             throw error
         }
     }
@@ -244,7 +248,7 @@ public final class AccountSessionStore: ObservableObject, AuthSessionBootstrappe
         availableAccounts = []
         accessSnapshot = nil
         selectedAccountUUID = nil
-        errorMessage = nil
+        presentableError = nil
     }
 
     private func persistSelectedAccountUUID(_ accountUUID: String) {
