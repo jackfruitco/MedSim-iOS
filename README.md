@@ -1,4 +1,5 @@
 # MedSim iOS
+[![ci](https://github.com/jackfruitco/MedSim-iOS/actions/workflows/ci.yml/badge.svg)](https://github.com/jackfruitco/MedSim-iOS/actions/workflows/ci.yml)
 
 [![Coverage Threshold](https://img.shields.io/badge/coverage-%E2%89%A5%2070%25-brightgreen)](https://github.com/jackfruitco/MedSim-iOS/actions/workflows/ci.yml)
 
