@@ -152,6 +152,31 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertNotNil(chatRequest.value(forHTTPHeaderField: "X-Correlation-ID"))
     }
 
+    func testSimulationGuardAPIRoutes() {
+        let guardState = SimulationGuardAPI.guardState(simulationID: 42)
+        XCTAssertEqual(guardState.path, "/api/v1/simulations/42/guard-state/")
+        XCTAssertEqual(guardState.method, .get)
+        XCTAssertNil(guardState.body)
+
+        let heartbeat = SimulationGuardAPI.heartbeat(simulationID: 42)
+        XCTAssertEqual(heartbeat.path, "/api/v1/simulations/42/heartbeat/")
+        XCTAssertEqual(heartbeat.method, .post)
+        XCTAssertNotNil(heartbeat.body)
+    }
+
+    func testAPIClientErrorGuardHelpers() {
+        let guardError = APIClientError.http(statusCode: 403, detail: "Guard denied: runtime cap exceeded", correlationID: "abc")
+        XCTAssertTrue(guardError.isGuardDenied)
+        XCTAssertEqual(guardError.userFacingGuardMessage, "Guard denied: runtime cap exceeded")
+
+        let notFoundError = APIClientError.http(statusCode: 404, detail: "Not found", correlationID: nil)
+        XCTAssertFalse(notFoundError.isGuardDenied)
+        XCTAssertNil(notFoundError.userFacingGuardMessage)
+
+        let authError = APIClientError.unauthorized
+        XCTAssertFalse(authError.isGuardDenied)
+    }
+
     private func queryPairs(_ endpoint: Endpoint) -> [String] {
         endpoint.query.map { "\($0.name)=\($0.value ?? "")" }
     }

@@ -202,6 +202,23 @@ public struct ChatRunView: View {
                 InlineAppErrorView(error: error)
             }
 
+            if let warning = store.guardWarningMessage {
+                guardWarningBanner(text: warning)
+            }
+
+            if let denial = store.guardDenialMessage {
+                InlineAppErrorView(
+                    error: PresentableAppError(
+                        title: "Session Paused",
+                        message: denial,
+                        debugMessage: nil,
+                        correlationID: nil,
+                        statusCode: nil,
+                        recoveryActionLabel: nil,
+                    ),
+                )
+            }
+
             if let failure = store.simulationFailureText, store.showsInitialGenerationFailureScreen == false {
                 failureBanner(
                     title: "Simulation failed",
@@ -228,6 +245,23 @@ public struct ChatRunView: View {
         VStack(spacing: 6) {
             if let error = store.presentableError {
                 InlineAppErrorView(error: error)
+            }
+
+            if let warning = store.guardWarningMessage {
+                guardWarningBanner(text: warning)
+            }
+
+            if let denial = store.guardDenialMessage {
+                InlineAppErrorView(
+                    error: PresentableAppError(
+                        title: "Session Paused",
+                        message: denial,
+                        debugMessage: nil,
+                        correlationID: nil,
+                        statusCode: nil,
+                        recoveryActionLabel: nil,
+                    ),
+                )
             }
 
             if let failure = store.simulationFailureText, store.showsInitialGenerationFailureScreen == false {
@@ -441,6 +475,19 @@ public struct ChatRunView: View {
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
         .frame(maxWidth: .infinity)
+    }
+
+    private func guardWarningBanner(text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption.bold())
+            Spacer()
+        }
+        .padding(10)
+        .background(.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func failureBanner(

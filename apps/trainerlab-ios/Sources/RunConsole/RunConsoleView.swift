@@ -89,6 +89,11 @@ public struct RunConsoleView: View {
                     }
                 }
 
+                // Guard pause overlay (resumable pauses)
+                if let gs = store.guardState, gs.isPaused, !gs.isTerminalPause {
+                    guardPausedOverlay(guardState: gs)
+                }
+
                 // Terminal end-state overlay
                 if let card = store.state.terminalCard, !terminalCardDismissed {
                     terminalCardOverlay(card: card)
@@ -152,6 +157,9 @@ public struct RunConsoleView: View {
         VStack(spacing: 10) {
             regularCommandBar
             topVitalsTable(layoutMode: .regular, compactMetrics: .standard)
+            if store.guardWarningBanner != nil {
+                guardWarningBannerView
+            }
             if store.state.conflictBanner != nil {
                 conflictBanner
             }
@@ -187,6 +195,9 @@ public struct RunConsoleView: View {
                     controlPresentation: controlPresentation,
                 )
                 topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
+                if store.guardWarningBanner != nil {
+                    guardWarningBannerView
+                }
                 if store.state.conflictBanner != nil {
                     conflictBanner
                 }
@@ -1387,6 +1398,58 @@ public struct RunConsoleView: View {
         }
     }
 
+    // MARK: - Guard state UI
+
+    private var guardWarningBannerView: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(TrainerLabTheme.warning)
+            Text(store.guardWarningBanner ?? "")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+            Spacer()
+            if let gs = store.guardState, let remaining = gs.remainingMinutes, remaining > 0 {
+                Text("\(remaining) min left")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(TrainerLabTheme.warning.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func guardPausedOverlay(guardState: SimulationGuardState) -> some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 16) {
+                Image(systemName: "pause.circle.fill")
+                    .font(.largeTitle)
+                    .foregroundStyle(TrainerLabTheme.warning)
+                Text(guardState.pauseMessage ?? "Simulation paused")
+                    .font(.headline)
+                if guardState.isResumablePause {
+                    Button("Resume") {
+                        store.resume()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                if guardState.guardState == .pausedRuntimeCap {
+                    Text("Manual records such as interventions, annotations, and notes remain available.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(18)
+            .background(TrainerLabTheme.tacticalSurfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(16)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            Spacer()
+        }
+    }
+
     // MARK: - Terminal card overlay
 
     private func terminalCardOverlay(card: TerminalCard) -> some View {
@@ -2013,7 +2076,7 @@ public struct RunConsoleView: View {
     }
 
     private var canRunMutate: Bool {
-        canMutate
+        store.engineControlsEnabled
     }
 
     private var canIntervene: Bool {

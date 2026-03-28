@@ -62,6 +62,7 @@ public final class ChatRunStore: ObservableObject {
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
     @Published public var draftText = ""
+    @Published public private(set) var guardState: SimulationGuardState?
 
     private let service: ChatLabServiceProtocol
     private let realtimeClient: ChatRealtimeClientProtocol
@@ -127,6 +128,15 @@ public final class ChatRunStore: ObservableObject {
     public var activeConversationLocked: Bool {
         guard let activeConversation else { return false }
         return isConversationLocked(activeConversation)
+    }
+
+    public var guardDenialMessage: String? {
+        guard let gs = guardState, gs.shouldLockChatSending else { return nil }
+        return gs.denialMessage ?? gs.pauseMessage
+    }
+
+    public var guardWarningMessage: String? {
+        guardState?.warningMessage
     }
 
     public var activeAwaitingReplyWarningText: String? {
@@ -204,6 +214,7 @@ public final class ChatRunStore: ObservableObject {
 
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
+            await loadGuardState()
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
@@ -341,6 +352,9 @@ public final class ChatRunStore: ObservableObject {
                     )
                 }
             } catch {
+                if let apiError = error as? APIClientError, apiError.isGuardDenied {
+                    await loadGuardState()
+                }
                 markPendingFailed(localID: localID, errorText: messageText(for: error))
             }
         }
@@ -366,6 +380,9 @@ public final class ChatRunStore: ObservableObject {
                         )
                     }
                 } catch {
+                    if let apiError = error as? APIClientError, apiError.isGuardDenied {
+                        await loadGuardState()
+                    }
                     presentableError = AppErrorPresenter.present(error)
                 }
             }
@@ -492,6 +509,15 @@ public final class ChatRunStore: ObservableObject {
     public func refreshAfterForegroundOrReconnect() {
         Task {
             await refreshServerState(reconnectRealtime: false)
+            await loadGuardState()
+        }
+    }
+
+    public func loadGuardState() async {
+        do {
+            guardState = try await service.getGuardState(simulationID: simulation.id)
+        } catch {
+            // Non-critical; keep current state
         }
     }
 
@@ -701,6 +727,9 @@ public final class ChatRunStore: ObservableObject {
 
     private func isConversationLocked(_ conversation: ChatConversation) -> Bool {
         if conversation.isLocked {
+            return true
+        }
+        if let gs = guardState, gs.shouldLockChatSending {
             return true
         }
         return simulationHasEnded && isPatientConversation(conversation)
