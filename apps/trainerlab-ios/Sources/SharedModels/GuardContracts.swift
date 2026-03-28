@@ -63,42 +63,50 @@ public enum GuardWarning: String, Codable, Sendable, CaseIterable {
 
 // MARK: - Simulation Guard State DTO
 
-/// Maps to backend `GuardStateOut` from the guard-state endpoint.
+/// Maps to backend `GuardStateOut` from the guard-state and heartbeat endpoints.
 public struct SimulationGuardState: Codable, Equatable, Sendable {
     public let guardState: GuardState
     public let pauseReason: PauseReason?
-    public let runtimeMinutesUsed: Int
-    public let runtimeCapMinutes: Int?
+    public let engineRunnable: Bool
+    public let activeElapsedSeconds: Int
+    public let runtimeCapSeconds: Int?
+    public let wallClockExpiresAt: String?
     public let warnings: [GuardWarning]
-    public let canResume: Bool
     public let denialReason: DenialReason?
+    public let denialMessage: String?
 
     public init(
         guardState: GuardState,
         pauseReason: PauseReason? = nil,
-        runtimeMinutesUsed: Int = 0,
-        runtimeCapMinutes: Int? = nil,
+        engineRunnable: Bool = true,
+        activeElapsedSeconds: Int = 0,
+        runtimeCapSeconds: Int? = nil,
+        wallClockExpiresAt: String? = nil,
         warnings: [GuardWarning] = [],
-        canResume: Bool = false,
-        denialReason: DenialReason? = nil
+        denialReason: DenialReason? = nil,
+        denialMessage: String? = nil
     ) {
         self.guardState = guardState
         self.pauseReason = pauseReason
-        self.runtimeMinutesUsed = runtimeMinutesUsed
-        self.runtimeCapMinutes = runtimeCapMinutes
+        self.engineRunnable = engineRunnable
+        self.activeElapsedSeconds = activeElapsedSeconds
+        self.runtimeCapSeconds = runtimeCapSeconds
+        self.wallClockExpiresAt = wallClockExpiresAt
         self.warnings = warnings
-        self.canResume = canResume
         self.denialReason = denialReason
+        self.denialMessage = denialMessage
     }
 
     enum CodingKeys: String, CodingKey {
         case guardState = "guard_state"
         case pauseReason = "pause_reason"
-        case runtimeMinutesUsed = "runtime_minutes_used"
-        case runtimeCapMinutes = "runtime_cap_minutes"
+        case engineRunnable = "engine_runnable"
+        case activeElapsedSeconds = "active_elapsed_seconds"
+        case runtimeCapSeconds = "runtime_cap_seconds"
+        case wallClockExpiresAt = "wall_clock_expires_at"
         case warnings
-        case canResume = "can_resume"
         case denialReason = "denial_reason"
+        case denialMessage = "denial_message"
     }
 }
 
@@ -106,8 +114,9 @@ public struct SimulationGuardState: Codable, Equatable, Sendable {
 
 extension SimulationGuardState {
     /// Whether the simulation engine can progress (ticks, steer, etc.).
+    /// Uses the backend-provided `engine_runnable` flag directly.
     public var isEngineRunnable: Bool {
-        guardState == .active
+        engineRunnable
     }
 
     /// Whether the simulation is in any paused state.
@@ -126,8 +135,9 @@ extension SimulationGuardState {
     }
 
     /// Whether the user can resume from this pause state.
+    /// Derived from guard state: non-terminal pauses are resumable.
     public var isResumablePause: Bool {
-        canResume && !isTerminalPause
+        isPaused && !isTerminalPause
     }
 
     /// Whether chat message sending should be locked.
@@ -135,10 +145,10 @@ extension SimulationGuardState {
         !isEngineRunnable
     }
 
-    /// Remaining runtime minutes, if a cap is configured.
+    /// Remaining runtime in minutes, if a cap is configured.
     public var remainingMinutes: Int? {
-        guard let cap = runtimeCapMinutes else { return nil }
-        return max(0, cap - runtimeMinutesUsed)
+        guard let cap = runtimeCapSeconds else { return nil }
+        return max(0, (cap - activeElapsedSeconds) / 60)
     }
 
     /// User-facing warning message derived from backend warnings.
@@ -171,8 +181,9 @@ extension SimulationGuardState {
         }
     }
 
-    /// User-facing denial message, preferring backend-provided text.
-    public var denialMessage: String? {
+    /// User-facing denial message — prefers backend-provided text, falls back to per-reason defaults.
+    public var userFacingDenialMessage: String? {
+        if let denialMessage { return denialMessage }
         switch denialReason {
         case .runtimeCapExceeded:
             return "Runtime limit has been exceeded."
@@ -190,12 +201,17 @@ extension SimulationGuardState {
     }
 }
 
-// MARK: - Heartbeat Response
+// MARK: - Heartbeat Request
 
-public struct HeartbeatResponse: Codable, Sendable {
-    public let success: Bool
+/// Payload for `POST /api/v1/simulations/{id}/heartbeat/`.
+public struct HeartbeatRequest: Codable, Sendable {
+    public let clientVisibility: String
 
-    public init(success: Bool) {
-        self.success = success
+    public init(clientVisibility: String = "unknown") {
+        self.clientVisibility = clientVisibility
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case clientVisibility = "client_visibility"
     }
 }

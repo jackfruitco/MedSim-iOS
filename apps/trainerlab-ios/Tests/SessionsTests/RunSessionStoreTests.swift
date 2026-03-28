@@ -228,9 +228,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     }
 
     var sendHeartbeatCalls: [Int] = []
-    var sendHeartbeatResult: Result<HeartbeatResponse, Error> = .success(HeartbeatResponse(success: true))
+    var sendHeartbeatResult: Result<SimulationGuardState, Error> = .success(SimulationGuardState(guardState: .active))
 
-    func sendHeartbeat(simulationID: Int) async throws -> HeartbeatResponse {
+    func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState {
         sendHeartbeatCalls.append(simulationID)
         return try sendHeartbeatResult.get()
     }
@@ -2024,9 +2024,9 @@ final class RunSessionStoreTests: XCTestCase {
         store.guardState = SimulationGuardState(
             guardState: .pausedRuntimeCap,
             pauseReason: .runtimeCap,
-            runtimeMinutesUsed: 30,
-            runtimeCapMinutes: 30,
-            canResume: false,
+            engineRunnable: false,
+            activeElapsedSeconds: 1800,
+            runtimeCapSeconds: 1800,
             denialReason: .runtimeCapExceeded,
         )
 
@@ -2048,7 +2048,7 @@ final class RunSessionStoreTests: XCTestCase {
         store.guardState = SimulationGuardState(
             guardState: .pausedInactivity,
             pauseReason: .inactivity,
-            canResume: true,
+            engineRunnable: false,
         )
         XCTAssertTrue(store.guardPauseIsResumable)
         XCTAssertNotNil(store.guardPauseBanner)
@@ -2057,7 +2057,7 @@ final class RunSessionStoreTests: XCTestCase {
         store.guardState = SimulationGuardState(
             guardState: .pausedRuntimeCap,
             pauseReason: .runtimeCap,
-            canResume: false,
+            engineRunnable: false,
         )
         XCTAssertFalse(store.guardPauseIsResumable)
         XCTAssertNotNil(store.guardPauseBanner)
@@ -2066,7 +2066,7 @@ final class RunSessionStoreTests: XCTestCase {
         store.guardState = SimulationGuardState(
             guardState: .pausedManual,
             pauseReason: .manual,
-            canResume: true,
+            engineRunnable: false,
         )
         XCTAssertTrue(store.guardPauseIsResumable)
     }
@@ -2082,8 +2082,8 @@ final class RunSessionStoreTests: XCTestCase {
 
         store.guardState = SimulationGuardState(
             guardState: .active,
-            runtimeMinutesUsed: 25,
-            runtimeCapMinutes: 30,
+            activeElapsedSeconds: 1500,
+            runtimeCapSeconds: 1800,
             warnings: [.approachingRuntimeCap],
         )
         XCTAssertNotNil(store.guardWarningBanner)

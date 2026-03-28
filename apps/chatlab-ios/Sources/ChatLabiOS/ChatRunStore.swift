@@ -132,7 +132,7 @@ public final class ChatRunStore: ObservableObject {
 
     public var guardDenialMessage: String? {
         guard let gs = guardState, gs.shouldLockChatSending else { return nil }
-        return gs.denialMessage ?? gs.pauseMessage
+        return gs.userFacingDenialMessage ?? gs.pauseMessage
     }
 
     public var guardWarningMessage: String? {

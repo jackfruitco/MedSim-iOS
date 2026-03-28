@@ -61,7 +61,7 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws
 
     func getGuardState(simulationID: Int) async throws -> SimulationGuardState
-    func sendHeartbeat(simulationID: Int) async throws -> HeartbeatResponse
+    func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState
 }
 
 public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
@@ -470,10 +470,10 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         )
     }
 
-    public func sendHeartbeat(simulationID: Int) async throws -> HeartbeatResponse {
+    public func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState {
         try await apiClient.request(
             SimulationGuardAPI.heartbeat(simulationID: simulationID),
-            as: HeartbeatResponse.self,
+            as: SimulationGuardState.self,
         )
     }
 }

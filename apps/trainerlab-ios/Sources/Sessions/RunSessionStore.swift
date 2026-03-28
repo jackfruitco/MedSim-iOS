@@ -160,7 +160,12 @@ public final class RunSessionStore: ObservableObject {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 guard !Task.isCancelled else { break }
                 guard let simulationID = await MainActor.run(body: { self.state.session?.simulationID }) else { continue }
-                _ = try? await self.service.sendHeartbeat(simulationID: simulationID)
+                if let gs = try? await self.service.sendHeartbeat(simulationID: simulationID) {
+                    await MainActor.run {
+                        self.guardState = gs
+                        self.applyGuardStateToUI(gs)
+                    }
+                }
             }
         }
 

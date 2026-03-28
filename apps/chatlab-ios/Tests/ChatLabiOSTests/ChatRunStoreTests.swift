@@ -176,8 +176,8 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         return try guardStateResult.get()
     }
 
-    func sendHeartbeat(simulationID _: Int) async throws -> HeartbeatResponse {
-        HeartbeatResponse(success: true)
+    func sendHeartbeat(simulationID _: Int) async throws -> SimulationGuardState {
+        SimulationGuardState(guardState: .active)
     }
 }
 
@@ -664,7 +664,7 @@ final class ChatRunStoreTests: XCTestCase {
             SimulationGuardState(
                 guardState: .pausedRuntimeCap,
                 pauseReason: .runtimeCap,
-                canResume: false,
+                engineRunnable: false,
                 denialReason: .runtimeCapExceeded,
             ),
         )
@@ -698,7 +698,7 @@ final class ChatRunStoreTests: XCTestCase {
 
         // Paused guard state
         service.guardStateResult = .success(
-            SimulationGuardState(guardState: .pausedInactivity, canResume: true),
+            SimulationGuardState(guardState: .pausedInactivity, engineRunnable: false),
         )
 
         let realtime = TestRealtimeClient()
@@ -742,7 +742,7 @@ final class ChatRunStoreTests: XCTestCase {
             correlationID: nil,
         )
         service.guardStateResult = .success(
-            SimulationGuardState(guardState: .pausedRuntimeCap, canResume: false),
+            SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false),
         )
 
         store.draftText = "Test message"

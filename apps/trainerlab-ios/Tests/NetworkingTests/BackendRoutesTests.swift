@@ -162,6 +162,15 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(heartbeat.path, "/api/v1/simulations/42/heartbeat/")
         XCTAssertEqual(heartbeat.method, .post)
         XCTAssertNotNil(heartbeat.body)
+
+        // Verify heartbeat body contains client_visibility
+        if let body = heartbeat.body,
+           let dict = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        {
+            XCTAssertEqual(dict["client_visibility"] as? String, "unknown")
+        } else {
+            XCTFail("Heartbeat body should be valid JSON with client_visibility")
+        }
     }
 
     func testAPIClientErrorGuardHelpers() {

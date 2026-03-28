@@ -591,8 +591,9 @@ public enum SimulationGuardAPI {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/guard-state/")
     }
 
-    public static func heartbeat(simulationID: Int) -> Endpoint {
-        Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: Data())
+    public static func heartbeat(simulationID: Int, clientVisibility: String = "unknown") -> Endpoint {
+        let body = try? JSONEncoder().encode(HeartbeatRequest(clientVisibility: clientVisibility))
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: body)
     }
 }
 
