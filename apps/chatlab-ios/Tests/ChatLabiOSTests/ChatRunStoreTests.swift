@@ -1,5 +1,5 @@
 @testable import ChatLabiOS
-import Networking
+@testable import Networking
 import SharedModels
 import XCTest
 
@@ -82,7 +82,12 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         )
     }
 
+    var createMessageError: Error?
+
     func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
+        if let createMessageError {
+            throw createMessageError
+        }
         guard let createdMessage else {
             throw NSError(domain: "missing-created-message", code: 404)
         }
@@ -159,6 +164,20 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
         []
+    }
+
+    var guardStateResult: Result<SimulationGuardState, Error> = .success(
+        SimulationGuardState(guardState: .active),
+    )
+    var getGuardStateCalls: [Int] = []
+
+    func getGuardState(simulationID: Int) async throws -> SimulationGuardState {
+        getGuardStateCalls.append(simulationID)
+        return try guardStateResult.get()
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> SimulationGuardState {
+        SimulationGuardState(guardState: .active)
     }
 }
 
@@ -628,6 +647,111 @@ final class ChatRunStoreTests: XCTestCase {
             correlationID: nil,
             payload: payload,
         )
+    }
+
+    // MARK: - Guard State Tests
+
+    func testComposerLockedWhenGuardDenied() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let conversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [conversation])
+        service.messagesByConversation[conversation.id] = []
+
+        // Set guard state to paused
+        service.guardStateResult = .success(
+            SimulationGuardState(
+                guardState: .pausedRuntimeCap,
+                pauseReason: .runtimeCap,
+                engineRunnable: false,
+                denialReason: .runtimeCapExceeded,
+            ),
+        )
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+
+        store.start()
+        try await waitUntil { store.activeConversationID == conversation.id }
+
+        // Guard state should be fetched during bootstrap and lock the composer
+        try await waitUntil { store.guardState != nil }
+        XCTAssertTrue(store.activeConversationLocked)
+        XCTAssertNotNil(store.guardDenialMessage)
+        store.stop()
+    }
+
+    func testTranscriptReadableWhileGuardLocked() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let conversation = makeConversation()
+        let message = makeMessage(
+            id: 1,
+            conversationID: conversation.id,
+            isFromAI: true,
+            content: "Hello, how can I help?",
+        )
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [conversation])
+        service.messagesByConversation[conversation.id] = [message]
+
+        // Paused guard state
+        service.guardStateResult = .success(
+            SimulationGuardState(guardState: .pausedInactivity, engineRunnable: false),
+        )
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+
+        store.start()
+        try await waitUntil { store.activeConversationID == conversation.id }
+        try await waitUntil { store.guardState != nil }
+
+        // Composer should be locked but messages still readable
+        XCTAssertTrue(store.activeConversationLocked)
+        XCTAssertFalse(store.activeMessages.isEmpty)
+        XCTAssertEqual(store.activeMessages.first?.content, "Hello, how can I help?")
+        store.stop()
+    }
+
+    func testGuardStateFetchedOn403() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let conversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [conversation])
+        service.messagesByConversation[conversation.id] = []
+
+        // Initial guard state is active
+        service.guardStateResult = .success(SimulationGuardState(guardState: .active))
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+
+        store.start()
+        try await waitUntil { store.activeConversationID == conversation.id }
+
+        // Clear guard state calls from bootstrap
+        service.getGuardStateCalls.removeAll()
+
+        // Now make createMessage fail with 403 and switch guard to paused
+        service.createMessageError = APIClientError.http(
+            statusCode: 403,
+            detail: "Guard denied: runtime cap exceeded",
+            correlationID: nil,
+        )
+        service.guardStateResult = .success(
+            SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false),
+        )
+
+        store.draftText = "Test message"
+        store.sendDraft()
+
+        // Wait for the 403 to trigger a guard state fetch
+        try await waitUntil { !service.getGuardStateCalls.isEmpty }
+        try await waitUntil { store.guardState?.guardState == .pausedRuntimeCap }
+        store.stop()
     }
 
     private func isoTimestamp() -> String {

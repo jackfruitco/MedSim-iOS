@@ -40,6 +40,9 @@ public protocol ChatLabServiceProtocol: Sendable {
     func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse
 
     func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup]
+
+    func getGuardState(simulationID: Int) async throws -> SimulationGuardState
+    func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState
 }
 
 public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
@@ -214,6 +217,20 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         try await apiClient.request(
             ChatLabAPI.listModifierGroups(groups: groups),
             as: [ModifierGroup].self,
+        )
+    }
+
+    public func getGuardState(simulationID: Int) async throws -> SimulationGuardState {
+        try await apiClient.request(
+            SimulationGuardAPI.guardState(simulationID: simulationID),
+            as: SimulationGuardState.self,
+        )
+    }
+
+    public func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState {
+        try await apiClient.request(
+            SimulationGuardAPI.heartbeat(simulationID: simulationID),
+            as: SimulationGuardState.self,
         )
     }
 }

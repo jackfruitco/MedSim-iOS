@@ -59,6 +59,9 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut
 
     func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws
+
+    func getGuardState(simulationID: Int) async throws -> SimulationGuardState
+    func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState
 }
 
 public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Sendable {
@@ -457,6 +460,20 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         let requestMethod = HTTPMethod(rawValue: method.uppercased()) ?? .post
         _ = try await apiClient.requestData(
             Endpoint(path: endpoint, method: requestMethod, body: body, idempotencyKey: idempotencyKey),
+        )
+    }
+
+    public func getGuardState(simulationID: Int) async throws -> SimulationGuardState {
+        try await apiClient.request(
+            SimulationGuardAPI.guardState(simulationID: simulationID),
+            as: SimulationGuardState.self,
+        )
+    }
+
+    public func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState {
+        try await apiClient.request(
+            SimulationGuardAPI.heartbeat(simulationID: simulationID),
+            as: SimulationGuardState.self,
         )
     }
 }

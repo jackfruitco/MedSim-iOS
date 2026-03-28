@@ -2,7 +2,7 @@ import Foundation
 import Networking
 import Persistence
 import Realtime
-import Sessions
+@testable import Sessions
 import SharedModels
 import XCTest
 
@@ -215,6 +215,24 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         if let error = replayPendingErrorByEndpoint[endpoint] {
             throw error
         }
+    }
+
+    var getGuardStateCalls: [Int] = []
+    var getGuardStateResult: Result<SimulationGuardState, Error> = .success(
+        SimulationGuardState(guardState: .active),
+    )
+
+    func getGuardState(simulationID: Int) async throws -> SimulationGuardState {
+        getGuardStateCalls.append(simulationID)
+        return try getGuardStateResult.get()
+    }
+
+    var sendHeartbeatCalls: [Int] = []
+    var sendHeartbeatResult: Result<SimulationGuardState, Error> = .success(SimulationGuardState(guardState: .active))
+
+    func sendHeartbeat(simulationID: Int) async throws -> SimulationGuardState {
+        sendHeartbeatCalls.append(simulationID)
+        return try sendHeartbeatResult.get()
     }
 }
 
@@ -1982,6 +2000,94 @@ final class RunSessionStoreTests: XCTestCase {
             correlationID: nil,
             payload: [:],
         )
+    }
+
+    // MARK: - Guard State Tests
+
+    func testEngineControlsDisabledWhenGuardNotRunnable() {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: MockCommandQueue(),
+        )
+
+        // Simulate a running session with command channel available
+        store.bind(session: makeSession(simulationID: 1, status: .running))
+        store.state.commandChannelAvailable = true
+
+        // Before guard state is set, engine controls should be enabled
+        XCTAssertTrue(store.engineControlsEnabled)
+        XCTAssertTrue(store.manualRecordsEnabled)
+
+        // Set guard state to paused_runtime_cap
+        store.guardState = SimulationGuardState(
+            guardState: .pausedRuntimeCap,
+            pauseReason: .runtimeCap,
+            engineRunnable: false,
+            activeElapsedSeconds: 1800,
+            runtimeCapSeconds: 1800,
+            denialReason: .runtimeCapExceeded,
+        )
+
+        // Engine controls disabled, manual records still enabled
+        XCTAssertFalse(store.engineControlsEnabled)
+        XCTAssertTrue(store.manualRecordsEnabled)
+    }
+
+    func testGuardStateDistinguishesResumableVsTerminalPause() {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: MockCommandQueue(),
+        )
+        store.bind(session: makeSession(simulationID: 1, status: .running))
+
+        // Inactivity pause is resumable
+        store.guardState = SimulationGuardState(
+            guardState: .pausedInactivity,
+            pauseReason: .inactivity,
+            engineRunnable: false,
+        )
+        XCTAssertTrue(store.guardPauseIsResumable)
+        XCTAssertNotNil(store.guardPauseBanner)
+
+        // Runtime cap is terminal
+        store.guardState = SimulationGuardState(
+            guardState: .pausedRuntimeCap,
+            pauseReason: .runtimeCap,
+            engineRunnable: false,
+        )
+        XCTAssertFalse(store.guardPauseIsResumable)
+        XCTAssertNotNil(store.guardPauseBanner)
+
+        // Manual pause is resumable
+        store.guardState = SimulationGuardState(
+            guardState: .pausedManual,
+            pauseReason: .manual,
+            engineRunnable: false,
+        )
+        XCTAssertTrue(store.guardPauseIsResumable)
+    }
+
+    func testGuardWarningBannerShowsWhenApproachingLimit() {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: MockCommandQueue(),
+        )
+        store.bind(session: makeSession(simulationID: 1, status: .running))
+
+        store.guardState = SimulationGuardState(
+            guardState: .active,
+            activeElapsedSeconds: 1500,
+            runtimeCapSeconds: 1800,
+            warnings: [.approachingRuntimeCap],
+        )
+        XCTAssertNotNil(store.guardWarningBanner)
+        XCTAssertTrue(store.guardWarningBanner?.contains("5 min") == true)
     }
 
     private func waitUntil(

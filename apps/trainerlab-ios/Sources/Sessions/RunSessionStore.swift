@@ -32,6 +32,7 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
+    @Published public internal(set) var guardState: SimulationGuardState?
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
@@ -39,6 +40,7 @@ public final class RunSessionStore: ObservableObject {
     private var stopwatchTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var runtimeRefreshTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
     private var pendingRuntimeRefresh = false
 
@@ -113,13 +115,20 @@ public final class RunSessionStore: ObservableObject {
 
         transportTask = Task { [weak self] in
             guard let self else { return }
+            var previousTransport: RealtimeTransportState = .disconnected
             for await transport in realtimeClient.transportStates {
+                let wasDisconnected = previousTransport != .connectedSSE && previousTransport != .polling
+                let isNowConnected = transport == .connectedSSE || transport == .polling
+                previousTransport = transport
                 await MainActor.run {
                     logger.info(
                         "Realtime transport for simulation \(self.state.session?.simulationID ?? -1, privacy: .public) -> \(self.transportDescription(transport), privacy: .public)",
                     )
                     self.state = RunSessionReducer.reduce(state: self.state, action: .transportChanged(transport))
                     self.syncTransportPresentation(for: transport)
+                }
+                if wasDisconnected && isNowConnected {
+                    _ = await self.loadGuardState(reason: "transport reconnect")
                 }
             }
         }
@@ -145,6 +154,21 @@ public final class RunSessionStore: ObservableObject {
             }
         }
 
+        heartbeatTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard !Task.isCancelled else { break }
+                guard let simulationID = await MainActor.run(body: { self.state.session?.simulationID }) else { continue }
+                if let gs = try? await self.service.sendHeartbeat(simulationID: simulationID) {
+                    await MainActor.run {
+                        self.guardState = gs
+                        self.applyGuardStateToUI(gs)
+                    }
+                }
+            }
+        }
+
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
             await bootstrapConsole(for: session)
@@ -160,6 +184,7 @@ public final class RunSessionStore: ObservableObject {
         stopwatchTask?.cancel()
         bootstrapTask?.cancel()
         runtimeRefreshTask?.cancel()
+        heartbeatTask?.cancel()
         pendingRuntimeRefresh = false
         realtimeClient.disconnect()
     }
@@ -208,6 +233,24 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
+    /// Fetches the current guard state from the backend and updates local state.
+    @discardableResult
+    public func loadGuardState(reason: String = "manual") async -> SimulationGuardState? {
+        guard let simulationID = state.session?.simulationID else { return nil }
+        logger.info("Fetching guard state for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public))")
+        do {
+            let gs = try await service.getGuardState(simulationID: simulationID)
+            guardState = gs
+            applyGuardStateToUI(gs)
+            return gs
+        } catch {
+            logger.error(
+                "Guard state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error.localizedDescription, privacy: .public)",
+            )
+            return nil
+        }
+    }
+
     public func loadControlPlaneDebug() async {
         guard let simulationID = state.session?.simulationID else { return }
         do {
@@ -231,6 +274,7 @@ public final class RunSessionStore: ObservableObject {
         logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
 
         _ = await loadRuntimeState(reason: "bootstrap")
+        _ = await loadGuardState(reason: "bootstrap")
 
         let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
         applyHistoricalEvents(historicalEvents)
@@ -380,6 +424,7 @@ public final class RunSessionStore: ObservableObject {
             conflictError = nil
             seedHydrationFromSessionRuntimeState(latest)
             syncStopwatchState(previousStatus: previousStatus)
+            _ = await loadGuardState(reason: "refresh session")
         } catch {
             presentConflict(error)
         }
@@ -742,12 +787,39 @@ public final class RunSessionStore: ObservableObject {
         state.commandChannelAvailable && state.session?.status != .seeding
     }
 
+    /// Engine-progression commands require both a live command channel and guard approval.
     private var canRunCommands: Bool {
+        canMutateCommands && (guardState?.isEngineRunnable ?? true)
+    }
+
+    /// Manual record actions (interventions, annotations, notes) remain available while paused.
+    private var canInterventionCommands: Bool {
         canMutateCommands
     }
 
-    private var canInterventionCommands: Bool {
+    /// Whether engine-progression controls (tick, steer, start/pause/resume/stop) should be enabled in the UI.
+    public var engineControlsEnabled: Bool {
+        canRunCommands
+    }
+
+    /// Whether manual record-entry controls should be enabled in the UI.
+    public var manualRecordsEnabled: Bool {
         canMutateCommands
+    }
+
+    /// User-facing guard warning banner text, if any.
+    public var guardWarningBanner: String? {
+        guardState?.warningMessage
+    }
+
+    /// User-facing guard pause banner text, if any.
+    public var guardPauseBanner: String? {
+        guardState?.pauseMessage
+    }
+
+    /// Whether the current pause is resumable (inactivity or manual).
+    public var guardPauseIsResumable: Bool {
+        guardState?.isResumablePause ?? false
     }
 
     private func makeCommandEnvelope(endpoint: Endpoint, simulationID: Int?) -> PendingCommandEnvelope {
@@ -796,6 +868,7 @@ public final class RunSessionStore: ObservableObject {
             syncStopwatchState(previousStatus: previousStatus)
             try await commandQueue.markAcked(idempotencyKey: envelope.idempotencyKey)
             await refreshPendingCount()
+            _ = await loadGuardState(reason: "after run command")
         } catch {
             await handleCommandError(error, envelope: envelope)
         }
@@ -874,6 +947,27 @@ public final class RunSessionStore: ObservableObject {
         runtimeRefreshTask = Task { [weak self] in
             guard let self else { return }
             await flushScheduledRuntimeRefreshes()
+        }
+    }
+
+    private func applyGuardStateToUI(_ gs: SimulationGuardState) {
+        // Warning banner
+        if let warning = gs.warningMessage, gs.guardState == .active {
+            state.conflictBanner = warning
+        } else if gs.guardState == .active {
+            // Clear any previously-set guard warning
+            if state.conflictBanner == guardState?.warningMessage {
+                state.conflictBanner = nil
+            }
+        }
+
+        // Terminal card for runtime-cap or ended guard states
+        if gs.isTerminalPause, state.terminalCard == nil {
+            state.terminalCard = TerminalCard(
+                status: gs.guardState == .ended ? .completed : .paused,
+                reasonText: gs.pauseMessage,
+                completedAt: nil,
+            )
         }
     }
 

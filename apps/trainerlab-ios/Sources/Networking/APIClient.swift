@@ -584,6 +584,19 @@ public enum ChatLabAPI {
     }
 }
 
+// MARK: - Simulation Guard API
+
+public enum SimulationGuardAPI {
+    public static func guardState(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/guard-state/")
+    }
+
+    public static func heartbeat(simulationID: Int, clientVisibility: String = "unknown") -> Endpoint {
+        let body = try? JSONEncoder().encode(HeartbeatRequest(clientVisibility: clientVisibility))
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: body)
+    }
+}
+
 public struct EmptyResponse: Decodable, Sendable {
     public init() {}
 }
@@ -717,6 +730,18 @@ public enum APIClientError: Error, Equatable, LocalizedError {
         }
 
         return trimmed
+    }
+
+    /// Whether this error represents a guard/send-lock denial (HTTP 403).
+    public var isGuardDenied: Bool {
+        guard case let .http(statusCode, _, _) = self else { return false }
+        return statusCode == 403
+    }
+
+    /// Backend-provided guard denial message suitable for user display, if available.
+    public var userFacingGuardMessage: String? {
+        guard isGuardDenied else { return nil }
+        return backendDetail
     }
 }
 
