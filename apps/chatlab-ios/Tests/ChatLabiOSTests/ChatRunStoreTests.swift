@@ -665,7 +665,7 @@ final class ChatRunStoreTests: XCTestCase {
                 guardState: .pausedRuntimeCap,
                 pauseReason: .runtimeCap,
                 engineRunnable: false,
-                denialReason: .runtimeCapExceeded,
+                denialReason: .runtimeCapReached,
             ),
         )
 

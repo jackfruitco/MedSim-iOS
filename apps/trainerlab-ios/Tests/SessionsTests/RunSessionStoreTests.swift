@@ -2027,7 +2027,7 @@ final class RunSessionStoreTests: XCTestCase {
             engineRunnable: false,
             activeElapsedSeconds: 1800,
             runtimeCapSeconds: 1800,
-            denialReason: .runtimeCapExceeded,
+            denialReason: .runtimeCapReached,
         )
 
         // Engine controls disabled, manual records still enabled

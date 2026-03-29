@@ -3,12 +3,16 @@ import Foundation
 // MARK: - Guard State
 
 /// Backend guard state representing the current enforcement status of a simulation session.
+/// Values match Django TextChoices in `apps/guards/enums.py` (lowercase).
 public enum GuardState: String, Codable, Sendable, CaseIterable {
-    case active = "ACTIVE"
-    case pausedInactivity = "PAUSED_INACTIVITY"
-    case pausedRuntimeCap = "PAUSED_RUNTIME_CAP"
-    case pausedManual = "PAUSED_MANUAL"
-    case ended = "ENDED"
+    case active = "active"
+    case idle = "idle"
+    case warning = "warning"
+    case pausedInactivity = "paused_inactivity"
+    case pausedRuntimeCap = "paused_runtime_cap"
+    case pausedManual = "paused_manual"
+    case lockedUsage = "locked_usage"
+    case ended = "ended"
     case unknown
 
     public init(from decoder: Decoder) throws {
@@ -20,10 +24,12 @@ public enum GuardState: String, Codable, Sendable, CaseIterable {
 // MARK: - Pause Reason
 
 public enum PauseReason: String, Codable, Sendable, CaseIterable {
-    case runtimeCap = "RUNTIME_CAP"
-    case inactivity = "INACTIVITY"
-    case manual = "MANUAL"
-    case wallClockExpiry = "WALL_CLOCK_EXPIRY"
+    case none = "none"
+    case runtimeCap = "runtime_cap"
+    case inactivity = "inactivity"
+    case usageLimit = "usage_limit"
+    case wallClockExpiry = "wall_clock_expiry"
+    case manual = "manual"
     case unknown
 
     public init(from decoder: Decoder) throws {
@@ -35,11 +41,14 @@ public enum PauseReason: String, Codable, Sendable, CaseIterable {
 // MARK: - Denial Reason
 
 public enum DenialReason: String, Codable, Sendable, CaseIterable {
-    case runtimeCapExceeded = "RUNTIME_CAP_EXCEEDED"
-    case tokenLimitExceeded = "TOKEN_LIMIT_EXCEEDED"
-    case inactivityPaused = "INACTIVITY_PAUSED"
-    case sessionEnded = "SESSION_ENDED"
-    case insufficientBudget = "INSUFFICIENT_BUDGET"
+    case sessionPaused = "session_paused"
+    case runtimeCapReached = "runtime_cap_reached"
+    case sessionTokenLimit = "session_token_limit"
+    case userTokenLimit = "user_token_limit"
+    case accountTokenLimit = "account_token_limit"
+    case insufficientTokenBudget = "insufficient_token_budget"
+    case wallClockExpired = "wall_clock_expired"
+    case chatSendLocked = "chat_send_locked"
     case unknown
 
     public init(from decoder: Decoder) throws {
@@ -51,8 +60,8 @@ public enum DenialReason: String, Codable, Sendable, CaseIterable {
 // MARK: - Guard Warning
 
 public enum GuardWarning: String, Codable, Sendable, CaseIterable {
-    case staleHeartbeat = "STALE_HEARTBEAT"
-    case approachingRuntimeCap = "APPROACHING_RUNTIME_CAP"
+    case staleHeartbeat = "stale_heartbeat"
+    case approachingRuntimeCap = "approaching_runtime_cap"
     case unknown
 
     public init(from decoder: Decoder) throws {
@@ -129,9 +138,14 @@ extension SimulationGuardState {
         }
     }
 
-    /// Whether the pause is terminal — engine can never resume.
+    /// Whether the state is terminal — engine can never resume.
     public var isTerminalPause: Bool {
-        guardState == .pausedRuntimeCap || guardState == .ended
+        switch guardState {
+        case .pausedRuntimeCap, .lockedUsage, .ended:
+            true
+        default:
+            false
+        }
     }
 
     /// Whether the user can resume from this pause state.
@@ -165,7 +179,7 @@ extension SimulationGuardState {
         return nil
     }
 
-    /// User-facing message explaining the current pause state.
+    /// User-facing message explaining the current pause/lock state.
     public var pauseMessage: String? {
         switch guardState {
         case .pausedInactivity:
@@ -174,6 +188,8 @@ extension SimulationGuardState {
             return "Runtime limit reached — engine progression is no longer available"
         case .pausedManual:
             return "Session manually paused"
+        case .lockedUsage:
+            return "Session locked due to usage limits"
         case .ended:
             return "Session has ended"
         default:
@@ -185,16 +201,22 @@ extension SimulationGuardState {
     public var userFacingDenialMessage: String? {
         if let denialMessage { return denialMessage }
         switch denialReason {
-        case .runtimeCapExceeded:
+        case .runtimeCapReached:
             return "Runtime limit has been exceeded."
-        case .tokenLimitExceeded:
-            return "Token usage limit reached."
-        case .inactivityPaused:
-            return "Session is paused due to inactivity."
-        case .sessionEnded:
-            return "This session has ended."
-        case .insufficientBudget:
-            return "Insufficient budget remaining."
+        case .sessionTokenLimit:
+            return "Session token limit reached."
+        case .userTokenLimit:
+            return "Your usage limit has been reached."
+        case .accountTokenLimit:
+            return "Account usage limit reached."
+        case .insufficientTokenBudget:
+            return "Insufficient token budget."
+        case .wallClockExpired:
+            return "Session time has expired."
+        case .chatSendLocked:
+            return "Sending is locked due to usage limits."
+        case .sessionPaused:
+            return "Session is currently paused."
         default:
             return nil
         }

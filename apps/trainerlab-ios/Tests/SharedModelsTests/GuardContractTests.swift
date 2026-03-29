@@ -14,20 +14,20 @@ final class GuardContractTests: XCTestCase {
     func testGuardStateDecodesAllFields() throws {
         let json = """
         {
-            "guard_state": "ACTIVE",
-            "pause_reason": null,
+            "guard_state": "active",
+            "pause_reason": "none",
             "engine_runnable": true,
             "active_elapsed_seconds": 1500,
             "runtime_cap_seconds": 1800,
             "wall_clock_expires_at": "2026-03-28T12:00:00Z",
-            "warnings": ["APPROACHING_RUNTIME_CAP"],
+            "warnings": ["approaching_runtime_cap"],
             "denial_reason": null,
             "denial_message": null
         }
         """
         let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
         XCTAssertEqual(gs.guardState, .active)
-        XCTAssertNil(gs.pauseReason)
+        XCTAssertEqual(gs.pauseReason, .none)
         XCTAssertTrue(gs.engineRunnable)
         XCTAssertEqual(gs.activeElapsedSeconds, 1500)
         XCTAssertEqual(gs.runtimeCapSeconds, 1800)
@@ -40,14 +40,14 @@ final class GuardContractTests: XCTestCase {
     func testGuardStateDecodesPausedInactivity() throws {
         let json = """
         {
-            "guard_state": "PAUSED_INACTIVITY",
-            "pause_reason": "INACTIVITY",
+            "guard_state": "paused_inactivity",
+            "pause_reason": "inactivity",
             "engine_runnable": false,
             "active_elapsed_seconds": 600,
             "runtime_cap_seconds": 1800,
             "wall_clock_expires_at": null,
             "warnings": [],
-            "denial_reason": "INACTIVITY_PAUSED",
+            "denial_reason": "session_paused",
             "denial_message": "Session is paused due to inactivity."
         }
         """
@@ -55,21 +55,21 @@ final class GuardContractTests: XCTestCase {
         XCTAssertEqual(gs.guardState, .pausedInactivity)
         XCTAssertEqual(gs.pauseReason, .inactivity)
         XCTAssertFalse(gs.engineRunnable)
-        XCTAssertEqual(gs.denialReason, .inactivityPaused)
+        XCTAssertEqual(gs.denialReason, .sessionPaused)
         XCTAssertEqual(gs.denialMessage, "Session is paused due to inactivity.")
     }
 
     func testGuardStateDecodesPausedRuntimeCap() throws {
         let json = """
         {
-            "guard_state": "PAUSED_RUNTIME_CAP",
-            "pause_reason": "RUNTIME_CAP",
+            "guard_state": "paused_runtime_cap",
+            "pause_reason": "runtime_cap",
             "engine_runnable": false,
             "active_elapsed_seconds": 1800,
             "runtime_cap_seconds": 1800,
             "wall_clock_expires_at": null,
             "warnings": [],
-            "denial_reason": "RUNTIME_CAP_EXCEEDED",
+            "denial_reason": "runtime_cap_reached",
             "denial_message": "Runtime limit has been exceeded."
         }
         """
@@ -77,28 +77,90 @@ final class GuardContractTests: XCTestCase {
         XCTAssertEqual(gs.guardState, .pausedRuntimeCap)
         XCTAssertEqual(gs.pauseReason, .runtimeCap)
         XCTAssertFalse(gs.engineRunnable)
-        XCTAssertEqual(gs.denialReason, .runtimeCapExceeded)
+        XCTAssertEqual(gs.denialReason, .runtimeCapReached)
     }
 
     func testGuardStateDecodesEnded() throws {
         let json = """
         {
-            "guard_state": "ENDED",
-            "pause_reason": "WALL_CLOCK_EXPIRY",
+            "guard_state": "ended",
+            "pause_reason": "wall_clock_expiry",
             "engine_runnable": false,
             "active_elapsed_seconds": 2700,
             "runtime_cap_seconds": null,
             "wall_clock_expires_at": null,
             "warnings": [],
-            "denial_reason": "SESSION_ENDED",
-            "denial_message": "This session has ended."
+            "denial_reason": "wall_clock_expired",
+            "denial_message": "Session time has expired."
         }
         """
         let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
         XCTAssertEqual(gs.guardState, .ended)
         XCTAssertEqual(gs.pauseReason, .wallClockExpiry)
         XCTAssertNil(gs.runtimeCapSeconds)
-        XCTAssertEqual(gs.denialReason, .sessionEnded)
+        XCTAssertEqual(gs.denialReason, .wallClockExpired)
+    }
+
+    func testGuardStateDecodesLockedUsage() throws {
+        let json = """
+        {
+            "guard_state": "locked_usage",
+            "pause_reason": "usage_limit",
+            "engine_runnable": false,
+            "active_elapsed_seconds": 900,
+            "runtime_cap_seconds": 1800,
+            "wall_clock_expires_at": null,
+            "warnings": [],
+            "denial_reason": "session_token_limit",
+            "denial_message": "Session token limit reached."
+        }
+        """
+        let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
+        XCTAssertEqual(gs.guardState, .lockedUsage)
+        XCTAssertEqual(gs.pauseReason, .usageLimit)
+        XCTAssertFalse(gs.engineRunnable)
+        XCTAssertEqual(gs.denialReason, .sessionTokenLimit)
+        XCTAssertTrue(gs.isTerminalPause)
+    }
+
+    func testGuardStateDecodesIdleAndWarning() throws {
+        // idle state — pre-inactivity, still engine-runnable
+        let idleJson = """
+        {
+            "guard_state": "idle",
+            "pause_reason": "none",
+            "engine_runnable": true,
+            "active_elapsed_seconds": 300,
+            "runtime_cap_seconds": 1800,
+            "wall_clock_expires_at": null,
+            "warnings": [],
+            "denial_reason": null,
+            "denial_message": null
+        }
+        """
+        let idle = try decoder.decode(SimulationGuardState.self, from: Data(idleJson.utf8))
+        XCTAssertEqual(idle.guardState, .idle)
+        XCTAssertTrue(idle.engineRunnable)
+        XCTAssertFalse(idle.isPaused)
+
+        // warning state — inactivity warning, still engine-runnable
+        let warningJson = """
+        {
+            "guard_state": "warning",
+            "pause_reason": "none",
+            "engine_runnable": true,
+            "active_elapsed_seconds": 300,
+            "runtime_cap_seconds": 1800,
+            "wall_clock_expires_at": null,
+            "warnings": ["stale_heartbeat"],
+            "denial_reason": null,
+            "denial_message": null
+        }
+        """
+        let warning = try decoder.decode(SimulationGuardState.self, from: Data(warningJson.utf8))
+        XCTAssertEqual(warning.guardState, .warning)
+        XCTAssertTrue(warning.engineRunnable)
+        XCTAssertFalse(warning.isPaused)
     }
 
     // MARK: - Unknown Enum Fallbacks
@@ -106,8 +168,8 @@ final class GuardContractTests: XCTestCase {
     func testUnknownGuardStateFallsBackToUnknown() throws {
         let json = """
         {
-            "guard_state": "FUTURE_STATE",
-            "pause_reason": null,
+            "guard_state": "future_state",
+            "pause_reason": "none",
             "engine_runnable": false,
             "active_elapsed_seconds": 0,
             "runtime_cap_seconds": null,
@@ -124,8 +186,8 @@ final class GuardContractTests: XCTestCase {
     func testUnknownPauseReasonFallsBackToUnknown() throws {
         let json = """
         {
-            "guard_state": "ACTIVE",
-            "pause_reason": "FUTURE_REASON",
+            "guard_state": "active",
+            "pause_reason": "future_reason",
             "engine_runnable": true,
             "active_elapsed_seconds": 0,
             "runtime_cap_seconds": null,
@@ -142,14 +204,14 @@ final class GuardContractTests: XCTestCase {
     func testUnknownDenialReasonFallsBackToUnknown() throws {
         let json = """
         {
-            "guard_state": "ACTIVE",
-            "pause_reason": null,
+            "guard_state": "active",
+            "pause_reason": "none",
             "engine_runnable": true,
             "active_elapsed_seconds": 0,
             "runtime_cap_seconds": null,
             "wall_clock_expires_at": null,
             "warnings": [],
-            "denial_reason": "FUTURE_DENIAL",
+            "denial_reason": "future_denial",
             "denial_message": null
         }
         """
@@ -160,19 +222,51 @@ final class GuardContractTests: XCTestCase {
     func testUnknownWarningFallsBackToUnknown() throws {
         let json = """
         {
-            "guard_state": "ACTIVE",
-            "pause_reason": null,
+            "guard_state": "active",
+            "pause_reason": "none",
             "engine_runnable": true,
             "active_elapsed_seconds": 0,
             "runtime_cap_seconds": null,
             "wall_clock_expires_at": null,
-            "warnings": ["FUTURE_WARNING"],
+            "warnings": ["future_warning"],
             "denial_reason": null,
             "denial_message": null
         }
         """
         let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
         XCTAssertEqual(gs.warnings, [.unknown])
+    }
+
+    // MARK: - All DenialReason values decode
+
+    func testAllDenialReasonsDecodeCorrectly() throws {
+        let reasons: [(String, DenialReason)] = [
+            ("session_paused", .sessionPaused),
+            ("runtime_cap_reached", .runtimeCapReached),
+            ("session_token_limit", .sessionTokenLimit),
+            ("user_token_limit", .userTokenLimit),
+            ("account_token_limit", .accountTokenLimit),
+            ("insufficient_token_budget", .insufficientTokenBudget),
+            ("wall_clock_expired", .wallClockExpired),
+            ("chat_send_locked", .chatSendLocked),
+        ]
+        for (raw, expected) in reasons {
+            let json = """
+            {
+                "guard_state": "active",
+                "pause_reason": "none",
+                "engine_runnable": false,
+                "active_elapsed_seconds": 0,
+                "runtime_cap_seconds": null,
+                "wall_clock_expires_at": null,
+                "warnings": [],
+                "denial_reason": "\(raw)",
+                "denial_message": null
+            }
+            """
+            let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
+            XCTAssertEqual(gs.denialReason, expected, "Expected \(expected) for raw value \"\(raw)\"")
+        }
     }
 
     // MARK: - Computed Properties
@@ -196,10 +290,14 @@ final class GuardContractTests: XCTestCase {
         XCTAssertTrue(SimulationGuardState(guardState: .pausedManual, engineRunnable: false).isPaused)
         XCTAssertFalse(SimulationGuardState(guardState: .active).isPaused)
         XCTAssertFalse(SimulationGuardState(guardState: .ended, engineRunnable: false).isPaused)
+        XCTAssertFalse(SimulationGuardState(guardState: .idle).isPaused)
+        XCTAssertFalse(SimulationGuardState(guardState: .warning).isPaused)
+        XCTAssertFalse(SimulationGuardState(guardState: .lockedUsage, engineRunnable: false).isPaused)
     }
 
     func testTerminalPause() {
         XCTAssertTrue(SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false).isTerminalPause)
+        XCTAssertTrue(SimulationGuardState(guardState: .lockedUsage, engineRunnable: false).isTerminalPause)
         XCTAssertTrue(SimulationGuardState(guardState: .ended, engineRunnable: false).isTerminalPause)
         XCTAssertFalse(SimulationGuardState(guardState: .pausedInactivity, engineRunnable: false).isTerminalPause)
         XCTAssertFalse(SimulationGuardState(guardState: .pausedManual, engineRunnable: false).isTerminalPause)
@@ -215,14 +313,19 @@ final class GuardContractTests: XCTestCase {
         let runtimeCap = SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false)
         XCTAssertFalse(runtimeCap.isResumablePause)
 
+        let locked = SimulationGuardState(guardState: .lockedUsage, engineRunnable: false)
+        XCTAssertFalse(locked.isResumablePause)
+
         let ended = SimulationGuardState(guardState: .ended, engineRunnable: false)
         XCTAssertFalse(ended.isResumablePause)
     }
 
     func testShouldLockChatSending() {
         XCTAssertFalse(SimulationGuardState(guardState: .active).shouldLockChatSending)
+        XCTAssertFalse(SimulationGuardState(guardState: .idle).shouldLockChatSending)
         XCTAssertTrue(SimulationGuardState(guardState: .pausedInactivity, engineRunnable: false).shouldLockChatSending)
         XCTAssertTrue(SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false).shouldLockChatSending)
+        XCTAssertTrue(SimulationGuardState(guardState: .lockedUsage, engineRunnable: false).shouldLockChatSending)
         XCTAssertTrue(SimulationGuardState(guardState: .ended, engineRunnable: false).shouldLockChatSending)
     }
 
@@ -265,6 +368,7 @@ final class GuardContractTests: XCTestCase {
         XCTAssertNotNil(SimulationGuardState(guardState: .pausedInactivity, engineRunnable: false).pauseMessage)
         XCTAssertNotNil(SimulationGuardState(guardState: .pausedRuntimeCap, engineRunnable: false).pauseMessage)
         XCTAssertNotNil(SimulationGuardState(guardState: .pausedManual, engineRunnable: false).pauseMessage)
+        XCTAssertNotNil(SimulationGuardState(guardState: .lockedUsage, engineRunnable: false).pauseMessage)
         XCTAssertNotNil(SimulationGuardState(guardState: .ended, engineRunnable: false).pauseMessage)
         XCTAssertNil(SimulationGuardState(guardState: .active).pauseMessage)
     }
@@ -273,7 +377,7 @@ final class GuardContractTests: XCTestCase {
         let withBackendMessage = SimulationGuardState(
             guardState: .pausedRuntimeCap,
             engineRunnable: false,
-            denialReason: .runtimeCapExceeded,
+            denialReason: .runtimeCapReached,
             denialMessage: "Custom backend message"
         )
         XCTAssertEqual(withBackendMessage.userFacingDenialMessage, "Custom backend message")
@@ -281,19 +385,31 @@ final class GuardContractTests: XCTestCase {
         let withoutBackendMessage = SimulationGuardState(
             guardState: .pausedRuntimeCap,
             engineRunnable: false,
-            denialReason: .runtimeCapExceeded
+            denialReason: .runtimeCapReached
         )
         XCTAssertEqual(withoutBackendMessage.userFacingDenialMessage, "Runtime limit has been exceeded.")
 
         let token = SimulationGuardState(
-            guardState: .pausedRuntimeCap,
+            guardState: .lockedUsage,
             engineRunnable: false,
-            denialReason: .tokenLimitExceeded
+            denialReason: .sessionTokenLimit
         )
-        XCTAssertNotNil(token.userFacingDenialMessage)
+        XCTAssertEqual(token.userFacingDenialMessage, "Session token limit reached.")
 
         let none = SimulationGuardState(guardState: .active)
         XCTAssertNil(none.userFacingDenialMessage)
+    }
+
+    func testAllDenialReasonsHaveFallbackMessages() {
+        let reasons: [DenialReason] = [
+            .sessionPaused, .runtimeCapReached, .sessionTokenLimit,
+            .userTokenLimit, .accountTokenLimit, .insufficientTokenBudget,
+            .wallClockExpired, .chatSendLocked,
+        ]
+        for reason in reasons {
+            let gs = SimulationGuardState(guardState: .active, engineRunnable: false, denialReason: reason)
+            XCTAssertNotNil(gs.userFacingDenialMessage, "Missing fallback for \(reason)")
+        }
     }
 
     // MARK: - Heartbeat Request
