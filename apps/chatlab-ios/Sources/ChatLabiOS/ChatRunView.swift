@@ -19,6 +19,7 @@ public struct ChatRunView: View {
     @State private var expandedToolSections = Set<ChatToolsSection>()
     @State private var lastToolLayoutMode: ChatRunLayoutMode?
     @State private var isKeyboardPresented = false
+    @FocusState private var composerIsFocused: Bool
 
     public init(
         store: ChatRunStore,
@@ -77,7 +78,6 @@ public struct ChatRunView: View {
         }
         .modifier(ChatInlineNavigationTitleModifier())
         .modifier(ChatKeyboardStateModifier(isKeyboardPresented: $isKeyboardPresented))
-        .modifier(ChatKeyboardNavigationBarModifier(isKeyboardPresented: isKeyboardPresented))
     }
 
     private func padWorkspace(chromeMode: ChatRunChromeMode) -> some View {
@@ -397,6 +397,7 @@ public struct ChatRunView: View {
                         Spacer(minLength: 0)
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .onChange(of: store.activeMessages.count) { _, _ in
                     if let last = store.activeMessages.last?.id {
                         withAnimation {
@@ -464,8 +465,19 @@ public struct ChatRunView: View {
                 .lineLimit(1 ... 4)
                 .textFieldStyle(.roundedBorder)
                 .disabled(store.activeConversationLocked)
+                .focused($composerIsFocused)
                 .onChange(of: store.draftText) { _, _ in
                     store.notifyTypingChanged()
+                }
+
+                if isKeyboardPresented {
+                    Button {
+                        dismissKeyboard()
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Hide keyboard")
                 }
 
                 Button {
@@ -563,7 +575,7 @@ public struct ChatRunView: View {
                 }
                 if simulationHasEnded {
                     toolSection(.simulationFeedback, layoutMode: layoutMode) {
-                        ToolDataRows(rows: toolsStore.toolData("simulation_feedback"))
+                        SimulationFeedbackRows(rows: toolsStore.toolData("simulation_feedback"))
                     }
                 }
                 toolSection(.simulationMetadata, layoutMode: layoutMode) {
@@ -574,11 +586,6 @@ public struct ChatRunView: View {
                 }
             }
             .padding(layoutMode == .padWorkspace ? 16 : 12)
-        }
-        .safeAreaInset(edge: .bottom) {
-            if layoutMode != .padWorkspace {
-                signOrdersFooter
-            }
         }
         .refreshable {
             await toolsStore.refreshTools()
@@ -642,6 +649,8 @@ public struct ChatRunView: View {
                 }
             }
 
+            submitOrdersPanel(compact: layoutMode != .padWorkspace)
+
             if let error = toolsStore.presentableError {
                 InlineAppErrorView(error: error)
             }
@@ -665,7 +674,7 @@ public struct ChatRunView: View {
         .disabled(stagedOrderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
-    private var signOrdersFooter: some View {
+    private func submitOrdersPanel(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !toolsStore.stagedOrders.isEmpty {
                 Text("\(toolsStore.stagedOrders.count) order\(toolsStore.stagedOrders.count == 1 ? "" : "s") ready")
@@ -687,10 +696,10 @@ public struct ChatRunView: View {
             .buttonStyle(.borderedProminent)
             .disabled(toolsStore.stagedOrders.isEmpty || toolsStore.isSubmittingOrders)
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
-        .background(.ultraThinMaterial)
+        .padding(compact ? 10 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(compact ? Color.secondary.opacity(0.05) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func toolSection(
@@ -759,6 +768,13 @@ public struct ChatRunView: View {
         stagedOrderText = ""
     }
 
+    private func dismissKeyboard() {
+        composerIsFocused = false
+        #if os(iOS)
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
+
     private func tabFont(for layoutMode: ChatRunLayoutMode) -> Font {
         switch layoutMode {
         case .compactMessenger:
@@ -825,18 +841,6 @@ private struct ChatInlineNavigationTitleModifier: ViewModifier {
     }
 }
 
-private struct ChatKeyboardNavigationBarModifier: ViewModifier {
-    let isKeyboardPresented: Bool
-
-    func body(content: Content) -> some View {
-        #if os(iOS)
-            content.toolbar(isKeyboardPresented ? .hidden : .visible, for: .navigationBar)
-        #else
-            content
-        #endif
-    }
-}
-
 private struct ChatBubble: View {
     let item: ChatMessageItem
     let layoutMode: ChatRunLayoutMode
@@ -848,45 +852,20 @@ private struct ChatBubble: View {
                 Spacer(minLength: layoutMode == .padWorkspace ? 120 : 40)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 if !item.isFromSelf {
                     Text(item.displayName)
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
-                if !item.content.isEmpty {
-                    Text(item.content)
-                        .font(.body)
-                }
-                if !item.mediaList.isEmpty {
-                    mediaStrip
-                }
-                HStack(spacing: 8) {
-                    Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if !item.isFromSelf, !item.isRead {
-                        Text("Unread")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.orange)
-                    }
-                    if item.isFromSelf {
-                        Text(item.deliveryStatus.rawValue.capitalized)
-                            .font(.caption2.bold())
-                            .foregroundStyle(statusColor(item.deliveryStatus))
-                        if item.deliveryStatus == .failed, item.retryable {
-                            Button("Retry", action: retryAction)
-                                .font(.caption2.bold())
-                        }
-                    }
-                }
+                bubbleContent
                 if let errorText = item.errorText, !errorText.isEmpty {
                     Text(errorText)
                         .font(.caption2)
                         .foregroundStyle(.red)
                 }
             }
-            .padding(layoutMode == .padWorkspace ? 12 : 10)
+            .padding(layoutMode == .padWorkspace ? 11 : 10)
             .frame(maxWidth: bubbleWidth(for: layoutMode), alignment: .leading)
             .background(item.isFromSelf ? Color.blue.opacity(0.18) : Color.gray.opacity(0.14))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -909,22 +888,76 @@ private struct ChatBubble: View {
         }
     }
 
+    @ViewBuilder
+    private var bubbleContent: some View {
+        if !item.content.isEmpty, prefersInlineFooter {
+            inlineFooterText
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                if !item.content.isEmpty {
+                    Text(item.content)
+                        .font(.body)
+                }
+                if !item.mediaList.isEmpty {
+                    mediaStrip
+                }
+                footerRow
+            }
+        }
+    }
+
+    private var inlineFooterText: Text {
+        var text = Text(item.content).font(.body)
+        text = text + Text("  ")
+        text = text + Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+        if !item.isFromSelf, !item.isRead {
+            text = text + Text("  ")
+            text = text + Text("Unread")
+                .font(.caption2.bold())
+                .foregroundStyle(.orange)
+        }
+
+        if item.isFromSelf {
+            text = text + Text("  ")
+            text = text + Text(item.deliveryStatus.rawValue.capitalized)
+                .font(.caption2.bold())
+                .foregroundStyle(statusColor(item.deliveryStatus))
+        }
+
+        return text
+    }
+
+    private var metadataText: String {
+        var parts = [item.timestamp.formatted(date: .omitted, time: .shortened)]
+        if !item.isFromSelf, !item.isRead {
+            parts.append("Unread")
+        }
+        if item.isFromSelf {
+            parts.append(item.deliveryStatus.rawValue.capitalized)
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var prefersInlineFooter: Bool {
+        ChatBubbleFooterLayout.prefersInline(
+            content: item.content,
+            metadataText: metadataText,
+            bubbleWidth: bubbleWidth(for: layoutMode),
+            hasMedia: item.mediaList.isEmpty == false,
+            hasError: (item.errorText?.isEmpty == false),
+        )
+    }
+
     private var mediaStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(item.mediaList.prefix(3)) { media in
                 VStack(alignment: .leading, spacing: 4) {
-                    AsyncImage(url: URL(string: media.thumbnailURL.isEmpty ? media.url : media.thumbnailURL)) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.15))
-                            .overlay(ProgressView().controlSize(.small))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 140)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    ChatMediaThumbnail(media: media)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 140)
 
                     if !media.description.isEmpty {
                         Text(media.description)
@@ -932,6 +965,31 @@ private struct ChatBubble: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var footerRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if !item.isFromSelf, !item.isRead {
+                    Text("Unread")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.orange)
+                }
+                if item.isFromSelf {
+                    Text(item.deliveryStatus.rawValue.capitalized)
+                        .font(.caption2.bold())
+                        .foregroundStyle(statusColor(item.deliveryStatus))
+                }
+            }
+            if item.isFromSelf, item.deliveryStatus == .failed, item.retryable {
+                Button("Retry", action: retryAction)
+                    .font(.caption2.bold())
             }
         }
     }
@@ -1000,6 +1058,82 @@ private func chatSystemBackgroundColor() -> Color {
     #endif
 }
 
+private struct ChatMediaThumbnail: View {
+    let media: ChatMessageMedia
+
+    @State private var candidateIndex = 0
+
+    private var candidates: [URL] {
+        [media.thumbnailURL, media.url, media.originalURL]
+            .compactMap { candidate in
+                guard !candidate.isEmpty else { return nil }
+                return URL(string: candidate)
+            }
+    }
+
+    var body: some View {
+        Group {
+            if let activeURL = candidates[safe: candidateIndex] {
+                AsyncImage(url: activeURL) { phase in
+                    switch phase {
+                    case let .success(image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        mediaFailureOrRetryView
+                    case .empty:
+                        loadingView
+                    @unknown default:
+                        mediaFailureView
+                    }
+                }
+            } else {
+                mediaFailureView
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var mediaFailureOrRetryView: some View {
+        if candidateIndex < candidates.count - 1 {
+            Color.clear
+                .onAppear {
+                    candidateIndex += 1
+                }
+        } else {
+            mediaFailureView
+        }
+    }
+
+    private var loadingView: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.secondary.opacity(0.15))
+            .overlay(ProgressView().controlSize(.small))
+    }
+
+    private var mediaFailureView: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.secondary.opacity(0.12))
+            .overlay {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("Unable to load media")
+                        .font(.caption.weight(.semibold))
+                    if !media.mimeType.isEmpty {
+                        Text(media.mimeType)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+            }
+    }
+}
+
 private struct ToolDataRows: View {
     let rows: [[String: JSONValue]]
     var hiddenKeys: Set<String> = ["db_pk"]
@@ -1016,10 +1150,10 @@ private struct ToolDataRows: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(visibleKeys, id: \.self) { key in
                             HStack(alignment: .top) {
-                                Text(key.replacingOccurrences(of: "_", with: " ").capitalized)
+                                Text(ChatToolValueFormatter.friendlyLabel(for: key))
                                     .font(.caption.bold())
                                 Spacer()
-                                Text(render(row[key] ?? .null))
+                                Text(ChatToolValueFormatter.render(row[key] ?? .null))
                                     .font(.caption)
                                     .multilineTextAlignment(.trailing)
                                     .foregroundStyle(.secondary)
@@ -1034,25 +1168,6 @@ private struct ToolDataRows: View {
         }
     }
 
-    private func render(_ value: JSONValue) -> String {
-        switch value {
-        case let .string(text):
-            return text
-        case let .number(number):
-            if number.rounded() == number {
-                return String(Int(number))
-            }
-            return String(number)
-        case let .bool(flag):
-            return flag ? "Yes" : "No"
-        case let .array(values):
-            return values.map(render).joined(separator: ", ")
-        case let .object(dict):
-            return dict.map { "\($0.key): \(render($0.value))" }.joined(separator: "; ")
-        case .null:
-            return "-"
-        }
-    }
 }
 
 private struct PatientHistoryRows: View {
@@ -1068,11 +1183,11 @@ private struct PatientHistoryRows: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     VStack(alignment: .leading, spacing: 4) {
                         if let summary = row["summary"] {
-                            Text(render(summary))
+                            Text(ChatToolValueFormatter.render(summary))
                                 .font(.subheadline.weight(.semibold))
                         }
                         if let value = row["value"] {
-                            Text(render(value))
+                            Text(ChatToolValueFormatter.render(value))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -1085,25 +1200,6 @@ private struct PatientHistoryRows: View {
         }
     }
 
-    private func render(_ value: JSONValue) -> String {
-        switch value {
-        case let .string(text):
-            return text
-        case let .number(number):
-            if number.rounded() == number {
-                return String(Int(number))
-            }
-            return String(number)
-        case let .bool(flag):
-            return flag ? "Yes" : "No"
-        case let .array(values):
-            return values.map(render).joined(separator: ", ")
-        case let .object(dict):
-            return dict.map { "\($0.key): \(render($0.value))" }.joined(separator: "; ")
-        case .null:
-            return "-"
-        }
-    }
 }
 
 private struct SimulationMetadataRows: View {
@@ -1118,10 +1214,10 @@ private struct SimulationMetadataRows: View {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(prettyKey(row["key"].map(render) ?? "Unknown"))
+                        Text(prettyKey(row["key"].map(ChatToolValueFormatter.render) ?? "Unknown"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        Text(row["value"].map(render) ?? "-")
+                        Text(row["value"].map(ChatToolValueFormatter.render) ?? "-")
                             .font(.footnote)
                             .lineLimit(2)
                     }
@@ -1135,26 +1231,39 @@ private struct SimulationMetadataRows: View {
     }
 
     private func prettyKey(_ key: String) -> String {
-        key.replacingOccurrences(of: "_", with: " ").capitalized
+        ChatToolValueFormatter.friendlyLabel(for: key)
     }
+}
 
-    private func render(_ value: JSONValue) -> String {
-        switch value {
-        case let .string(text):
-            return text
-        case let .number(number):
-            if number.rounded() == number {
-                return String(Int(number))
+private struct SimulationFeedbackRows: View {
+    let rows: [[String: JSONValue]]
+
+    var body: some View {
+        if rows.isEmpty {
+            Text("No feedback yet")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    let fields = ChatFeedbackPresentation.fields(from: row)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(field.label)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(field.value)
+                                    .font(.footnote)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
             }
-            return String(number)
-        case let .bool(flag):
-            return flag ? "Yes" : "No"
-        case let .array(values):
-            return values.map(render).joined(separator: ", ")
-        case let .object(dict):
-            return dict.map { "\($0.key): \(render($0.value))" }.joined(separator: "; ")
-        case .null:
-            return "-"
         }
     }
 }

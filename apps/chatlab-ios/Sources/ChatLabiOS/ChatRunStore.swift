@@ -924,7 +924,10 @@ public final class ChatRunStore: ObservableObject {
             let updated = try await service.getSimulation(simulationID: simulation.id)
             applySimulation(updated)
 
-            let conversationIDs = Set(awaitingReplyByConversation.keys)
+            var conversationIDs = Set(awaitingReplyByConversation.keys)
+            if let activeConversationID {
+                conversationIDs.insert(activeConversationID)
+            }
             for conversationID in conversationIDs {
                 await loadInitialMessages(conversationID: conversationID)
                 if var awaiting = awaitingReplyByConversation[conversationID], awaiting.isStale {

@@ -788,6 +788,66 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertGreaterThan(service.getGuardStateCalls, callsBefore)
     }
 
+    func testRefreshReconcilesActiveConversationStatusesAndMedia() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let initialMessage = makeMessage(
+            id: 44,
+            conversationID: patientConversation.id,
+            isFromAI: false,
+            role: "user",
+            content: "Checking in",
+            displayName: "Student",
+            deliveryStatus: .sending,
+        )
+        let refreshedMedia = ChatMessageMedia(
+            id: 7,
+            uuid: UUID().uuidString.lowercased(),
+            originalURL: "https://example.com/image-full.png",
+            thumbnailURL: "https://example.com/image-thumb.png",
+            url: "https://example.com/image-thumb.png",
+            mimeType: "image/png",
+            description: "Portable chest x-ray",
+        )
+
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [initialMessage]
+
+        let store = ChatRunStore(service: service, realtimeClient: TestRealtimeClient(), simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        try await waitUntil { store.activeMessages.first?.deliveryStatus == .sending }
+
+        service.messagesByConversation[patientConversation.id] = [
+            makeMessage(
+                id: 44,
+                conversationID: patientConversation.id,
+                isFromAI: false,
+                role: "user",
+                content: "Checking in",
+                displayName: "Student",
+                deliveryStatus: .failed,
+                deliveryErrorText: "Delivery timed out.",
+                mediaList: [refreshedMedia],
+            ),
+        ]
+
+        store.refreshAfterForegroundOrReconnect()
+
+        try await waitUntil {
+            guard let refreshed = store.activeMessages.first else {
+                return false
+            }
+            return refreshed.deliveryStatus == .failed &&
+                refreshed.errorText == "Delivery timed out." &&
+                refreshed.mediaList == [refreshedMedia]
+        }
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
         condition: @escaping @MainActor () -> Bool,
@@ -854,6 +914,8 @@ final class ChatRunStoreTests: XCTestCase {
         content: String,
         displayName: String = "Jordan Lee",
         deliveryStatus: DeliveryStatus = .sent,
+        deliveryErrorText: String = "",
+        mediaList: [ChatMessageMedia] = [],
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -869,11 +931,11 @@ final class ChatRunStoreTests: XCTestCase {
             displayName: displayName,
             deliveryStatus: deliveryStatus,
             deliveryErrorCode: "",
-            deliveryErrorText: "",
+            deliveryErrorText: deliveryErrorText,
             deliveryRetryable: true,
             deliveryRetryCount: 0,
             isRead: false,
-            mediaList: [],
+            mediaList: mediaList,
         )
     }
 
