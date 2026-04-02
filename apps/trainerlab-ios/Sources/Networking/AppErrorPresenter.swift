@@ -115,6 +115,15 @@ public enum AppErrorPresenter {
                 statusCode: statusCode,
                 recoveryActionLabel: recoveryActionLabel(forHTTPStatus: statusCode),
             )
+        case let .guardDenied(_, _, _, signal):
+            return PresentableAppError(
+                title: signal.displayTitle,
+                message: signal.message,
+                debugMessage: debugMessage,
+                correlationID: error.correlationID,
+                statusCode: error.statusCode,
+                recoveryActionLabel: signal.isResumable ? "Resume" : nil,
+            )
         case .invalidURL:
             return PresentableAppError(
                 title: "Request Error",

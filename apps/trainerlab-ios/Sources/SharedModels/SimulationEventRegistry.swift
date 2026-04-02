@@ -50,6 +50,9 @@ public enum SimulationEventType {
     public static let patientPulseCreated = "patient.pulse.created"
     public static let patientPulseUpdated = "patient.pulse.updated"
 
+    public static let guardStateUpdated = "guard.state.updated"
+    public static let guardWarningUpdated = "guard.warning.updated"
+
     public static let connected = "connected"
     public static let disconnected = "disconnected"
     public static let initMessage = "init_message"
@@ -115,6 +118,8 @@ public enum SimulationEventType {
         stoppedTyping,
         simulationFeedbackContinueConversation,
         simulationHotwashContinueConversation,
+        guardStateUpdated,
+        guardWarningUpdated,
     ]
 }
 
@@ -675,6 +680,16 @@ public enum SimulationEventRegistry {
             [.explicitNoOp],
         ),
         SimulationEventType.simulationHotwashContinueConversation: (
+            ["none"],
+            [],
+            [.explicitNoOp],
+        ),
+        SimulationEventType.guardStateUpdated: (
+            ["none"],
+            [],
+            [.explicitNoOp],
+        ),
+        SimulationEventType.guardWarningUpdated: (
             ["none"],
             [],
             [.explicitNoOp],

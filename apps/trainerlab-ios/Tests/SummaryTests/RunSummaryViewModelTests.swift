@@ -176,6 +176,9 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
     func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {
         throw SummaryMockError.unused
     }
+
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO { throw SummaryMockError.unused }
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO { throw SummaryMockError.unused }
 }
 
 @MainActor

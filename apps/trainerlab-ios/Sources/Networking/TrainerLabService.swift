@@ -58,6 +58,9 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func listAnnotations(simulationID: Int) async throws -> [AnnotationOut]
     func updateScenarioBrief(simulationID: Int, request: ScenarioBriefUpdateRequest, idempotencyKey: String) async throws -> ScenarioBriefOut
 
+    func getGuardState(simulationID: Int) async throws -> GuardStateDTO
+    func sendHeartbeat(simulationID: Int) async throws -> GuardStateDTO
+
     func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws
 }
 
@@ -451,6 +454,14 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
             ),
             as: ScenarioBriefOut.self,
         )
+    }
+
+    public func getGuardState(simulationID: Int) async throws -> GuardStateDTO {
+        try await apiClient.request(TrainerLabAPI.guardState(simulationID: simulationID), as: GuardStateDTO.self)
+    }
+
+    public func sendHeartbeat(simulationID: Int) async throws -> GuardStateDTO {
+        try await apiClient.request(TrainerLabAPI.heartbeat(simulationID: simulationID), as: GuardStateDTO.self)
     }
 
     public func replayPending(endpoint: String, method: String, body: Data?, idempotencyKey: String) async throws {

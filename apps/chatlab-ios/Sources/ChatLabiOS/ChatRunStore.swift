@@ -58,6 +58,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var feedbackFailureText: String?
     @Published public private(set) var feedbackRetryable = true
     @Published public private(set) var presentableError: PresentableAppError?
+    @Published public private(set) var guardState: GuardStateDTO?
+    @Published public private(set) var guardDenial: GuardSignal?
     @Published public private(set) var toolRefreshToken = UUID()
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
@@ -204,6 +206,7 @@ public final class ChatRunStore: ObservableObject {
 
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
+            await refreshGuardState()
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
@@ -340,6 +343,13 @@ public final class ChatRunStore: ObservableObject {
                         reason: .conversationReply(messageID: created.id),
                     )
                 }
+            } catch let error as APIClientError {
+                if case let .guardDenied(_, _, _, signal) = error {
+                    guardDenial = signal
+                    markPendingFailed(localID: localID, errorText: signal.message)
+                } else {
+                    markPendingFailed(localID: localID, errorText: messageText(for: error))
+                }
             } catch {
                 markPendingFailed(localID: localID, errorText: messageText(for: error))
             }
@@ -450,6 +460,9 @@ public final class ChatRunStore: ObservableObject {
              SimulationEventType.patientResultsUpdated:
             feedbackFailureText = nil
             toolRefreshToken = UUID()
+
+        case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
+            Task { await refreshGuardState() }
 
         case SimulationEventType.connected,
              SimulationEventType.disconnected,
@@ -703,6 +716,9 @@ public final class ChatRunStore: ObservableObject {
         if conversation.isLocked {
             return true
         }
+        if guardDenial?.isTerminal == true {
+            return true
+        }
         return simulationHasEnded && isPatientConversation(conversation)
     }
 
@@ -863,6 +879,16 @@ public final class ChatRunStore: ObservableObject {
                 awaiting.isStale = true
                 self.awaitingReplyByConversation[conversationID] = awaiting
             }
+        }
+    }
+
+    private func refreshGuardState() async {
+        do {
+            let dto = try await service.getGuardState(simulationID: simulation.id)
+            guardState = dto
+            guardDenial = dto.denial
+        } catch {
+            // Non-fatal: keep current guard state on failure
         }
     }
 

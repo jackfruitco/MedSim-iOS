@@ -440,6 +440,14 @@ public enum TrainerLabAPI {
         )
     }
 
+    public static func guardState(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/guard-state/")
+    }
+
+    public static func heartbeat(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: Data())
+    }
+
     private static func eventMutation(path: String, body: Data, idempotencyKey: String?) -> Endpoint {
         Endpoint(
             path: path,
@@ -575,6 +583,14 @@ public enum ChatLabAPI {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/lab-orders/", method: .post, body: body)
     }
 
+    public static func guardState(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/guard-state/")
+    }
+
+    public static func heartbeat(simulationID: Int) -> Endpoint {
+        Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: Data())
+    }
+
     public static func listModifierGroups(groups: [String]?) -> Endpoint {
         var queryItems: [URLQueryItem] = []
         if let groups {
@@ -595,6 +611,7 @@ public enum APIClientError: Error, Equatable, LocalizedError {
     case http(statusCode: Int, detail: String, correlationID: String?)
     case decoding(String)
     case missingRefreshToken
+    case guardDenied(statusCode: Int, detail: String, correlationID: String?, signal: GuardSignal)
 
     public var statusCode: Int? {
         switch self {
@@ -602,25 +619,35 @@ public enum APIClientError: Error, Equatable, LocalizedError {
             statusCode
         case .unauthorized:
             401
+        case let .guardDenied(statusCode, _, _, _):
+            statusCode
         default:
             nil
         }
     }
 
     public var backendDetail: String? {
-        guard case let .http(_, detail, _) = self else {
+        switch self {
+        case let .http(_, detail, _):
+            let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        case let .guardDenied(_, detail, _, _):
+            let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        default:
             return nil
         }
-
-        let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     public var correlationID: String? {
-        guard case let .http(_, _, correlationID) = self else {
+        switch self {
+        case let .http(_, _, correlationID):
+            return correlationID
+        case let .guardDenied(_, _, correlationID, _):
+            return correlationID
+        default:
             return nil
         }
-        return correlationID
     }
 
     public var isAuthorizationFailure: Bool {
@@ -651,6 +678,8 @@ public enum APIClientError: Error, Equatable, LocalizedError {
                 return safeDetail
             }
             return Self.fallbackMessage(forHTTPStatus: statusCode)
+        case let .guardDenied(_, _, _, signal):
+            return signal.message
         }
     }
 
@@ -897,6 +926,19 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
 
     private func parseHTTPError(data: Data, response: HTTPURLResponse) -> APIClientError {
         let responseCorrelationID = response.value(forHTTPHeaderField: "X-Correlation-ID")
+
+        if response.statusCode == 403,
+           let guardPayload = try? decoder.decode(GuardDeniedPayload.self, from: data),
+           guardPayload.type == "guard_denied"
+        {
+            return .guardDenied(
+                statusCode: 403,
+                detail: guardPayload.detail,
+                correlationID: responseCorrelationID,
+                signal: guardPayload.guardDenial,
+            )
+        }
+
         if let payload = try? decoder.decode(APIErrorPayload.self, from: data) {
             return .http(
                 statusCode: response.statusCode,

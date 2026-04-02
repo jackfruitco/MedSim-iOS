@@ -155,6 +155,7 @@ public struct RunConsoleView: View {
             if store.state.conflictBanner != nil {
                 conflictBanner
             }
+            guardWarningBanner
 
             HStack(alignment: .top, spacing: 10) {
                 leftPatientPane(layoutMode: .regular)
@@ -190,6 +191,7 @@ public struct RunConsoleView: View {
                 if store.state.conflictBanner != nil {
                     conflictBanner
                 }
+                guardWarningBanner
                 leftPatientPane(layoutMode: .compact)
                 combinedInfoPanel
                 centerTimelinePane(layoutMode: .compact)
@@ -1387,17 +1389,58 @@ public struct RunConsoleView: View {
         }
     }
 
+    // MARK: - Guard warning banner
+
+    @ViewBuilder
+    private var guardWarningBanner: some View {
+        if let warnings = store.state.guardState?.warnings, !warnings.isEmpty,
+           let warning = warnings.first
+        {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: guardWarningIcon(for: warning.code))
+                        .foregroundStyle(.orange)
+                    Text(warning.displayTitle)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.orange)
+                    Spacer()
+                }
+                Text(warning.message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(Color.orange.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    private func guardWarningIcon(for code: String) -> String {
+        switch code {
+        case _ where code.contains("runtime_cap"):
+            "clock.badge.exclamationmark"
+        case _ where code.contains("inactivity"):
+            "hand.raised.slash"
+        default:
+            "exclamationmark.triangle"
+        }
+    }
+
     // MARK: - Terminal card overlay
 
     private func terminalCardOverlay(card: TerminalCard) -> some View {
-        VStack {
+        let guardDenial = store.state.guardDenial
+        let cardTitle = guardDenial?.isTerminal == true ? guardDenial!.displayTitle : terminalCardTitle(card.status)
+        let cardMessage: String? = guardDenial?.isTerminal == true ? guardDenial!.message : terminalCardMessage(card)
+
+        return VStack {
             Spacer()
             VStack(spacing: 16) {
                 HStack {
                     Image(systemName: terminalCardIcon(card.status))
                         .font(.title2)
                         .foregroundStyle(terminalCardColor(card.status))
-                    Text(terminalCardTitle(card.status))
+                    Text(cardTitle)
                         .font(.title3.bold())
                     Spacer()
                     Button {
@@ -1409,7 +1452,7 @@ public struct RunConsoleView: View {
                     .buttonStyle(.plain)
                 }
 
-                if let reason = terminalCardMessage(card) {
+                if let reason = cardMessage {
                     Text(reason)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
