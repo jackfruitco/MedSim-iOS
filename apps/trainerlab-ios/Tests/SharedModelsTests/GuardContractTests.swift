@@ -33,14 +33,14 @@ final class GuardContractTests: XCTestCase {
     func testGuardSignalDecodesWithOptionalFieldsMissing() throws {
         let json = """
         {
-          "code": "runtime_cap_exceeded",
+          "code": "runtime_cap_reached",
           "severity": "error",
           "message": "The simulation has exceeded its runtime limit."
         }
         """
         let signal = try decode(GuardSignal.self, from: json)
 
-        XCTAssertEqual(signal.code, "runtime_cap_exceeded")
+        XCTAssertEqual(signal.code, "runtime_cap_reached")
         XCTAssertNil(signal.title)
         XCTAssertNil(signal.resumable)
         XCTAssertNil(signal.terminal)
@@ -83,7 +83,7 @@ final class GuardContractTests: XCTestCase {
         let json = """
         {
           "guard_state": "active",
-          "guard_reason": "normal",
+          "guard_reason": "none",
           "engine_runnable": true,
           "active_elapsed_seconds": 120,
           "runtime_cap_seconds": 3600,
@@ -101,7 +101,7 @@ final class GuardContractTests: XCTestCase {
         let dto = try decode(GuardStateDTO.self, from: json)
 
         XCTAssertEqual(dto.guardState, "active")
-        XCTAssertEqual(dto.guardReason, "normal")
+        XCTAssertEqual(dto.guardReason, "none")
         XCTAssertTrue(dto.engineRunnable)
         XCTAssertEqual(dto.activeElapsedSeconds, 120)
         XCTAssertEqual(dto.runtimeCapSeconds, 3600)
@@ -115,13 +115,13 @@ final class GuardContractTests: XCTestCase {
     func testGuardStateDTOWithDenialAndBlockedEngine() throws {
         let json = """
         {
-          "guard_state": "denied",
-          "guard_reason": "runtime_cap_exceeded",
+          "guard_state": "paused_runtime_cap",
+          "guard_reason": "runtime_cap",
           "engine_runnable": false,
           "active_elapsed_seconds": 3601,
           "warnings": [],
           "denial": {
-            "code": "runtime_cap_exceeded",
+            "code": "runtime_cap_reached",
             "severity": "error",
             "title": "Session Ended",
             "message": "The runtime cap was reached.",
@@ -135,14 +135,14 @@ final class GuardContractTests: XCTestCase {
         XCTAssertTrue(dto.isEngineBlocked)
         let denial = try XCTUnwrap(dto.denial)
         XCTAssertTrue(denial.isTerminal)
-        XCTAssertEqual(dto.primaryDenial?.code, "runtime_cap_exceeded")
+        XCTAssertEqual(dto.primaryDenial?.code, "runtime_cap_reached")
     }
 
     func testGuardStateDTOWithMissingOptionalFields() throws {
         let json = """
         {
           "guard_state": "active",
-          "guard_reason": "normal",
+          "guard_reason": "none",
           "engine_runnable": true,
           "active_elapsed_seconds": 0,
           "warnings": []
@@ -165,7 +165,7 @@ final class GuardContractTests: XCTestCase {
           "status": 403,
           "detail": "The runtime cap has been exceeded.",
           "guard_denial": {
-            "code": "runtime_cap_exceeded",
+            "code": "runtime_cap_reached",
             "severity": "error",
             "message": "Your session has exceeded the allowed runtime.",
             "terminal": true
@@ -178,7 +178,7 @@ final class GuardContractTests: XCTestCase {
         XCTAssertEqual(payload.title, "Access Denied")
         XCTAssertEqual(payload.status, 403)
         XCTAssertEqual(payload.detail, "The runtime cap has been exceeded.")
-        XCTAssertEqual(payload.guardDenial.code, "runtime_cap_exceeded")
+        XCTAssertEqual(payload.guardDenial.code, "runtime_cap_reached")
         XCTAssertTrue(payload.guardDenial.isTerminal)
     }
 

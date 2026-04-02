@@ -445,7 +445,8 @@ public enum TrainerLabAPI {
     }
 
     public static func heartbeat(simulationID: Int) -> Endpoint {
-        Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: Data())
+        let body = (try? JSONSerialization.data(withJSONObject: ["client_visibility": "foreground"])) ?? Data()
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: body)
     }
 
     private static func eventMutation(path: String, body: Data, idempotencyKey: String?) -> Endpoint {
@@ -588,7 +589,8 @@ public enum ChatLabAPI {
     }
 
     public static func heartbeat(simulationID: Int) -> Endpoint {
-        Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: Data())
+        let body = (try? JSONSerialization.data(withJSONObject: ["client_visibility": "foreground"])) ?? Data()
+        return Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: body)
     }
 
     public static func listModifierGroups(groups: [String]?) -> Endpoint {

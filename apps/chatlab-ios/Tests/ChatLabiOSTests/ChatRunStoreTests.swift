@@ -165,17 +165,21 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     var createMessageError: Error?
+    var guardStateDenial: GuardSignal?
+    private(set) var getGuardStateCalls = 0
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        GuardStateDTO(
-            guardState: "active",
-            guardReason: "normal",
-            engineRunnable: true,
+        getGuardStateCalls += 1
+        let denial = guardStateDenial
+        return GuardStateDTO(
+            guardState: denial != nil ? "locked_usage" : "active",
+            guardReason: denial != nil ? "usage_limit" : "none",
+            engineRunnable: denial == nil,
             activeElapsedSeconds: 0,
             runtimeCapSeconds: nil,
             wallClockExpiresAt: nil,
             warnings: [],
-            denial: nil,
+            denial: denial,
         )
     }
 
@@ -563,7 +567,7 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = [initialMessage]
 
         let signal = GuardSignal(
-            code: "runtime_cap_exceeded",
+            code: "runtime_cap_reached",
             severity: "error",
             title: "Session Ended",
             message: "The runtime cap was reached.",
@@ -587,12 +591,14 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil { store.activeConversationID == patientConversation.id }
         try await waitUntil { store.activeTypingUsers.isEmpty }
 
+        // Set after bootstrap so the initial refreshGuardState doesn't pre-lock the store
+        service.guardStateDenial = signal
         store.draftText = "Hello"
         store.sendDraft()
 
         try await waitUntil { store.guardDenial != nil }
 
-        XCTAssertEqual(store.guardDenial?.code, "runtime_cap_exceeded")
+        XCTAssertEqual(store.guardDenial?.code, "runtime_cap_reached")
         XCTAssertTrue(store.guardDenial?.isTerminal == true)
         let messages = store.messagesByConversation[patientConversation.id] ?? []
         let failed = messages.first(where: { $0.deliveryStatus == .failed })
@@ -610,7 +616,7 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = [initialMessage]
 
         let signal = GuardSignal(
-            code: "runtime_cap_exceeded",
+            code: "runtime_cap_reached",
             severity: "error",
             title: "Session Ended",
             message: "The runtime cap was reached.",
@@ -625,6 +631,7 @@ final class ChatRunStoreTests: XCTestCase {
             correlationID: nil,
             signal: signal,
         )
+        service.guardStateDenial = signal
 
         let realtime = TestRealtimeClient()
         let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
@@ -657,10 +664,100 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = [existingMessage]
 
         let signal = GuardSignal(
-            code: "runtime_cap_exceeded",
+            code: "runtime_cap_reached",
             severity: "error",
             title: nil,
             message: "Blocked.",
+            resumable: false,
+            terminal: true,
+            expiresInSeconds: nil,
+            metadata: nil,
+        )
+        service.createMessageError = APIClientError.guardDenied(
+            statusCode: 403,
+            detail: "blocked",
+            correlationID: nil,
+            signal: signal,
+        )
+        service.guardStateDenial = signal
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        store.draftText = "Hello"
+        store.sendDraft()
+
+        try await waitUntil { store.guardDenial?.isTerminal == true }
+
+        // Existing transcript message is still accessible
+        let messages = store.messagesByConversation[patientConversation.id] ?? []
+        XCTAssertTrue(messages.contains(where: { $0.serverID == 1 && $0.content == "How can I help you today?" }))
+    }
+
+    func testNonTerminalGuardDenialBlocksSend() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [initialMessage]
+
+        let signal = GuardSignal(
+            code: "usage_limit_reached",
+            severity: "error",
+            title: "Usage Limit",
+            message: "You have reached your usage limit.",
+            resumable: true,
+            terminal: false,
+            expiresInSeconds: nil,
+            metadata: nil,
+        )
+        service.createMessageError = APIClientError.guardDenied(
+            statusCode: 403,
+            detail: "blocked",
+            correlationID: nil,
+            signal: signal,
+        )
+        service.guardStateDenial = signal
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        try await waitUntil { store.activeTypingUsers.isEmpty }
+
+        store.draftText = "Hello"
+        store.sendDraft()
+
+        try await waitUntil { store.guardDenial?.code == "usage_limit_reached" }
+
+        // Non-terminal denial still blocks further sends
+        XCTAssertTrue(store.activeConversationLocked)
+        // Transcript remains readable
+        XCTAssertFalse((store.messagesByConversation[patientConversation.id] ?? []).isEmpty)
+    }
+
+    func testGuardDeniedSendTriggersGuardStateRefresh() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [initialMessage]
+
+        let signal = GuardSignal(
+            code: "runtime_cap_reached",
+            severity: "error",
+            title: "Session Ended",
+            message: "The runtime cap was reached.",
             resumable: false,
             terminal: true,
             expiresInSeconds: nil,
@@ -679,15 +776,16 @@ final class ChatRunStoreTests: XCTestCase {
         defer { store.stop() }
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
+        try await waitUntil { store.activeTypingUsers.isEmpty }
 
+        // Set after bootstrap so the initial refreshGuardState doesn't pre-lock the store
+        service.guardStateDenial = signal
+        let callsBefore = service.getGuardStateCalls
         store.draftText = "Hello"
         store.sendDraft()
 
-        try await waitUntil { store.guardDenial?.isTerminal == true }
-
-        // Existing transcript message is still accessible
-        let messages = store.messagesByConversation[patientConversation.id] ?? []
-        XCTAssertTrue(messages.contains(where: { $0.serverID == 1 && $0.content == "How can I help you today?" }))
+        try await waitUntil { service.getGuardStateCalls > callsBefore }
+        XCTAssertGreaterThan(service.getGuardStateCalls, callsBefore)
     }
 
     private func waitUntil(

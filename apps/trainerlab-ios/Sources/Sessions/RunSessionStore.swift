@@ -37,6 +37,7 @@ public final class RunSessionStore: ObservableObject {
     private var transportTask: Task<Void, Never>?
     private var vitalsTask: Task<Void, Never>?
     private var stopwatchTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var runtimeRefreshTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
@@ -93,6 +94,7 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        heartbeatTask?.cancel()
         bootstrapTask?.cancel()
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
@@ -145,6 +147,16 @@ public final class RunSessionStore: ObservableObject {
             }
         }
 
+        heartbeatTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                if !Task.isCancelled {
+                    await self.runHeartbeat()
+                }
+            }
+        }
+
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
             await bootstrapConsole(for: session)
@@ -158,6 +170,7 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        heartbeatTask?.cancel()
         bootstrapTask?.cancel()
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
@@ -236,6 +249,18 @@ public final class RunSessionStore: ObservableObject {
             syncStopwatchState()
         } catch {
             // Non-fatal: keep current guard state on failure
+        }
+    }
+
+    private func runHeartbeat() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        do {
+            let dto = try await service.sendHeartbeat(simulationID: simulationID)
+            state.guardState = dto
+            state.guardDenial = dto.denial
+            syncStopwatchState()
+        } catch {
+            // Non-fatal: maintain current guard state on heartbeat failure
         }
     }
 
