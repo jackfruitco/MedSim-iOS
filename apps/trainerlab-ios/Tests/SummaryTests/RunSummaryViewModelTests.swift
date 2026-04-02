@@ -177,8 +177,14 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
         throw SummaryMockError.unused
     }
 
-    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO { throw SummaryMockError.unused }
-    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO { throw SummaryMockError.unused }
+
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
+        throw SummaryMockError.unused
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
+        throw SummaryMockError.unused
+    }
 }
 
 @MainActor

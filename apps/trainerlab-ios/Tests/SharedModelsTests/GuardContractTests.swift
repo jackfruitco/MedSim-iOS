@@ -133,8 +133,8 @@ final class GuardContractTests: XCTestCase {
 
         XCTAssertFalse(dto.engineRunnable)
         XCTAssertTrue(dto.isEngineBlocked)
-        XCTAssertNotNil(dto.denial)
-        XCTAssertTrue(dto.denial!.isTerminal)
+        let denial = try XCTUnwrap(dto.denial)
+        XCTAssertTrue(denial.isTerminal)
         XCTAssertEqual(dto.primaryDenial?.code, "runtime_cap_exceeded")
     }
 

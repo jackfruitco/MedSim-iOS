@@ -30,9 +30,17 @@ public struct GuardSignal: Decodable, Equatable, Sendable {
         self.metadata = metadata
     }
 
-    public var isTerminal: Bool { terminal ?? false }
-    public var isResumable: Bool { resumable ?? false }
-    public var displayTitle: String { title ?? "Notice" }
+    public var isTerminal: Bool {
+        terminal ?? false
+    }
+
+    public var isResumable: Bool {
+        resumable ?? false
+    }
+
+    public var displayTitle: String {
+        title ?? "Notice"
+    }
 
     enum CodingKeys: String, CodingKey {
         case code
@@ -76,8 +84,13 @@ public struct GuardStateDTO: Decodable, Equatable, Sendable {
         self.denial = denial
     }
 
-    public var isEngineBlocked: Bool { !engineRunnable }
-    public var primaryDenial: GuardSignal? { denial }
+    public var isEngineBlocked: Bool {
+        !engineRunnable
+    }
+
+    public var primaryDenial: GuardSignal? {
+        denial
+    }
 
     enum CodingKeys: String, CodingKey {
         case guardState = "guard_state"

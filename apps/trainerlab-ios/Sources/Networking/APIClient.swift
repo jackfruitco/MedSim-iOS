@@ -642,11 +642,11 @@ public enum APIClientError: Error, Equatable, LocalizedError {
     public var correlationID: String? {
         switch self {
         case let .http(_, _, correlationID):
-            return correlationID
+            correlationID
         case let .guardDenied(_, _, correlationID, _):
-            return correlationID
+            correlationID
         default:
-            return nil
+            nil
         }
     }
 
