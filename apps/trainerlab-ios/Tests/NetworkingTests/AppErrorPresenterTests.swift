@@ -125,7 +125,7 @@ final class AppErrorPresenterTests: XCTestCase {
 
     func testGuardDeniedErrorUsesSignalTitleAndMessage() {
         let signal = GuardSignal(
-            code: "runtime_cap_exceeded",
+            code: "runtime_cap_reached",
             severity: "error",
             title: "Session Ended",
             message: "Your session has exceeded the allowed runtime.",

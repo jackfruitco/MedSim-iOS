@@ -731,6 +731,8 @@ public final class ChatRunStore: ObservableObject {
         if conversation.isLocked {
             return true
         }
+        // Simulation-level guard block: engine is not runnable or an active denial exists.
+        // This is distinct from the per-conversation backend lock (conversation.isLocked above).
         if guardDenial != nil || guardState?.engineRunnable == false {
             return true
         }

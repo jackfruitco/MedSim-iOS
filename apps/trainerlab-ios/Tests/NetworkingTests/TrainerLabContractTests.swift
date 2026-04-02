@@ -879,7 +879,7 @@ final class TrainerLabContractTests: XCTestCase {
         api.responseDataByPath["/api/v1/simulations/42/guard-state/"] = Data("""
         {
           "guard_state": "active",
-          "guard_reason": "normal",
+          "guard_reason": "none",
           "engine_runnable": true,
           "active_elapsed_seconds": 60,
           "warnings": []
@@ -898,7 +898,7 @@ final class TrainerLabContractTests: XCTestCase {
         api.responseDataByPath["/api/v1/simulations/42/heartbeat/"] = Data("""
         {
           "guard_state": "active",
-          "guard_reason": "normal",
+          "guard_reason": "none",
           "engine_runnable": true,
           "active_elapsed_seconds": 61,
           "warnings": []
