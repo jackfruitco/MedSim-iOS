@@ -152,7 +152,7 @@ public final class RunSessionStore: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 if !Task.isCancelled {
-                    await self.runHeartbeat()
+                    await runHeartbeat()
                 }
             }
         }
