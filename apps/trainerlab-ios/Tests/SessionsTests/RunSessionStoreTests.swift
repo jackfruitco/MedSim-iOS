@@ -2009,7 +2009,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: MockRealtimeClient(),
-            commandQueue: MockCommandQueue(),
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
 
@@ -2037,7 +2037,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: MockRealtimeClient(),
-            commandQueue: MockCommandQueue(),
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
 
@@ -2073,7 +2073,7 @@ final class RunSessionStoreTests: XCTestCase {
         let store = RunSessionStore(
             service: service,
             realtimeClient: MockRealtimeClient(),
-            commandQueue: MockCommandQueue(),
+            commandQueue: InMemoryCommandQueueStore(),
         )
         store.bind(session: makeSession(status: .running))
 

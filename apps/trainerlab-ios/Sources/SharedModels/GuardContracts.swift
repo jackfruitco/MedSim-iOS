@@ -183,17 +183,17 @@ extension SimulationGuardState {
     public var pauseMessage: String? {
         switch guardState {
         case .pausedInactivity:
-            return "Session paused due to inactivity"
+            "Session paused due to inactivity"
         case .pausedRuntimeCap:
-            return "Runtime limit reached — engine progression is no longer available"
+            "Runtime limit reached — engine progression is no longer available"
         case .pausedManual:
-            return "Session manually paused"
+            "Session manually paused"
         case .lockedUsage:
-            return "Session locked due to usage limits"
+            "Session locked due to usage limits"
         case .ended:
-            return "Session has ended"
+            "Session has ended"
         default:
-            return nil
+            nil
         }
     }
 
@@ -202,23 +202,23 @@ extension SimulationGuardState {
         if let denialMessage { return denialMessage }
         switch denialReason {
         case .runtimeCapReached:
-            return "Runtime limit has been exceeded."
+            "Runtime limit has been exceeded."
         case .sessionTokenLimit:
-            return "Session token limit reached."
+            "Session token limit reached."
         case .userTokenLimit:
-            return "Your usage limit has been reached."
+            "Your usage limit has been reached."
         case .accountTokenLimit:
-            return "Account usage limit reached."
+            "Account usage limit reached."
         case .insufficientTokenBudget:
-            return "Insufficient token budget."
+            "Insufficient token budget."
         case .wallClockExpired:
-            return "Session time has expired."
+            "Session time has expired."
         case .chatSendLocked:
-            return "Sending is locked due to usage limits."
+            "Sending is locked due to usage limits."
         case .sessionPaused:
-            return "Session is currently paused."
+            "Session is currently paused."
         default:
-            return nil
+            nil
         }
     }
 }
