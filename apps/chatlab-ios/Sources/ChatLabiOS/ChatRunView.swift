@@ -908,21 +908,21 @@ private struct ChatBubble: View {
 
     private var inlineFooterText: Text {
         var text = Text(item.content).font(.body)
-        text = text + Text("  ")
-        text = text + Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+        text += Text("  ")
+        text += Text(item.timestamp.formatted(date: .omitted, time: .shortened))
             .font(.caption2)
             .foregroundStyle(.secondary)
 
         if !item.isFromSelf, !item.isRead {
-            text = text + Text("  ")
-            text = text + Text("Unread")
+            text += Text("  ")
+            text += Text("Unread")
                 .font(.caption2.bold())
                 .foregroundStyle(.orange)
         }
 
         if item.isFromSelf {
-            text = text + Text("  ")
-            text = text + Text(item.deliveryStatus.rawValue.capitalized)
+            text += Text("  ")
+            text += Text(item.deliveryStatus.rawValue.capitalized)
                 .font(.caption2.bold())
                 .foregroundStyle(statusColor(item.deliveryStatus))
         }
@@ -969,7 +969,6 @@ private struct ChatBubble: View {
         }
     }
 
-    @ViewBuilder
     private var footerRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -1167,7 +1166,6 @@ private struct ToolDataRows: View {
             }
         }
     }
-
 }
 
 private struct PatientHistoryRows: View {
@@ -1199,7 +1197,6 @@ private struct PatientHistoryRows: View {
             }
         }
     }
-
 }
 
 private struct SimulationMetadataRows: View {
