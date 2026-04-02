@@ -39,6 +39,9 @@ public protocol ChatLabServiceProtocol: Sendable {
     func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse
     func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse
 
+    func getGuardState(simulationID: Int) async throws -> GuardStateDTO
+    func sendHeartbeat(simulationID: Int) async throws -> GuardStateDTO
+
     func listModifierGroups(groups: [String]?) async throws -> [ModifierGroup]
 }
 
@@ -208,6 +211,14 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
             ChatLabAPI.submitLabOrders(simulationID: simulationID, body: body),
             as: ChatLabOrdersResponse.self,
         )
+    }
+
+    public func getGuardState(simulationID: Int) async throws -> GuardStateDTO {
+        try await apiClient.request(ChatLabAPI.guardState(simulationID: simulationID), as: GuardStateDTO.self)
+    }
+
+    public func sendHeartbeat(simulationID: Int) async throws -> GuardStateDTO {
+        try await apiClient.request(ChatLabAPI.heartbeat(simulationID: simulationID), as: GuardStateDTO.self)
     }
 
     public func listModifierGroups(groups: [String]? = nil) async throws -> [ModifierGroup] {

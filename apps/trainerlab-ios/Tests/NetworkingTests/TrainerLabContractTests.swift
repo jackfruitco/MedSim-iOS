@@ -874,6 +874,44 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(globalCount, 5)
     }
 
+    func testGuardStateEndpointRoute() async throws {
+        let api = RecordingAPIClient()
+        api.responseDataByPath["/api/v1/simulations/42/guard-state/"] = Data("""
+        {
+          "guard_state": "active",
+          "guard_reason": "none",
+          "engine_runnable": true,
+          "active_elapsed_seconds": 60,
+          "warnings": []
+        }
+        """.utf8)
+        let service = TrainerLabService(apiClient: api)
+
+        _ = try await service.getGuardState(simulationID: 42)
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/42/guard-state/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .get)
+    }
+
+    func testHeartbeatEndpointRoute() async throws {
+        let api = RecordingAPIClient()
+        api.responseDataByPath["/api/v1/simulations/42/heartbeat/"] = Data("""
+        {
+          "guard_state": "active",
+          "guard_reason": "none",
+          "engine_runnable": true,
+          "active_elapsed_seconds": 61,
+          "warnings": []
+        }
+        """.utf8)
+        let service = TrainerLabService(apiClient: api)
+
+        _ = try await service.sendHeartbeat(simulationID: 42)
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/42/heartbeat/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+    }
+
     private func seedLegacyQueueDatabase(at url: URL) throws {
         var db: OpaquePointer?
         guard sqlite3_open(url.path, &db) == SQLITE_OK, let db else {

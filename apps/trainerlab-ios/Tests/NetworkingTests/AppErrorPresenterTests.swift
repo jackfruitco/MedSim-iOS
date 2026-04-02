@@ -1,5 +1,6 @@
 import Foundation
 @testable import Networking
+import SharedModels
 import XCTest
 
 private struct UnknownTestError: Error {}
@@ -120,5 +121,78 @@ final class AppErrorPresenterTests: XCTestCase {
         XCTAssertEqual(presentable?.title, "Something Went Wrong")
         XCTAssertEqual(presentable?.message, "Something went wrong.")
         XCTAssertNotNil(presentable?.debugMessage)
+    }
+
+    func testGuardDeniedErrorUsesSignalTitleAndMessage() {
+        let signal = GuardSignal(
+            code: "runtime_cap_reached",
+            severity: "error",
+            title: "Session Ended",
+            message: "Your session has exceeded the allowed runtime.",
+            resumable: false,
+            terminal: true,
+            expiresInSeconds: nil,
+            metadata: nil,
+        )
+        let error = APIClientError.guardDenied(
+            statusCode: 403,
+            detail: "The runtime cap has been exceeded.",
+            correlationID: "corr-guard",
+            signal: signal,
+        )
+
+        let presentable = AppErrorPresenter.present(error)
+
+        XCTAssertEqual(presentable?.title, "Session Ended")
+        XCTAssertEqual(presentable?.message, "Your session has exceeded the allowed runtime.")
+        XCTAssertEqual(presentable?.statusCode, 403)
+        XCTAssertEqual(presentable?.correlationID, "corr-guard")
+        XCTAssertNil(presentable?.recoveryActionLabel)
+    }
+
+    func testGuardDeniedResumableHasResumeActionLabel() {
+        let signal = GuardSignal(
+            code: "paused_inactivity",
+            severity: "warning",
+            title: "Session Paused",
+            message: "Your session was paused due to inactivity.",
+            resumable: true,
+            terminal: false,
+            expiresInSeconds: nil,
+            metadata: nil,
+        )
+        let error = APIClientError.guardDenied(
+            statusCode: 403,
+            detail: "Paused due to inactivity.",
+            correlationID: nil,
+            signal: signal,
+        )
+
+        let presentable = AppErrorPresenter.present(error)
+
+        XCTAssertEqual(presentable?.recoveryActionLabel, "Resume")
+    }
+
+    func testGuardDeniedWithNoTitleFallsBackToNotice() {
+        let signal = GuardSignal(
+            code: "unknown_code",
+            severity: "error",
+            title: nil,
+            message: "Something blocked this request.",
+            resumable: nil,
+            terminal: nil,
+            expiresInSeconds: nil,
+            metadata: nil,
+        )
+        let error = APIClientError.guardDenied(
+            statusCode: 403,
+            detail: "blocked",
+            correlationID: nil,
+            signal: signal,
+        )
+
+        let presentable = AppErrorPresenter.present(error)
+
+        XCTAssertEqual(presentable?.title, "Notice")
     }
 }

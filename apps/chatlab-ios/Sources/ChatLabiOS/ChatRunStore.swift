@@ -58,6 +58,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var feedbackFailureText: String?
     @Published public private(set) var feedbackRetryable = true
     @Published public private(set) var presentableError: PresentableAppError?
+    @Published public private(set) var guardState: GuardStateDTO?
+    @Published public private(set) var guardDenial: GuardSignal?
     @Published public private(set) var toolRefreshToken = UUID()
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
@@ -67,6 +69,7 @@ public final class ChatRunStore: ObservableObject {
     private let realtimeClient: ChatRealtimeClientProtocol
     private var eventTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var typingStopTask: Task<Void, Never>?
     private var hasStarted = false
     private var olderCursorByConversation: [Int: String?] = [:]
@@ -98,6 +101,7 @@ public final class ChatRunStore: ObservableObject {
     deinit {
         eventTask?.cancel()
         stateTask?.cancel()
+        heartbeatTask?.cancel()
         typingStopTask?.cancel()
         for task in awaitingReplyTasks.values {
             task.cancel()
@@ -175,15 +179,27 @@ public final class ChatRunStore: ObservableObject {
                 }
             }
         }
+
+        heartbeatTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                if !Task.isCancelled {
+                    await runHeartbeat()
+                }
+            }
+        }
     }
 
     public func stop() {
         hasStarted = false
         eventTask?.cancel()
         stateTask?.cancel()
+        heartbeatTask?.cancel()
         typingStopTask?.cancel()
         eventTask = nil
         stateTask = nil
+        heartbeatTask = nil
         typingStopTask = nil
         stopAwaitingReply()
         realtimeClient.disconnect()
@@ -204,6 +220,7 @@ public final class ChatRunStore: ObservableObject {
 
             startInitialAwaitingReplyIfNeeded()
             await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
+            await refreshGuardState()
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
@@ -340,6 +357,14 @@ public final class ChatRunStore: ObservableObject {
                         reason: .conversationReply(messageID: created.id),
                     )
                 }
+            } catch let error as APIClientError {
+                if case let .guardDenied(_, _, _, signal) = error {
+                    guardDenial = signal
+                    markPendingFailed(localID: localID, errorText: signal.message)
+                    Task { await self.refreshGuardState() }
+                } else {
+                    markPendingFailed(localID: localID, errorText: messageText(for: error))
+                }
             } catch {
                 markPendingFailed(localID: localID, errorText: messageText(for: error))
             }
@@ -450,6 +475,9 @@ public final class ChatRunStore: ObservableObject {
              SimulationEventType.patientResultsUpdated:
             feedbackFailureText = nil
             toolRefreshToken = UUID()
+
+        case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
+            Task { await refreshGuardState() }
 
         case SimulationEventType.connected,
              SimulationEventType.disconnected,
@@ -703,6 +731,11 @@ public final class ChatRunStore: ObservableObject {
         if conversation.isLocked {
             return true
         }
+        // Simulation-level guard block: engine is not runnable or an active denial exists.
+        // This is distinct from the per-conversation backend lock (conversation.isLocked above).
+        if guardDenial != nil || guardState?.engineRunnable == false {
+            return true
+        }
         return simulationHasEnded && isPatientConversation(conversation)
     }
 
@@ -863,6 +896,26 @@ public final class ChatRunStore: ObservableObject {
                 awaiting.isStale = true
                 self.awaitingReplyByConversation[conversationID] = awaiting
             }
+        }
+    }
+
+    private func refreshGuardState() async {
+        do {
+            let dto = try await service.getGuardState(simulationID: simulation.id)
+            guardState = dto
+            guardDenial = dto.denial
+        } catch {
+            // Non-fatal: keep current guard state on failure
+        }
+    }
+
+    private func runHeartbeat() async {
+        do {
+            let dto = try await service.sendHeartbeat(simulationID: simulation.id)
+            guardState = dto
+            guardDenial = dto.denial
+        } catch {
+            // Non-fatal: maintain current guard state on heartbeat failure
         }
     }
 

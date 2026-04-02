@@ -196,8 +196,51 @@ public struct ChatRunView: View {
         }
     }
 
+    @ViewBuilder
+    private var guardBanners: some View {
+        if let denial = store.guardDenial {
+            guardDenialBanner(denial: denial)
+        } else if let warnings = store.guardState?.warnings, !warnings.isEmpty,
+                  let warning = warnings.first
+        {
+            guardWarningBanner(warning: warning)
+        }
+    }
+
+    private func guardWarningBanner(warning: GuardSignal) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(warning.displayTitle)
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+            Text(warning.message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.orange.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func guardDenialBanner(denial: GuardSignal) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(denial.displayTitle)
+                .font(.subheadline.bold())
+                .foregroundStyle(denial.isTerminal ? .red : .orange)
+            Text(denial.message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(denial.isTerminal ? Color.red.opacity(0.12) : Color.orange.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
     private var regularFailureBanners: some View {
         VStack(spacing: 10) {
+            guardBanners
+
             if let error = store.presentableError {
                 InlineAppErrorView(error: error)
             }
@@ -226,6 +269,8 @@ public struct ChatRunView: View {
 
     private var compactFailureBanners: some View {
         VStack(spacing: 6) {
+            guardBanners
+
             if let error = store.presentableError {
                 InlineAppErrorView(error: error)
             }

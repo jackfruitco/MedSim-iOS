@@ -514,6 +514,8 @@ public struct RunSessionState: Equatable, Sendable {
     public var transportBanner: TransportBanner
     public var conflictBanner: String?
     public var terminalCard: TerminalCard?
+    public var guardState: GuardStateDTO?
+    public var guardDenial: GuardSignal?
 
     public init(
         session: TrainerSessionDTO? = nil,
@@ -539,6 +541,8 @@ public struct RunSessionState: Equatable, Sendable {
         ),
         conflictBanner: String? = nil,
         terminalCard: TerminalCard? = nil,
+        guardState: GuardStateDTO? = nil,
+        guardDenial: GuardSignal? = nil,
     ) {
         self.session = session
         self.transportState = transportState
@@ -559,6 +563,8 @@ public struct RunSessionState: Equatable, Sendable {
         self.transportBanner = transportBanner
         self.conflictBanner = conflictBanner
         self.terminalCard = terminalCard
+        self.guardState = guardState
+        self.guardDenial = guardDenial
     }
 
     public var injuryAnnotations: [CauseAnnotation] {

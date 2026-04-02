@@ -37,6 +37,7 @@ public final class RunSessionStore: ObservableObject {
     private var transportTask: Task<Void, Never>?
     private var vitalsTask: Task<Void, Never>?
     private var stopwatchTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var runtimeRefreshTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
@@ -93,6 +94,7 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        heartbeatTask?.cancel()
         bootstrapTask?.cancel()
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
@@ -145,6 +147,16 @@ public final class RunSessionStore: ObservableObject {
             }
         }
 
+        heartbeatTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                if !Task.isCancelled {
+                    await runHeartbeat()
+                }
+            }
+        }
+
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
             await bootstrapConsole(for: session)
@@ -158,6 +170,7 @@ public final class RunSessionStore: ObservableObject {
         transportTask?.cancel()
         vitalsTask?.cancel()
         stopwatchTask?.cancel()
+        heartbeatTask?.cancel()
         bootstrapTask?.cancel()
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
@@ -227,10 +240,35 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
+    private func refreshGuardState() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        do {
+            let dto = try await service.getGuardState(simulationID: simulationID)
+            state.guardState = dto
+            state.guardDenial = dto.denial
+            syncStopwatchState()
+        } catch {
+            // Non-fatal: keep current guard state on failure
+        }
+    }
+
+    private func runHeartbeat() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        do {
+            let dto = try await service.sendHeartbeat(simulationID: simulationID)
+            state.guardState = dto
+            state.guardDenial = dto.denial
+            syncStopwatchState()
+        } catch {
+            // Non-fatal: maintain current guard state on heartbeat failure
+        }
+    }
+
     private func bootstrapConsole(for session: TrainerSessionDTO) async {
         logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
 
         _ = await loadRuntimeState(reason: "bootstrap")
+        await refreshGuardState()
 
         let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
         applyHistoricalEvents(historicalEvents)
@@ -739,7 +777,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private var canMutateCommands: Bool {
-        state.commandChannelAvailable && state.session?.status != .seeding
+        state.commandChannelAvailable
+            && state.session?.status != .seeding
+            && (state.guardState?.engineRunnable ?? true)
     }
 
     private var canRunCommands: Bool {
@@ -1439,6 +1479,9 @@ public final class RunSessionStore: ObservableObject {
 
     private func applyLiveEventProjection(from event: EventEnvelope) {
         switch event.eventType {
+        case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
+            Task { await refreshGuardState() }
+
         case SimulationEventType.simulationBriefCreated, SimulationEventType.simulationBriefUpdated:
             if let decoded = try? event.payload.decodedPayload(as: ScenarioBriefOut.self) {
                 scenarioBrief = decoded
@@ -1687,14 +1730,23 @@ public final class RunSessionStore: ObservableObject {
         let status = state.session?.status
         let isTerminal = status == .completed || status == .failed
 
-        // Show terminal card when session first reaches a terminal state
-        if isTerminal, state.terminalCard == nil {
+        if let denial = state.guardDenial, denial.isTerminal {
+            // Guard denial terminal card takes priority
+            if state.terminalCard == nil {
+                state.terminalCard = TerminalCard(
+                    status: status ?? .failed,
+                    reasonText: denial.message,
+                    completedAt: nil,
+                )
+            }
+        } else if isTerminal, state.terminalCard == nil {
+            // Show terminal card when session first reaches a terminal state
             state.terminalCard = TerminalCard(
                 status: status!,
                 reasonText: state.session?.terminalReasonText,
                 completedAt: state.session?.runCompletedAt,
             )
-        } else if !isTerminal {
+        } else if !isTerminal, state.guardDenial?.isTerminal != true {
             state.terminalCard = nil
         }
 

@@ -343,6 +343,14 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
     func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {
         fatalError("Readme demo does not call replayPending().")
     }
+
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
+        fatalError("Readme demo does not call getGuardState().")
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
+        fatalError("Readme demo does not call sendHeartbeat().")
+    }
 }
 
 private struct ReadmeDemoChatService: ChatLabServiceProtocol {
@@ -487,5 +495,13 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
 
     func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
         []
+    }
+
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
+        fatalError("Readme demo does not call getGuardState().")
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
+        fatalError("Readme demo does not call sendHeartbeat().")
     }
 }

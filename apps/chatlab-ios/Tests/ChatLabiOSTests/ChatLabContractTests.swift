@@ -206,6 +206,34 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/config/modifier-groups/")
     }
 
+    func testGuardStateEndpointRoute() async throws {
+        let api = ChatRecordingAPIClient()
+        let service = ChatLabService(apiClient: api)
+
+        do {
+            _ = try await service.getGuardState(simulationID: 7)
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/guard-state/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .get)
+    }
+
+    func testHeartbeatEndpointRoute() async throws {
+        let api = ChatRecordingAPIClient()
+        let service = ChatLabService(apiClient: api)
+
+        do {
+            _ = try await service.sendHeartbeat(simulationID: 7)
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/heartbeat/")
+        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+    }
+
     private func decodeJSONBody(_ data: Data?) throws -> [String: Any]? {
         guard let data else { return nil }
         return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
