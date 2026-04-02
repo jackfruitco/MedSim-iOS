@@ -217,8 +217,13 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         }
     }
 
-    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO { throw MockServiceError.unused }
-    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO { throw MockServiceError.unused }
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
+        throw MockServiceError.unused
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
+        throw MockServiceError.unused
+    }
 }
 
 private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Sendable {

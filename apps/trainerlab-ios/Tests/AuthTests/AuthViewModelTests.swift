@@ -210,7 +210,6 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {}
 
-
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
         throw MockError.accessMeFailed
     }
