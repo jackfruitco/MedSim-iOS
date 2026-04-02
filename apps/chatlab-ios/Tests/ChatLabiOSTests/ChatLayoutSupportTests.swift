@@ -35,21 +35,39 @@ final class ChatLayoutSupportTests: XCTestCase {
     func testBubbleFooterPrefersInlineOnlyWhenMetadataFits() {
         XCTAssertTrue(
             ChatBubbleFooterLayout.prefersInline(
-                content: "Short reply",
-                metadataText: "9:41 AM Delivered",
-                bubbleWidth: 320,
-                hasMedia: false,
-                hasError: false,
+                in: .init(
+                    content: "Short reply",
+                    metadataText: "9:41 AM Delivered",
+                    bubbleWidth: 320,
+                    hasMedia: false,
+                    hasError: false,
+                    hasRetryAction: false,
+                ),
             ),
         )
 
         XCTAssertFalse(
             ChatBubbleFooterLayout.prefersInline(
-                content: String(repeating: "A", count: 90),
-                metadataText: "9:41 AM Delivered",
-                bubbleWidth: 220,
-                hasMedia: false,
-                hasError: false,
+                in: .init(
+                    content: String(repeating: "A", count: 90),
+                    metadataText: "9:41 AM Delivered",
+                    bubbleWidth: 220,
+                    hasMedia: false,
+                    hasError: false,
+                    hasRetryAction: false,
+                ),
+            ),
+        )
+        XCTAssertFalse(
+            ChatBubbleFooterLayout.prefersInline(
+                in: .init(
+                    content: "Short reply",
+                    metadataText: "9:41 AM Failed",
+                    bubbleWidth: 320,
+                    hasMedia: false,
+                    hasError: false,
+                    hasRetryAction: true,
+                ),
             ),
         )
     }
@@ -60,8 +78,9 @@ final class ChatLayoutSupportTests: XCTestCase {
             "areas_for_improvement": .array([.string("Clarify handoff"), .string("Reassess sooner")]),
         ])
 
-        XCTAssertEqual(fields.first?.label, "Areas for Improvement")
-        XCTAssertEqual(fields.first?.value, "Clarify handoff, Reassess sooner")
-        XCTAssertTrue(fields.contains(where: { $0.label == "Overall Feedback" && $0.value == "Strong prioritization." }))
+        XCTAssertEqual(fields.first?.label, "Overall Feedback")
+        XCTAssertEqual(fields.first?.value, "Strong prioritization.")
+        XCTAssertEqual(fields.last?.label, "Areas for Improvement")
+        XCTAssertEqual(fields.last?.value, "Clarify handoff, Reassess sooner")
     }
 }

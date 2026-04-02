@@ -12,3 +12,6 @@ xcuserdata/
 # Build output
 DerivedData/
 build/
+
+# Local assistant worktrees
+.claude/

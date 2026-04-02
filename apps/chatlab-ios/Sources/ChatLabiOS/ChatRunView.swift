@@ -907,27 +907,35 @@ private struct ChatBubble: View {
     }
 
     private var inlineFooterText: Text {
-        var text = Text(item.content).font(.body)
-        text += Text("  ")
-        text += Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+        var segments: [Text] = [
+            Text(item.content).font(.body),
+            Text("  "),
+            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                .font(.caption2)
+                .foregroundStyle(.secondary),
+        ]
 
         if !item.isFromSelf, !item.isRead {
-            text += Text("  ")
-            text += Text("Unread")
-                .font(.caption2.bold())
-                .foregroundStyle(.orange)
+            segments.append(Text("  "))
+            segments.append(
+                Text("Unread")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.orange),
+            )
         }
 
         if item.isFromSelf {
-            text += Text("  ")
-            text += Text(item.deliveryStatus.rawValue.capitalized)
-                .font(.caption2.bold())
-                .foregroundStyle(statusColor(item.deliveryStatus))
+            segments.append(Text("  "))
+            segments.append(
+                Text(item.deliveryStatus.rawValue.capitalized)
+                    .font(.caption2.bold())
+                    .foregroundStyle(statusColor(item.deliveryStatus)),
+            )
         }
 
-        return text
+        return segments.dropFirst().reduce(segments[0]) { partialResult, segment in
+            partialResult + segment
+        }
     }
 
     private var metadataText: String {
@@ -943,11 +951,14 @@ private struct ChatBubble: View {
 
     private var prefersInlineFooter: Bool {
         ChatBubbleFooterLayout.prefersInline(
-            content: item.content,
-            metadataText: metadataText,
-            bubbleWidth: bubbleWidth(for: layoutMode),
-            hasMedia: item.mediaList.isEmpty == false,
-            hasError: (item.errorText?.isEmpty == false),
+            in: .init(
+                content: item.content,
+                metadataText: metadataText,
+                bubbleWidth: bubbleWidth(for: layoutMode),
+                hasMedia: item.mediaList.isEmpty == false,
+                hasError: item.errorText?.isEmpty == false,
+                hasRetryAction: item.isFromSelf && item.deliveryStatus == .failed && item.retryable,
+            ),
         )
     }
 
@@ -1063,9 +1074,11 @@ private struct ChatMediaThumbnail: View {
     @State private var candidateIndex = 0
 
     private var candidates: [URL] {
-        [media.thumbnailURL, media.url, media.originalURL]
+        var uniqueURLs = Set<String>()
+        return [media.thumbnailURL, media.url, media.originalURL]
             .compactMap { candidate in
                 guard !candidate.isEmpty else { return nil }
+                guard uniqueURLs.insert(candidate).inserted else { return nil }
                 return URL(string: candidate)
             }
     }

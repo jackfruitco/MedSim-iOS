@@ -94,25 +94,28 @@ enum ChatToolsSection: String, CaseIterable {
 }
 
 enum ChatBubbleFooterLayout {
-    static func prefersInline(
-        content: String,
-        metadataText: String,
-        bubbleWidth: CGFloat,
-        hasMedia: Bool,
-        hasError: Bool,
-    ) -> Bool {
-        guard hasMedia == false, hasError == false else {
+    struct Context {
+        let content: String
+        let metadataText: String
+        let bubbleWidth: CGFloat
+        let hasMedia: Bool
+        let hasError: Bool
+        let hasRetryAction: Bool
+    }
+
+    static func prefersInline(in context: Context) -> Bool {
+        guard context.hasMedia == false, context.hasError == false, context.hasRetryAction == false else {
             return false
         }
 
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedMetadata = metadataText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContent = context.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMetadata = context.metadataText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty, !trimmedMetadata.isEmpty else {
             return false
         }
 
         let horizontalInsets: CGFloat = 24
-        let usableWidth = max(bubbleWidth - horizontalInsets, 160)
+        let usableWidth = max(context.bubbleWidth - horizontalInsets, 160)
         let approximateCharacterWidth: CGFloat = 7.2
         let lineCapacity = max(Int(usableWidth / approximateCharacterWidth), 12)
         let metadataLength = trimmedMetadata.count + 2
@@ -215,10 +218,25 @@ enum ChatFeedbackPresentation {
     ]
 
     private static let hiddenKeys: Set<String> = ["db_pk", "id", "uuid", "created_at", "updated_at"]
+    private static let preferredKeyOrder = [
+        "hotwash_overall_feedback",
+        "overall_feedback",
+        "hotwash_summary",
+        "feedback_summary",
+        "overall_score",
+        "score",
+        "strengths",
+        "hotwash_what_went_well",
+        "areas_for_improvement",
+        "hotwash_improvements",
+        "critical_actions",
+        "missed_actions",
+        "clinical_reasoning",
+        "hotwash_next_steps",
+    ]
 
     static func fields(from row: [String: JSONValue]) -> [ChatFeedbackField] {
-        row.keys
-            .sorted()
+        orderedVisibleKeys(in: row)
             .filter { hiddenKeys.contains($0) == false }
             .compactMap { key in
                 let rendered = ChatToolValueFormatter.render(row[key] ?? .null)
@@ -230,6 +248,15 @@ enum ChatFeedbackPresentation {
                     value: rendered,
                 )
             }
+    }
+
+    private static func orderedVisibleKeys(in row: [String: JSONValue]) -> [String] {
+        let visibleKeys = row.keys.filter { hiddenKeys.contains($0) == false }
+        let preferred = preferredKeyOrder.filter { visibleKeys.contains($0) }
+        let remaining = visibleKeys
+            .filter { preferred.contains($0) == false }
+            .sorted()
+        return preferred + remaining
     }
 }
 
