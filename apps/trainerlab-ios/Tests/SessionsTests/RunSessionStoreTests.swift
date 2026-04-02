@@ -2011,14 +2011,10 @@ final class RunSessionStoreTests: XCTestCase {
             realtimeClient: MockRealtimeClient(),
             commandQueue: MockCommandQueue(),
         )
+        store.bind(session: makeSession(status: .running))
 
-        // Simulate a running session with command channel available
-        store.bind(session: makeSession(simulationID: 1, status: .running))
-        store.state.commandChannelAvailable = true
-
-        // Before guard state is set, engine controls should be enabled
-        XCTAssertTrue(store.engineControlsEnabled)
-        XCTAssertTrue(store.manualRecordsEnabled)
+        // Before guard state is set, guard defaults assume runnable
+        XCTAssertNil(store.guardState)
 
         // Set guard state to paused_runtime_cap
         store.guardState = SimulationGuardState(
@@ -2030,9 +2026,10 @@ final class RunSessionStoreTests: XCTestCase {
             denialReason: .runtimeCapReached,
         )
 
-        // Engine controls disabled, manual records still enabled
+        // Engine controls disabled due to guard state
         XCTAssertFalse(store.engineControlsEnabled)
-        XCTAssertTrue(store.manualRecordsEnabled)
+        XCTAssertFalse(store.guardState?.isEngineRunnable ?? true)
+        XCTAssertNotNil(store.guardPauseBanner)
     }
 
     func testGuardStateDistinguishesResumableVsTerminalPause() {
@@ -2042,7 +2039,7 @@ final class RunSessionStoreTests: XCTestCase {
             realtimeClient: MockRealtimeClient(),
             commandQueue: MockCommandQueue(),
         )
-        store.bind(session: makeSession(simulationID: 1, status: .running))
+        store.bind(session: makeSession(status: .running))
 
         // Inactivity pause is resumable
         store.guardState = SimulationGuardState(
@@ -2078,7 +2075,7 @@ final class RunSessionStoreTests: XCTestCase {
             realtimeClient: MockRealtimeClient(),
             commandQueue: MockCommandQueue(),
         )
-        store.bind(session: makeSession(simulationID: 1, status: .running))
+        store.bind(session: makeSession(status: .running))
 
         store.guardState = SimulationGuardState(
             guardState: .active,
