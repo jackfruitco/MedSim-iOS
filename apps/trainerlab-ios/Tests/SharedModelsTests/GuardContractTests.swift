@@ -27,7 +27,7 @@ final class GuardContractTests: XCTestCase {
         """
         let gs = try decoder.decode(SimulationGuardState.self, from: Data(json.utf8))
         XCTAssertEqual(gs.guardState, .active)
-        XCTAssertEqual(gs.pauseReason, .none)
+        XCTAssertEqual(gs.pauseReason, .noPause)
         XCTAssertTrue(gs.engineRunnable)
         XCTAssertEqual(gs.activeElapsedSeconds, 1500)
         XCTAssertEqual(gs.runtimeCapSeconds, 1800)
@@ -378,21 +378,21 @@ final class GuardContractTests: XCTestCase {
             guardState: .pausedRuntimeCap,
             engineRunnable: false,
             denialReason: .runtimeCapReached,
-            denialMessage: "Custom backend message"
+            denialMessage: "Custom backend message",
         )
         XCTAssertEqual(withBackendMessage.userFacingDenialMessage, "Custom backend message")
 
         let withoutBackendMessage = SimulationGuardState(
             guardState: .pausedRuntimeCap,
             engineRunnable: false,
-            denialReason: .runtimeCapReached
+            denialReason: .runtimeCapReached,
         )
         XCTAssertEqual(withoutBackendMessage.userFacingDenialMessage, "Runtime limit has been exceeded.")
 
         let token = SimulationGuardState(
             guardState: .lockedUsage,
             engineRunnable: false,
-            denialReason: .sessionTokenLimit
+            denialReason: .sessionTokenLimit,
         )
         XCTAssertEqual(token.userFacingDenialMessage, "Session token limit reached.")
 

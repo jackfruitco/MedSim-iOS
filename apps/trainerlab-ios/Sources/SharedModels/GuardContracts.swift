@@ -24,7 +24,7 @@ public enum GuardState: String, Codable, Sendable, CaseIterable {
 // MARK: - Pause Reason
 
 public enum PauseReason: String, Codable, Sendable, CaseIterable {
-    case none = "none"
+    case noPause = "none"
     case runtimeCap = "runtime_cap"
     case inactivity = "inactivity"
     case usageLimit = "usage_limit"
@@ -93,7 +93,7 @@ public struct SimulationGuardState: Codable, Equatable, Sendable {
         wallClockExpiresAt: String? = nil,
         warnings: [GuardWarning] = [],
         denialReason: DenialReason? = nil,
-        denialMessage: String? = nil
+        denialMessage: String? = nil,
     ) {
         self.guardState = guardState
         self.pauseReason = pauseReason
