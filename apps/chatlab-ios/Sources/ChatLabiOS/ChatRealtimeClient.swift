@@ -1,6 +1,5 @@
 import Foundation
 import Networking
-import Persistence
 import SharedModels
 
 public protocol ChatRealtimeClientProtocol: Sendable {
@@ -51,9 +50,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     public let events: AsyncStream<ChatEventEnvelope>
     public let connectionStates: AsyncStream<ChatRealtimeConnectionState>
 
-    private let baseURLProvider: () -> URL
-    private let tokenProvider: AuthTokenProvider
-    private let accountContextProvider: AccountContextProvider
+    private let authLoader: AuthorizedResourceLoading
     private let service: ChatLabServiceProtocol
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -72,16 +69,12 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     private let seenCapacity = 2000
 
     public init(
-        baseURLProvider: @escaping () -> URL,
-        tokenProvider: AuthTokenProvider,
-        accountContextProvider: AccountContextProvider = EmptyAccountContextProvider(),
+        authLoader: AuthorizedResourceLoading,
         service: ChatLabServiceProtocol,
         session: URLSession = .shared,
         staleThresholdSeconds: TimeInterval = 45,
     ) {
-        self.baseURLProvider = baseURLProvider
-        self.tokenProvider = tokenProvider
-        self.accountContextProvider = accountContextProvider
+        self.authLoader = authLoader
         self.service = service
         self.session = session
         self.staleThresholdSeconds = staleThresholdSeconds
@@ -170,10 +163,12 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         for try await item in streamSSE(simulationID: simulationID, cursor: currentCursor) {
             switch item {
             case let .event(event):
+                stateContinuation.yield(.connected)
                 currentCursor = event.eventID
                 cursor = event.eventID
                 emitIfNew(event)
             case .keepAlive:
+                stateContinuation.yield(.connected)
                 continue
             }
         }
@@ -185,11 +180,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             let freshness = ChatSSEFreshnessTracker()
             let task = Task {
                 do {
-                    let request = try await makeSSERequest(simulationID: simulationID, cursor: cursor)
-                    let (bytes, response) = try await session.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-                        throw URLError(.badServerResponse)
-                    }
+                    let (bytes, _) = try await openSSEBytes(simulationID: simulationID, cursor: cursor)
 
                     var dataLines: [String] = []
                     var currentEventType: String?
@@ -266,18 +257,35 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         }
     }
 
-    private func makeSSERequest(simulationID: Int, cursor: String?) async throws -> URLRequest {
-        guard let tokens = tokenProvider.loadTokens() else {
-            throw URLError(.userAuthenticationRequired)
+    private func openSSEBytes(
+        simulationID: Int,
+        cursor: String?,
+    ) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
+        let route = ChatLabAPI.eventStream(simulationID: simulationID, cursor: cursor)
+
+        func open() async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
+            let request = try await authLoader.makeEventStreamRequest(for: route)
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            return (bytes, http)
         }
 
-        let route = ChatLabAPI.eventStream(simulationID: simulationID, cursor: cursor)
-        let accountUUID = await accountContextProvider.selectedAccountUUID()
-        return try route.makeURLRequest(
-            baseURL: baseURLProvider(),
-            accessToken: tokens.accessToken,
-            accountUUID: accountUUID,
-        )
+        let initial = try await open()
+        if initial.1.statusCode == 401 {
+            try await authLoader.refreshAccessToken()
+            let refreshed = try await open()
+            guard (200 ..< 300).contains(refreshed.1.statusCode) else {
+                throw URLError(.userAuthenticationRequired)
+            }
+            return refreshed
+        }
+
+        guard (200 ..< 300).contains(initial.1.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return initial
     }
 
     private func emitIfNew(_ event: ChatEventEnvelope) {

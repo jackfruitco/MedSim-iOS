@@ -10,6 +10,7 @@ import SwiftUI
 public struct ChatRunView: View {
     @ObservedObject private var store: ChatRunStore
     @ObservedObject private var toolsStore: ChatToolsStore
+    private let mediaLoader: ChatMediaLoading
     private let onBack: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -24,10 +25,12 @@ public struct ChatRunView: View {
     public init(
         store: ChatRunStore,
         toolsStore: ChatToolsStore,
+        mediaLoader: ChatMediaLoading,
         onBack: @escaping () -> Void,
     ) {
         self.store = store
         self.toolsStore = toolsStore
+        self.mediaLoader = mediaLoader
         self.onBack = onBack
     }
 
@@ -77,6 +80,7 @@ public struct ChatRunView: View {
             Task { await toolsStore.refreshTools() }
         }
         .modifier(ChatInlineNavigationTitleModifier())
+        .modifier(ChatHideRunNavigationBarModifier())
         .modifier(ChatKeyboardStateModifier(isKeyboardPresented: $isKeyboardPresented))
     }
 
@@ -93,8 +97,8 @@ public struct ChatRunView: View {
                         .background(Color.secondary.opacity(0.06))
                 } else {
                     VStack(spacing: chromeMode == .keyboardCollapsed ? 6 : 8) {
+                        runHeader(layoutMode: .padWorkspace)
                         if chromeMode == .standard {
-                            padActionBar
                             regularFailureBanners
                         }
                         conversationTabs(layoutMode: .padWorkspace)
@@ -110,12 +114,6 @@ public struct ChatRunView: View {
                     .background(Color.secondary.opacity(0.06))
                 }
             }
-            .navigationTitle(store.simulation.patientDisplayName)
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Back", action: onBack)
-                }
-            }
         }
     }
 
@@ -128,8 +126,8 @@ public struct ChatRunView: View {
                     .padding(.vertical, 24)
             } else {
                 VStack(spacing: 0) {
+                    runHeader(layoutMode: layoutMode)
                     if chromeMode == .standard {
-                        compactStatusStrip(layoutMode: layoutMode)
                         compactFailureBanners
                     }
                     conversationTabs(layoutMode: layoutMode)
@@ -150,48 +148,6 @@ public struct ChatRunView: View {
                     .padding(.bottom, 8)
                     .background(.ultraThinMaterial)
                 }
-            }
-        }
-        .navigationTitle(store.simulation.patientDisplayName)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button("Back", action: onBack)
-            }
-            ToolbarItem(placement: .automatic) {
-                Button("Tools") {
-                    showToolsSheet = true
-                }
-            }
-            ToolbarItem(placement: .automatic) {
-                if store.simulation.status == .inProgress {
-                    Menu {
-                        Button(role: .destructive) {
-                            store.endSimulation()
-                        } label: {
-                            Label("End Simulation", systemImage: "stop.circle")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
-        }
-    }
-
-    private var padActionBar: some View {
-        HStack(spacing: 12) {
-            if store.activeConversationLocked {
-                statusChip("Read Only", systemImage: "lock.fill", tint: .secondary)
-            }
-
-            Spacer()
-
-            if store.simulation.status == .inProgress {
-                Button("End Simulation") {
-                    store.endSimulation()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
             }
         }
     }
@@ -299,18 +255,6 @@ public struct ChatRunView: View {
         .padding(.top, 8)
     }
 
-    private func compactStatusStrip(layoutMode: ChatRunLayoutMode) -> some View {
-        HStack(spacing: 8) {
-            if store.activeConversationLocked {
-                statusChip("Read Only", systemImage: "lock.fill", tint: .secondary)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, horizontalInset(for: layoutMode))
-        .padding(.top, 4)
-    }
-
     private func statusChip(_ text: String, systemImage: String, tint: Color) -> some View {
         Label(text, systemImage: systemImage)
             .font(.caption.weight(.semibold))
@@ -319,6 +263,154 @@ public struct ChatRunView: View {
             .padding(.vertical, 6)
             .background(tint.opacity(0.12))
             .clipShape(Capsule())
+    }
+
+    private func runHeader(layoutMode: ChatRunLayoutMode) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                backButton
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                patientIdentityHeader
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                headerActions(layoutMode: layoutMode)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            HStack(spacing: 8) {
+                statusChip(
+                    transportStatusTitle,
+                    systemImage: transportStatusSymbol,
+                    tint: transportStatusTint,
+                )
+
+                if store.activeConversationLocked {
+                    statusChip("Read Only", systemImage: "lock.fill", tint: .secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, horizontalInset(for: layoutMode))
+        .padding(.top, layoutMode == .padWorkspace ? 2 : 8)
+        .padding(.bottom, 6)
+        .background(layoutMode == .padWorkspace ? chatSystemBackgroundColor() : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: layoutMode == .padWorkspace ? 18 : 0, style: .continuous))
+    }
+
+    private var backButton: some View {
+        Button(action: onBack) {
+            Label("Back", systemImage: "chevron.left")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private var patientIdentityHeader: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.14))
+                Text(store.simulation.patientInitials)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.blue)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(spacing: 2) {
+                Text(store.simulation.patientDisplayName)
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(1)
+                Text("Chat Simulation")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func headerActions(layoutMode: ChatRunLayoutMode) -> some View {
+        HStack(spacing: 8) {
+            if layoutMode != .padWorkspace {
+                Button {
+                    showToolsSheet = true
+                }
+                label: {
+                    if layoutMode == .compactMessenger {
+                        Image(systemName: "slider.horizontal.3")
+                    } else {
+                        Text("Tools")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Tools")
+            }
+
+            if store.simulation.status == .inProgress {
+                Button("End Simulation") {
+                    store.endSimulation()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            }
+        }
+    }
+
+    private var transportStatusTitle: String {
+        switch store.transportState {
+        case .connected:
+            if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
+               Date().timeIntervalSince(lastRealtimeSignalAt) > 12
+            {
+                return "Checking"
+            }
+            return "Live"
+        case .catchingUp:
+            return "Catching Up"
+        case .reconnecting:
+            return "Recovering"
+        case .connecting:
+            return "Connecting"
+        case .disconnected:
+            return "Offline"
+        }
+    }
+
+    private var transportStatusSymbol: String {
+        switch store.transportState {
+        case .connected:
+            return "dot.radiowaves.left.and.right"
+        case .catchingUp:
+            return "arrow.triangle.2.circlepath"
+        case .reconnecting:
+            return "bolt.horizontal.circle"
+        case .connecting:
+            return "hourglass"
+        case .disconnected:
+            return "wifi.slash"
+        }
+    }
+
+    private var transportStatusTint: Color {
+        switch store.transportState {
+        case .connected:
+            if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
+               Date().timeIntervalSince(lastRealtimeSignalAt) > 12
+            {
+                return .orange
+            }
+            return .green
+        case .catchingUp:
+            return .blue
+        case .reconnecting, .connecting:
+            return .orange
+        case .disconnected:
+            return .secondary
+        }
     }
 
     private func conversationDivider(horizontalPadding: CGFloat) -> some View {
@@ -341,11 +433,12 @@ public struct ChatRunView: View {
                                 Text("\(unread)")
                                     .font(.caption2.bold())
                                     .foregroundStyle(.white)
-                                    .padding(5)
+                                    .frame(minWidth: 20, minHeight: 20)
                                     .background(Color.red)
                                     .clipShape(Circle())
                             }
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                         .font(tabFont(for: layoutMode).weight(store.activeConversationID == conversation.id ? .semibold : .regular))
                         .padding(.horizontal, layoutMode == .padWorkspace ? 14 : 10)
                         .padding(.vertical, layoutMode == .padWorkspace ? 8 : 6)
@@ -359,7 +452,8 @@ public struct ChatRunView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
+            .padding(.horizontal, horizontalInset(for: layoutMode))
+            .padding(.vertical, 2)
         }
     }
 
@@ -386,7 +480,7 @@ public struct ChatRunView: View {
                         Spacer(minLength: 0)
                         LazyVStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 12 : 8) {
                             ForEach(store.activeMessages) { item in
-                                ChatBubble(item: item, layoutMode: layoutMode) {
+                                ChatBubble(item: item, layoutMode: layoutMode, mediaLoader: mediaLoader) {
                                     store.retry(item)
                                 }
                             }
@@ -680,26 +774,31 @@ public struct ChatRunView: View {
                 Text("\(toolsStore.stagedOrders.count) order\(toolsStore.stagedOrders.count == 1 ? "" : "s") ready")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
 
-            Button {
-                Task { await toolsStore.signOrders() }
-            } label: {
-                if toolsStore.isSubmittingOrders {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Text("Submit Orders")
-                        .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    Task { await toolsStore.signOrders() }
+                } label: {
+                    if toolsStore.isSubmittingOrders {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Submit Orders")
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(toolsStore.stagedOrders.isEmpty || toolsStore.isSubmittingOrders)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(toolsStore.stagedOrders.isEmpty || toolsStore.isSubmittingOrders)
+            .padding(compact ? 10 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(compact ? Color.secondary.opacity(0.05) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .padding(compact ? 10 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(compact ? Color.secondary.opacity(0.05) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func toolSection(
@@ -841,9 +940,22 @@ private struct ChatInlineNavigationTitleModifier: ViewModifier {
     }
 }
 
+private struct ChatHideRunNavigationBarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            content
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationBarBackButtonHidden(true)
+        #else
+            content
+        #endif
+    }
+}
+
 private struct ChatBubble: View {
     let item: ChatMessageItem
     let layoutMode: ChatRunLayoutMode
+    let mediaLoader: ChatMediaLoading
     let retryAction: () -> Void
 
     var body: some View {
@@ -966,7 +1078,7 @@ private struct ChatBubble: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(item.mediaList.prefix(3)) { media in
                 VStack(alignment: .leading, spacing: 4) {
-                    ChatMediaThumbnail(media: media)
+                    ChatMediaThumbnail(media: media, loader: mediaLoader)
                         .frame(maxWidth: .infinity)
                         .frame(height: 140)
 
@@ -1023,9 +1135,13 @@ private struct ChatActivityRows: View {
 
     var body: some View {
         if items.isEmpty {
-            Text("Lifecycle, feedback, and patient refresh updates will show up here.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Activity will show recovery and simulation updates here.")
+                    .font(.footnote.weight(.semibold))
+                Text("Manual refreshes, reconnect recovery, feedback generation changes, and patient result updates appear in this feed.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(items.prefix(12)) { item in
@@ -1070,52 +1186,32 @@ private func chatSystemBackgroundColor() -> Color {
 
 private struct ChatMediaThumbnail: View {
     let media: ChatMessageMedia
+    let loader: ChatMediaLoading
 
-    @State private var candidateIndex = 0
+    @StateObject private var model: ChatMediaThumbnailModel
 
-    private var candidates: [URL] {
-        var uniqueURLs = Set<String>()
-        return [media.thumbnailURL, media.url, media.originalURL]
-            .compactMap { candidate in
-                guard !candidate.isEmpty else { return nil }
-                guard uniqueURLs.insert(candidate).inserted else { return nil }
-                return URL(string: candidate)
-            }
+    init(media: ChatMessageMedia, loader: ChatMediaLoading) {
+        self.media = media
+        self.loader = loader
+        _model = StateObject(wrappedValue: ChatMediaThumbnailModel(media: media, loader: loader))
     }
 
     var body: some View {
         Group {
-            if let activeURL = candidates[safe: candidateIndex] {
-                AsyncImage(url: activeURL) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        mediaFailureOrRetryView
-                    case .empty:
-                        loadingView
-                    @unknown default:
-                        mediaFailureView
-                    }
-                }
-            } else {
+            switch model.state {
+            case let .loaded(image):
+                image
+                    .resizable()
+                    .scaledToFill()
+            case .idle, .loading:
+                loadingView
+            case .failed:
                 mediaFailureView
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var mediaFailureOrRetryView: some View {
-        if candidateIndex < candidates.count - 1 {
-            Color.clear
-                .onAppear {
-                    candidateIndex += 1
-                }
-        } else {
-            mediaFailureView
+        .task {
+            model.loadIfNeeded()
         }
     }
 

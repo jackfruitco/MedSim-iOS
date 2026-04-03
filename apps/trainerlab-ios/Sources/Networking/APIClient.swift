@@ -757,7 +757,14 @@ public protocol APIClientProtocol: Sendable {
     func baseURL() async -> URL
 }
 
-public final class APIClient: APIClientProtocol, @unchecked Sendable {
+public protocol AuthorizedResourceLoading: Sendable {
+    func baseURL() async -> URL
+    func makeEventStreamRequest(for route: EventStreamRoute) async throws -> URLRequest
+    func loadData(from url: URL, accept: String?, requiresAccountContext: Bool) async throws -> Data
+    func refreshAccessToken() async throws
+}
+
+public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unchecked Sendable {
     private let baseURLProvider: () -> URL
     private let tokenProvider: AuthTokenProvider
     private let accountContextProvider: AccountContextProvider
@@ -822,6 +829,32 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         try await execute(endpoint: endpoint, allowRefreshRetry: endpoint.requiresAuth)
     }
 
+    public func makeEventStreamRequest(for route: EventStreamRoute) async throws -> URLRequest {
+        guard let tokens = tokenProvider.loadTokens() else {
+            throw APIClientError.unauthorized
+        }
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
+        return try route.makeURLRequest(
+            baseURL: await baseURL(),
+            accessToken: tokens.accessToken,
+            accountUUID: accountUUID,
+        )
+    }
+
+    public func loadData(from url: URL, accept: String? = nil, requiresAccountContext: Bool = true) async throws -> Data {
+        try await executeAuthorizedRequest(
+            url: url,
+            method: .get,
+            headers: accept.map { ["Accept": $0] } ?? [:],
+            requiresAccountContext: requiresAccountContext,
+            allowRefreshRetry: true,
+        )
+    }
+
+    public func refreshAccessToken() async throws {
+        _ = try await refreshAccessTokenSingleFlight()
+    }
+
     private func execute(endpoint: Endpoint, allowRefreshRetry: Bool, retryCount: Int = 0) async throws -> Data {
         let request: URLRequest
         do {
@@ -868,6 +901,41 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         }
 
         logger.debug("HTTP \(http.statusCode) \(endpoint.method.rawValue) \(endpoint.path)")
+        return data
+    }
+
+    private func executeAuthorizedRequest(
+        url: URL,
+        method: HTTPMethod,
+        headers: [String: String],
+        requiresAccountContext: Bool,
+        allowRefreshRetry: Bool,
+    ) async throws -> Data {
+        let request = try await buildAuthorizedRequest(
+            url: url,
+            method: method,
+            headers: headers,
+            requiresAccountContext: requiresAccountContext,
+        )
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIClientError.invalidResponse
+        }
+
+        if http.statusCode == 401, allowRefreshRetry {
+            _ = try await refreshAccessTokenSingleFlight()
+            return try await executeAuthorizedRequest(
+                url: url,
+                method: method,
+                headers: headers,
+                requiresAccountContext: requiresAccountContext,
+                allowRefreshRetry: false,
+            )
+        }
+
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw parseHTTPError(data: data, response: http)
+        }
         return data
     }
 
@@ -923,6 +991,34 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
+        return request
+    }
+
+    private func buildAuthorizedRequest(
+        url: URL,
+        method: HTTPMethod,
+        headers: [String: String],
+        requiresAccountContext: Bool,
+    ) async throws -> URLRequest {
+        guard let tokens = tokenProvider.loadTokens() else {
+            throw APIClientError.unauthorized
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method.rawValue
+        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
+        request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
+
+        if requiresAccountContext,
+           let accountUUID = await accountContextProvider.selectedAccountUUID(),
+           !accountUUID.isEmpty
+        {
+            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
+        }
+
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         return request
     }
 

@@ -194,6 +194,8 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
 
     private let eventContinuation: AsyncStream<ChatEventEnvelope>.Continuation
     private let stateContinuation: AsyncStream<ChatRealtimeConnectionState>.Continuation
+    private(set) var connectCalls = 0
+    private(set) var disconnectCalls = 0
 
     init() {
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
@@ -211,10 +213,12 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
     }
 
     func connect(simulationID _: Int, cursor _: String?) async {
+        connectCalls += 1
         stateContinuation.yield(.connected)
     }
 
     func disconnect() {
+        disconnectCalls += 1
         stateContinuation.yield(.disconnected)
     }
 
@@ -222,6 +226,10 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
 
     func pushEvent(_ event: ChatEventEnvelope) {
         eventContinuation.yield(event)
+    }
+
+    func pushState(_ state: ChatRealtimeConnectionState) {
+        stateContinuation.yield(state)
     }
 }
 
@@ -845,6 +853,62 @@ final class ChatRunStoreTests: XCTestCase {
             return refreshed.deliveryStatus == .failed &&
                 refreshed.errorText == "Delivery timed out." &&
                 refreshed.mediaList == [refreshedMedia]
+        }
+    }
+
+    func testDisconnectedForegroundRefreshForcesReconnectAndLogsActivity() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        let initialConnects = realtime.connectCalls
+
+        realtime.pushState(.disconnected)
+        try await waitUntil { store.transportState == .disconnected }
+        store.refreshAfterForegroundOrReconnect()
+
+        try await waitUntil {
+            realtime.connectCalls > initialConnects &&
+                store.activityItems.contains(where: { $0.eventType == "chat.refresh.foreground_recovery" })
+        }
+    }
+
+    func testRealtimeEventUpdatesHealthMetadata() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(
+            makeEvent(
+                type: SimulationEventType.feedbackGenerationFailed,
+                payload: [
+                    "error_text": .string("Feedback timed out"),
+                    "retryable": .bool(true),
+                ],
+            ),
+        )
+
+        try await waitUntil {
+            store.lastEventCursor != nil && store.lastRealtimeSignalAt != nil
         }
     }
 

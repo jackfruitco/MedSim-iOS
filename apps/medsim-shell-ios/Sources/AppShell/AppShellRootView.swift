@@ -36,6 +36,7 @@ public struct AppShellRootView: View {
                             makeToolsStore: { simulationID in
                                 model.makeChatToolsStore(simulationID: simulationID)
                             },
+                            mediaLoader: model.makeChatMediaLoader(),
                             onExit: {
                                 self.selectedApp = nil
                             },

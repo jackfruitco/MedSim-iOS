@@ -13,6 +13,13 @@ private struct AwaitingReplyState: Equatable {
     var isStale: Bool
 }
 
+private enum RefreshTrigger {
+    case foregroundHealthCheck
+    case manualStatusRefresh
+    case manualReconnect
+    case automaticReconnect
+}
+
 public struct ChatMessageItem: Identifiable, Sendable, Equatable {
     public var id: String
     public var serverID: Int?
@@ -52,6 +59,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var isOlderLoading = false
     @Published public private(set) var socketDisconnected = false
     @Published public private(set) var transportState: ChatRealtimeConnectionState = .disconnected
+    @Published public private(set) var lastRealtimeSignalAt: Date?
+    @Published public private(set) var lastEventCursor: String?
 
     @Published public private(set) var simulationFailureText: String?
     @Published public private(set) var simulationRetryable = true
@@ -75,12 +84,15 @@ public final class ChatRunStore: ObservableObject {
     private var olderCursorByConversation: [Int: String?] = [:]
     private var seenMessageIDs = Set<Int>()
     private var pendingLocalByKey: [String: (conversationID: Int, content: String)] = [:]
+    private var pendingConversationRefreshIDs = Set<Int>()
     private let localUserMarker = "local-user"
     private var awaitingReplyTasks: [Int: Task<Void, Never>] = [:]
     private var lastConnectionState: ChatRealtimeConnectionState = .disconnected
     private let awaitingReplyTimeoutNanoseconds: UInt64 = 20_000_000_000
     private let maxActivityItems = 30
     private var markReadInFlight = Set<Int>()
+    private let foregroundRecoveryGraceSeconds: TimeInterval = 12
+    private var pendingTransportRecovery = false
 
     public init(
         service: ChatLabServiceProtocol,
@@ -160,6 +172,8 @@ public final class ChatRunStore: ObservableObject {
             guard let self else { return }
             for await event in realtimeClient.events {
                 await MainActor.run {
+                    self.lastRealtimeSignalAt = Date()
+                    self.lastEventCursor = event.eventID
                     self.handleEvent(event)
                 }
             }
@@ -173,9 +187,7 @@ public final class ChatRunStore: ObservableObject {
                     self.lastConnectionState = state
                     self.transportState = state
                     self.socketDisconnected = state != .connected
-                    if state == .connected, previousState != .connected {
-                        self.refreshAfterForegroundOrReconnect()
-                    }
+                    self.handleTransportState(state, previousState: previousState)
                 }
             }
         }
@@ -230,7 +242,7 @@ public final class ChatRunStore: ObservableObject {
         guard conversationID != activeConversationID else { return }
         activeConversationID = conversationID
         unreadByConversation[conversationID] = 0
-        if messagesByConversation[conversationID] == nil {
+        if messagesByConversation[conversationID] == nil || pendingConversationRefreshIDs.contains(conversationID) {
             Task { await self.loadInitialMessages(conversationID: conversationID) }
         } else {
             markConversationRead(conversationID: conversationID)
@@ -273,6 +285,7 @@ public final class ChatRunStore: ObservableObject {
             for msg in page.items {
                 seenMessageIDs.insert(msg.id)
             }
+            pendingConversationRefreshIDs.remove(conversationID)
             reconcileAwaitingReplyAfterMessageLoad(conversationID: conversationID)
             markConversationRead(conversationID: conversationID)
         } catch {
@@ -519,19 +532,28 @@ public final class ChatRunStore: ObservableObject {
 
     public func refreshAfterForegroundOrReconnect() {
         Task {
-            await refreshServerState(reconnectRealtime: false)
+            await refreshServerState(
+                reconnectRealtime: shouldForceRealtimeRecovery(),
+                trigger: .foregroundHealthCheck,
+            )
         }
     }
 
     public func refreshAwaitingReplyStatus() {
         Task {
-            await refreshServerState(reconnectRealtime: false)
+            await refreshServerState(
+                reconnectRealtime: false,
+                trigger: .manualStatusRefresh,
+            )
         }
     }
 
     public func reconnectRealtimeAndRefresh() {
         Task {
-            await refreshServerState(reconnectRealtime: true)
+            await refreshServerState(
+                reconnectRealtime: true,
+                trigger: .manualReconnect,
+            )
         }
     }
 
@@ -779,6 +801,74 @@ public final class ChatRunStore: ObservableObject {
         }
     }
 
+    private func addLocalActivity(eventType: String, title: String, message: String) {
+        upsertActivity(
+            ChatActivityItem(
+                id: "local-\(UUID().uuidString.lowercased())",
+                eventType: eventType,
+                title: title,
+                message: message,
+                timestamp: Date(),
+            ),
+        )
+    }
+
+    private func handleTransportState(
+        _ state: ChatRealtimeConnectionState,
+        previousState: ChatRealtimeConnectionState,
+    ) {
+        switch state {
+        case .connected:
+            lastRealtimeSignalAt = Date()
+            socketDisconnected = false
+            if pendingTransportRecovery, previousState != .connected {
+                addLocalActivity(
+                    eventType: "chat.realtime.recovered",
+                    title: "Realtime Recovered",
+                    message: "Live updates are healthy again.",
+                )
+                pendingTransportRecovery = false
+                if previousState == .catchingUp {
+                    addLocalActivity(
+                        eventType: "chat.realtime.catchup.complete",
+                        title: "Catch-up Complete",
+                        message: "Missed updates were reconciled after reconnecting.",
+                    )
+                }
+            } else if previousState != .connected && previousState != .connecting {
+                refreshAfterForegroundOrReconnect()
+            }
+
+        case .reconnecting:
+            socketDisconnected = true
+            if previousState != state {
+                pendingTransportRecovery = true
+                addLocalActivity(
+                    eventType: "chat.realtime.reconnecting",
+                    title: "Realtime Recovering",
+                    message: "Connection dropped. Reconnecting automatically.",
+                )
+            }
+
+        case .catchingUp:
+            socketDisconnected = true
+            pendingTransportRecovery = true
+            if previousState != .catchingUp {
+                addLocalActivity(
+                    eventType: "chat.realtime.catching_up",
+                    title: "Syncing Missed Updates",
+                    message: "Replaying missed events before live updates resume.",
+                )
+            }
+
+        case .connecting:
+            socketDisconnected = true
+
+        case .disconnected:
+            socketDisconnected = true
+        }
+    }
+
     private func reconcilePending(localID: String, with message: ChatMessage) {
         guard let pending = pendingLocalByKey[localID] else { return }
         pendingLocalByKey.removeValue(forKey: localID)
@@ -919,31 +1009,72 @@ public final class ChatRunStore: ObservableObject {
         }
     }
 
-    private func refreshServerState(reconnectRealtime: Bool) async {
+    private func refreshServerState(reconnectRealtime: Bool, trigger: RefreshTrigger) async {
         do {
             let updated = try await service.getSimulation(simulationID: simulation.id)
             applySimulation(updated)
 
-            var conversationIDs = Set(awaitingReplyByConversation.keys)
             if let activeConversationID {
-                conversationIDs.insert(activeConversationID)
-            }
-            for conversationID in conversationIDs {
-                await loadInitialMessages(conversationID: conversationID)
-                if var awaiting = awaitingReplyByConversation[conversationID], awaiting.isStale {
+                await loadInitialMessages(conversationID: activeConversationID)
+                if var awaiting = awaitingReplyByConversation[activeConversationID], awaiting.isStale {
                     awaiting.isStale = false
-                    awaitingReplyByConversation[conversationID] = awaiting
-                    armAwaitingReplyTimeout(for: conversationID)
+                    awaitingReplyByConversation[activeConversationID] = awaiting
+                    armAwaitingReplyTimeout(for: activeConversationID)
                 }
+            }
+
+            let inactiveUnreadConversationIDs = unreadByConversation
+                .filter { $0.key != activeConversationID && $0.value > 0 }
+                .map(\.key)
+            pendingConversationRefreshIDs.formUnion(inactiveUnreadConversationIDs)
+
+            await refreshGuardState()
+
+            switch trigger {
+            case .foregroundHealthCheck:
+                if reconnectRealtime {
+                    addLocalActivity(
+                        eventType: "chat.refresh.foreground_recovery",
+                        title: "Foreground Health Check",
+                        message: "Connection was stale, so ChatLab refreshed and reconnected automatically.",
+                    )
+                }
+            case .manualStatusRefresh:
+                addLocalActivity(
+                    eventType: "chat.refresh.manual",
+                    title: "Status Refreshed",
+                    message: "Latest message delivery and simulation state were reloaded.",
+                )
+            case .manualReconnect:
+                addLocalActivity(
+                    eventType: "chat.refresh.reconnect",
+                    title: "Reconnect Requested",
+                    message: "Forcing a fresh realtime connection and message refresh.",
+                )
+            case .automaticReconnect:
+                break
             }
 
             if reconnectRealtime {
                 realtimeClient.disconnect()
                 await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
+                if trigger == .foregroundHealthCheck {
+                    pendingTransportRecovery = true
+                }
             }
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
+    }
+
+    private func shouldForceRealtimeRecovery() -> Bool {
+        guard transportState == .connected else {
+            return true
+        }
+        guard let lastRealtimeSignalAt else {
+            return true
+        }
+        return Date().timeIntervalSince(lastRealtimeSignalAt) > foregroundRecoveryGraceSeconds
     }
 
     private func reconcileAwaitingReplyAfterMessageLoad(conversationID: Int) {
