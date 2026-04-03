@@ -545,59 +545,66 @@ final class TrainerLabContractTests: XCTestCase {
           "simulation_id": 420,
           "session_id": 420,
           "status": "running",
-          "state_revision": 12,
-          "active_elapsed_seconds": 90,
-          "tick_interval_seconds": 30,
-          "next_tick_at": "2026-03-12T12:01:30Z",
-          "scenario_brief": null,
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "vitals": [],
-            "annotations": [],
+            "pulses": [],
             "assessment_findings": [],
             "diagnostic_results": [],
             "resources": [],
             "disposition": null,
-            "recommended_interventions": []
+            "recommended_interventions": [],
+            "interventions": [],
+            "patient_status": {},
+            "scenario_brief": null
           },
-          "ai_plan": {
-            "summary": "Monitor airway",
-            "rationale": "",
-            "trigger": "",
-            "eta_seconds": null,
-            "confidence": 0.5,
-            "upcoming_changes": [],
-            "monitoring_focus": []
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 12,
+            "active_elapsed_seconds": 90,
+            "tick_interval_seconds": 30,
+            "next_tick_at": "2026-03-12T12:01:30Z",
+            "ai_plan": {
+              "summary": "Monitor airway",
+              "rationale": "",
+              "trigger": "",
+              "eta_seconds": null,
+              "confidence": 0.5,
+              "upcoming_changes": [],
+              "monitoring_focus": []
+            },
+            "ai_rationale_notes": ["watching trend"],
+            "pending_runtime_reasons": [{"kind": "trend"}],
+            "currently_processing_reasons": [{"kind": "tick"}],
+            "last_runtime_error": "none",
+            "last_ai_tick_at": "2026-03-12T12:01:00Z"
           },
-          "ai_rationale_notes": ["watching trend"],
-          "pending_runtime_reasons": [{"kind": "trend"}],
-          "pending_reasons": [{"kind": "manual"}],
-          "currently_processing_reasons": [{"kind": "tick"}],
-          "last_runtime_error": "none",
-          "last_ai_tick_at": "2026-03-12T12:01:00Z"
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": { "schema_version": "v2" }
         }
         """
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let state = try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.tickIntervalSeconds, 30)
-        XCTAssertEqual(state.aiPlan?.summary, "Monitor airway")
-        XCTAssertEqual(state.pendingRuntimeReasons.count, 1)
-        XCTAssertEqual(state.currentlyProcessingReasons.count, 1)
-        XCTAssertEqual(state.lastRuntimeError, "none")
-        XCTAssertNotNil(state.nextTickAt)
-        XCTAssertNotNil(state.lastAITickAt)
+        XCTAssertEqual(state.runtimeSnapshot.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Monitor airway")
+        XCTAssertEqual(state.runtimeSnapshot.pendingRuntimeReasons.count, 1)
+        XCTAssertEqual(state.runtimeSnapshot.currentlyProcessingReasons.count, 1)
+        XCTAssertEqual(state.runtimeSnapshot.lastRuntimeError, "none")
+        XCTAssertNotNil(state.runtimeSnapshot.nextTickAt)
+        XCTAssertNotNil(state.runtimeSnapshot.lastAITickAt)
     }
 
     func testTrainerRuntimeStateDecodesVitalWithoutLockValue() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "recommended_interventions": [],
@@ -615,22 +622,26 @@ final class TrainerLabContractTests: XCTestCase {
             ],
             "pulses": [],
             "patient_status": {}
-          }
+          },
+          "runtime_snapshot": { "status": "running", "state_revision": 1, "active_elapsed_seconds": 0 },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {}
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.currentSnapshot.vitals.first?.vitalType, "heart_rate")
-        XCTAssertNil(state.currentSnapshot.vitals.first?.lockValue)
+        XCTAssertEqual(state.scenarioSnapshot.vitals.first?.vitalType, "heart_rate")
+        XCTAssertNil(state.scenarioSnapshot.vitals.first?.lockValue)
     }
 
     func testTrainerRuntimeStateDecodesSparseAIPlan() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "recommended_interventions": [],
@@ -643,29 +654,33 @@ final class TrainerLabContractTests: XCTestCase {
             "pulses": [],
             "patient_status": {}
           },
-          "ai_plan": {
-            "summary": "Watch SpO2"
-          }
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0,
+            "ai_plan": { "summary": "Watch SpO2" }
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {}
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.aiPlan?.summary, "Watch SpO2")
-        XCTAssertEqual(state.aiPlan?.rationale, "")
-        XCTAssertEqual(state.aiPlan?.monitoringFocus, [])
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Watch SpO2")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.rationale, "")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.monitoringFocus, [])
     }
 
-    func testTrainerRuntimeStateDecodesAliasedHydrationKeysWithoutWipingPresence() throws {
+    func testTrainerRuntimeStateDecodesSectionedPresence() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "scenario_brief": {
-            "read_aloud_brief": "Patient found after blast exposure."
-          },
-          "current_snapshot": {
-            "injuries": [
+          "scenario_snapshot": {
+            "scenario_brief": { "read_aloud_brief": "Patient found after blast exposure." },
+            "causes": [
               {
                 "cause_id": 11,
                 "kind": "injury",
@@ -674,7 +689,7 @@ final class TrainerLabContractTests: XCTestCase {
                 "injury_location": "LEFT_ARM"
               }
             ],
-            "conditions": [
+            "problems": [
               {
                 "problem_id": 21,
                 "title": "Hemorrhagic Shock",
@@ -690,28 +705,33 @@ final class TrainerLabContractTests: XCTestCase {
               "narrative": "Bleeding remains uncontrolled."
             }
           },
-          "ai_instructor": {
-            "summary": "Control hemorrhage first"
-          }
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0,
+            "ai_plan": { "summary": "Control hemorrhage first" }
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {}
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.scenarioBrief?.readAloudBrief, "Patient found after blast exposure.")
-        XCTAssertEqual(state.currentSnapshot.causes.first?.causeID, 11)
-        XCTAssertEqual(state.currentSnapshot.problems.first?.problemID, 21)
-        XCTAssertEqual(state.currentSnapshot.patientStatus.narrative, "Bleeding remains uncontrolled.")
-        XCTAssertEqual(state.aiPlan?.summary, "Control hemorrhage first")
-        XCTAssertEqual(state.presence.scenarioBrief, true)
-        XCTAssertEqual(state.presence.aiPlan, true)
-        XCTAssertEqual(state.presence.aiRationaleNotes, false)
-        XCTAssertEqual(state.currentSnapshot.presence.causes, true)
-        XCTAssertEqual(state.currentSnapshot.presence.problems, true)
-        XCTAssertEqual(state.currentSnapshot.presence.interventions, true)
-        XCTAssertEqual(state.currentSnapshot.presence.vitals, true)
-        XCTAssertEqual(state.currentSnapshot.presence.patientStatus, true)
-        XCTAssertEqual(state.currentSnapshot.presence.recommendedInterventions, false)
+        XCTAssertEqual(state.scenarioSnapshot.scenarioBrief?.readAloudBrief, "Patient found after blast exposure.")
+        XCTAssertEqual(state.scenarioSnapshot.causes.first?.causeID, 11)
+        XCTAssertEqual(state.scenarioSnapshot.problems.first?.problemID, 21)
+        XCTAssertEqual(state.scenarioSnapshot.patientStatus.narrative, "Bleeding remains uncontrolled.")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Control hemorrhage first")
+        XCTAssertEqual(state.scenarioSnapshot.presence.scenarioBrief, true)
+        XCTAssertEqual(state.runtimeSnapshot.presence.aiPlan, true)
+        XCTAssertEqual(state.runtimeSnapshot.presence.aiRationaleNotes, false)
+        XCTAssertEqual(state.scenarioSnapshot.presence.causes, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.problems, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.interventions, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.vitals, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.patientStatus, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.recommendedInterventions, false)
     }
 
     func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {

@@ -1254,16 +1254,9 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
         case metadata
     }
 
-    private enum LegacyCodingKeys: String, CodingKey {
-        case diagnosticID = "diagnostic_id"
-    }
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let legacyContainer = try decoder.container(keyedBy: LegacyCodingKeys.self)
-        let primaryResultID = try container.decodeIfPresent(Int.self, forKey: .resultID)
-        let legacyResultID = try legacyContainer.decodeIfPresent(Int.self, forKey: .diagnosticID)
-        resultID = primaryResultID ?? legacyResultID
+        resultID = try container.decodeIfPresent(Int.self, forKey: .resultID)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         code = try container.decodeIfPresent(String.self, forKey: .code)
         title = try container.decodeIfPresent(String.self, forKey: .title)
@@ -1397,11 +1390,11 @@ public struct RuntimeVitalState: Codable, Sendable {
     }
 }
 
-public struct RuntimePulseState: Codable, Sendable {
+public struct RuntimePulseState: Decodable, Sendable {
     public let domainEventID: Int?
     public let location: String?
     public let present: Bool?
-    public let quality: String?
+    public let description: String?
     public let colorNormal: Bool?
     public let colorDescription: String?
     public let conditionNormal: Bool?
@@ -1415,6 +1408,7 @@ public struct RuntimePulseState: Codable, Sendable {
         case domainEventID = "domain_event_id"
         case location
         case present
+        case description
         case quality
         case colorNormal = "color_normal"
         case colorDescription = "color_description"
@@ -1425,9 +1419,26 @@ public struct RuntimePulseState: Codable, Sendable {
         case source
         case timestamp
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        present = try container.decodeIfPresent(Bool.self, forKey: .present)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+            ?? container.decodeIfPresent(String.self, forKey: .quality)
+        colorNormal = try container.decodeIfPresent(Bool.self, forKey: .colorNormal)
+        colorDescription = try container.decodeIfPresent(String.self, forKey: .colorDescription)
+        conditionNormal = try container.decodeIfPresent(Bool.self, forKey: .conditionNormal)
+        conditionDescription = try container.decodeIfPresent(String.self, forKey: .conditionDescription)
+        temperatureNormal = try container.decodeIfPresent(Bool.self, forKey: .temperatureNormal)
+        temperatureDescription = try container.decodeIfPresent(String.self, forKey: .temperatureDescription)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+    }
 }
 
-public struct TrainerRuntimeSnapshotPresence: Equatable, Sendable {
+public struct ScenarioSnapshotPresence: Equatable, Sendable {
     public let causes: Bool
     public let problems: Bool
     public let recommendedInterventions: Bool
@@ -1439,6 +1450,7 @@ public struct TrainerRuntimeSnapshotPresence: Equatable, Sendable {
     public let vitals: Bool
     public let pulses: Bool
     public let patientStatus: Bool
+    public let scenarioBrief: Bool
 
     public init(
         causes: Bool,
@@ -1452,6 +1464,7 @@ public struct TrainerRuntimeSnapshotPresence: Equatable, Sendable {
         vitals: Bool,
         pulses: Bool,
         patientStatus: Bool,
+        scenarioBrief: Bool,
     ) {
         self.causes = causes
         self.problems = problems
@@ -1464,21 +1477,8 @@ public struct TrainerRuntimeSnapshotPresence: Equatable, Sendable {
         self.vitals = vitals
         self.pulses = pulses
         self.patientStatus = patientStatus
+        self.scenarioBrief = scenarioBrief
     }
-
-    public static let all = Self(
-        causes: true,
-        problems: true,
-        recommendedInterventions: true,
-        interventions: true,
-        assessmentFindings: true,
-        diagnosticResults: true,
-        resources: true,
-        disposition: true,
-        vitals: true,
-        pulses: true,
-        patientStatus: true,
-    )
 
     public static let none = Self(
         causes: false,
@@ -1492,38 +1492,85 @@ public struct TrainerRuntimeSnapshotPresence: Equatable, Sendable {
         vitals: false,
         pulses: false,
         patientStatus: false,
+        scenarioBrief: false,
     )
 }
 
-public struct TrainerRuntimeStatePresence: Equatable, Sendable {
-    public let scenarioBrief: Bool
+public struct RuntimeSnapshotPresence: Equatable, Sendable {
+    public let status: Bool
+    public let phase: Bool
+    public let stateRevision: Bool
+    public let activeElapsedSeconds: Bool
+    public let tickCount: Bool
+    public let tickIntervalSeconds: Bool
+    public let nextTickAt: Bool
+    public let runtimeProcessing: Bool
+    public let pendingRuntimeReasons: Bool
+    public let currentlyProcessingReasons: Bool
     public let aiPlan: Bool
     public let aiRationaleNotes: Bool
+    public let lastRuntimeError: Bool
+    public let lastAITickAt: Bool
+    public let controlPlaneDebug: Bool
+    public let requestMetadata: Bool
 
     public init(
-        scenarioBrief: Bool,
+        status: Bool,
+        phase: Bool,
+        stateRevision: Bool,
+        activeElapsedSeconds: Bool,
+        tickCount: Bool,
+        tickIntervalSeconds: Bool,
+        nextTickAt: Bool,
+        runtimeProcessing: Bool,
+        pendingRuntimeReasons: Bool,
+        currentlyProcessingReasons: Bool,
         aiPlan: Bool,
         aiRationaleNotes: Bool,
+        lastRuntimeError: Bool,
+        lastAITickAt: Bool,
+        controlPlaneDebug: Bool,
+        requestMetadata: Bool,
     ) {
-        self.scenarioBrief = scenarioBrief
+        self.status = status
+        self.phase = phase
+        self.stateRevision = stateRevision
+        self.activeElapsedSeconds = activeElapsedSeconds
+        self.tickCount = tickCount
+        self.tickIntervalSeconds = tickIntervalSeconds
+        self.nextTickAt = nextTickAt
+        self.runtimeProcessing = runtimeProcessing
+        self.pendingRuntimeReasons = pendingRuntimeReasons
+        self.currentlyProcessingReasons = currentlyProcessingReasons
         self.aiPlan = aiPlan
         self.aiRationaleNotes = aiRationaleNotes
+        self.lastRuntimeError = lastRuntimeError
+        self.lastAITickAt = lastAITickAt
+        self.controlPlaneDebug = controlPlaneDebug
+        self.requestMetadata = requestMetadata
     }
 
-    public static let all = Self(
-        scenarioBrief: true,
-        aiPlan: true,
-        aiRationaleNotes: true,
-    )
-
     public static let none = Self(
-        scenarioBrief: false,
+        status: false,
+        phase: false,
+        stateRevision: false,
+        activeElapsedSeconds: false,
+        tickCount: false,
+        tickIntervalSeconds: false,
+        nextTickAt: false,
+        runtimeProcessing: false,
+        pendingRuntimeReasons: false,
+        currentlyProcessingReasons: false,
         aiPlan: false,
         aiRationaleNotes: false,
+        lastRuntimeError: false,
+        lastAITickAt: false,
+        controlPlaneDebug: false,
+        requestMetadata: false,
     )
 }
 
-public struct TrainerRuntimeSnapshot: Decodable, Sendable {
+public struct ScenarioSnapshotDTO: Decodable, Sendable {
     public let causes: [RuntimeCauseState]
     public let problems: [RuntimeProblemState]
     public let recommendedInterventions: [RuntimeRecommendedInterventionState]
@@ -1535,13 +1582,12 @@ public struct TrainerRuntimeSnapshot: Decodable, Sendable {
     public let vitals: [RuntimeVitalState]
     public let pulses: [RuntimePulseState]
     public let patientStatus: RuntimePatientStatus
-    public let presence: TrainerRuntimeSnapshotPresence
+    public let scenarioBrief: ScenarioBriefOut?
+    public let presence: ScenarioSnapshotPresence
 
     enum CodingKeys: String, CodingKey {
         case causes
-        case injuries
         case problems
-        case conditions
         case recommendedInterventions = "recommended_interventions"
         case interventions
         case assessmentFindings = "assessment_findings"
@@ -1551,100 +1597,47 @@ public struct TrainerRuntimeSnapshot: Decodable, Sendable {
         case vitals
         case pulses
         case patientStatus = "patient_status"
-    }
-
-    public init(
-        causes: [RuntimeCauseState] = [],
-        problems: [RuntimeProblemState] = [],
-        recommendedInterventions: [RuntimeRecommendedInterventionState] = [],
-        interventions: [RuntimeInterventionState] = [],
-        assessmentFindings: [RuntimeAssessmentFindingState] = [],
-        diagnosticResults: [RuntimeDiagnosticResultState] = [],
-        resources: [RuntimeResourceState] = [],
-        disposition: RuntimeDispositionState? = nil,
-        vitals: [RuntimeVitalState] = [],
-        pulses: [RuntimePulseState] = [],
-        patientStatus: RuntimePatientStatus = .init(),
-        presence: TrainerRuntimeSnapshotPresence = .all,
-    ) {
-        self.causes = causes
-        self.problems = problems
-        self.recommendedInterventions = recommendedInterventions
-        self.interventions = interventions
-        self.assessmentFindings = assessmentFindings
-        self.diagnosticResults = diagnosticResults
-        self.resources = resources
-        self.disposition = disposition
-        self.vitals = vitals
-        self.pulses = pulses
-        self.patientStatus = patientStatus
-        self.presence = presence
+        case scenarioBrief = "scenario_brief"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedCauses = try container.decodeAliasedArray(
-            [RuntimeCauseState].self,
-            primary: .causes,
-            aliases: [.injuries],
-        )
-        causes = decodedCauses.value
-
-        let decodedProblems = try container.decodeAliasedArray(
-            [RuntimeProblemState].self,
-            primary: .problems,
-            aliases: [.conditions],
-        )
-        problems = decodedProblems.value
-
+        let hasCauses = container.contains(.causes)
+        causes = try hasCauses ? (container.decodeIfPresent([RuntimeCauseState].self, forKey: .causes) ?? []) : []
+        let hasProblems = container.contains(.problems)
+        problems = try hasProblems ? (container.decodeIfPresent([RuntimeProblemState].self, forKey: .problems) ?? []) : []
         let hasRecommendedInterventions = container.contains(.recommendedInterventions)
         recommendedInterventions = try hasRecommendedInterventions
             ? (container.decodeIfPresent([RuntimeRecommendedInterventionState].self, forKey: .recommendedInterventions) ?? [])
             : []
-
         let hasInterventions = container.contains(.interventions)
-        interventions = try hasInterventions
-            ? (container.decodeIfPresent([RuntimeInterventionState].self, forKey: .interventions) ?? [])
-            : []
-
+        interventions = try hasInterventions ? (container.decodeIfPresent([RuntimeInterventionState].self, forKey: .interventions) ?? []) : []
         let hasAssessmentFindings = container.contains(.assessmentFindings)
         assessmentFindings = try hasAssessmentFindings
             ? (container.decodeIfPresent([RuntimeAssessmentFindingState].self, forKey: .assessmentFindings) ?? [])
             : []
-
         let hasDiagnosticResults = container.contains(.diagnosticResults)
         diagnosticResults = try hasDiagnosticResults
             ? (container.decodeIfPresent([RuntimeDiagnosticResultState].self, forKey: .diagnosticResults) ?? [])
             : []
-
         let hasResources = container.contains(.resources)
-        resources = try hasResources
-            ? (container.decodeIfPresent([RuntimeResourceState].self, forKey: .resources) ?? [])
-            : []
-
+        resources = try hasResources ? (container.decodeIfPresent([RuntimeResourceState].self, forKey: .resources) ?? []) : []
         let hasDisposition = container.contains(.disposition)
-        disposition = hasDisposition
-            ? try container.decodeIfPresent(RuntimeDispositionState.self, forKey: .disposition)
-            : nil
-
+        disposition = hasDisposition ? try container.decodeIfPresent(RuntimeDispositionState.self, forKey: .disposition) : nil
         let hasVitals = container.contains(.vitals)
-        vitals = try hasVitals
-            ? (container.decodeIfPresent([RuntimeVitalState].self, forKey: .vitals) ?? [])
-            : []
-
+        vitals = try hasVitals ? (container.decodeIfPresent([RuntimeVitalState].self, forKey: .vitals) ?? []) : []
         let hasPulses = container.contains(.pulses)
-        pulses = try hasPulses
-            ? (container.decodeIfPresent([RuntimePulseState].self, forKey: .pulses) ?? [])
-            : []
-
+        pulses = try hasPulses ? (container.decodeIfPresent([RuntimePulseState].self, forKey: .pulses) ?? []) : []
         let hasPatientStatus = container.contains(.patientStatus)
         patientStatus = try hasPatientStatus
             ? (container.decodeIfPresent(RuntimePatientStatus.self, forKey: .patientStatus) ?? .init())
             : .init()
+        let hasScenarioBrief = container.contains(.scenarioBrief)
+        scenarioBrief = hasScenarioBrief ? try container.decodeIfPresent(ScenarioBriefOut.self, forKey: .scenarioBrief) : nil
 
-        presence = TrainerRuntimeSnapshotPresence(
-            causes: decodedCauses.present,
-            problems: decodedProblems.present,
+        presence = ScenarioSnapshotPresence(
+            causes: hasCauses,
+            problems: hasProblems,
             recommendedInterventions: hasRecommendedInterventions,
             interventions: hasInterventions,
             assessmentFindings: hasAssessmentFindings,
@@ -1654,6 +1647,101 @@ public struct TrainerRuntimeSnapshot: Decodable, Sendable {
             vitals: hasVitals,
             pulses: hasPulses,
             patientStatus: hasPatientStatus,
+            scenarioBrief: hasScenarioBrief,
+        )
+    }
+}
+
+public struct RuntimeSnapshotDTO: Decodable, Sendable {
+    public let status: String
+    public let phase: String?
+    public let stateRevision: Int
+    public let activeElapsedSeconds: Int
+    public let tickCount: Int?
+    public let tickIntervalSeconds: Int?
+    public let nextTickAt: Date?
+    public let runtimeProcessing: Bool?
+    public let pendingRuntimeReasons: [JSONValue]
+    public let currentlyProcessingReasons: [JSONValue]
+    public let aiPlan: RuntimeInstructorIntent?
+    public let aiRationaleNotes: [String]
+    public let lastRuntimeError: String
+    public let lastAITickAt: Date?
+    public let controlPlaneDebug: [String: JSONValue]?
+    public let requestMetadata: [String: JSONValue]?
+    public let presence: RuntimeSnapshotPresence
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case phase
+        case stateRevision = "state_revision"
+        case activeElapsedSeconds = "active_elapsed_seconds"
+        case tickCount = "tick_count"
+        case tickIntervalSeconds = "tick_interval_seconds"
+        case nextTickAt = "next_tick_at"
+        case runtimeProcessing = "runtime_processing"
+        case pendingRuntimeReasons = "pending_runtime_reasons"
+        case currentlyProcessingReasons = "currently_processing_reasons"
+        case aiPlan = "ai_plan"
+        case aiRationaleNotes = "ai_rationale_notes"
+        case lastRuntimeError = "last_runtime_error"
+        case lastAITickAt = "last_ai_tick_at"
+        case controlPlaneDebug = "control_plane_debug"
+        case requestMetadata = "request_metadata"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let hasStatus = container.contains(.status)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+        let hasPhase = container.contains(.phase)
+        phase = try container.decodeIfPresent(String.self, forKey: .phase)
+        let hasStateRevision = container.contains(.stateRevision)
+        stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
+        let hasActiveElapsed = container.contains(.activeElapsedSeconds)
+        activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
+        let hasTickCount = container.contains(.tickCount)
+        tickCount = try container.decodeIfPresent(Int.self, forKey: .tickCount)
+        let hasTickInterval = container.contains(.tickIntervalSeconds)
+        tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds)
+        let hasNextTick = container.contains(.nextTickAt)
+        nextTickAt = try container.decodeIfPresent(Date.self, forKey: .nextTickAt)
+        let hasRuntimeProcessing = container.contains(.runtimeProcessing)
+        runtimeProcessing = try container.decodeIfPresent(Bool.self, forKey: .runtimeProcessing)
+        let hasPendingReasons = container.contains(.pendingRuntimeReasons)
+        pendingRuntimeReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingRuntimeReasons) ?? []
+        let hasProcessingReasons = container.contains(.currentlyProcessingReasons)
+        currentlyProcessingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .currentlyProcessingReasons) ?? []
+        let hasAIPlan = container.contains(.aiPlan)
+        aiPlan = try container.decodeIfPresent(RuntimeInstructorIntent.self, forKey: .aiPlan)
+        let hasAIRationale = container.contains(.aiRationaleNotes)
+        aiRationaleNotes = try container.decodeIfPresent([String].self, forKey: .aiRationaleNotes) ?? []
+        let hasRuntimeError = container.contains(.lastRuntimeError)
+        lastRuntimeError = try container.decodeIfPresent(String.self, forKey: .lastRuntimeError) ?? ""
+        let hasLastAITick = container.contains(.lastAITickAt)
+        lastAITickAt = try container.decodeIfPresent(Date.self, forKey: .lastAITickAt)
+        let hasControlPlaneDebug = container.contains(.controlPlaneDebug)
+        controlPlaneDebug = try container.decodeIfPresent([String: JSONValue].self, forKey: .controlPlaneDebug)
+        let hasRequestMetadata = container.contains(.requestMetadata)
+        requestMetadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .requestMetadata)
+
+        presence = RuntimeSnapshotPresence(
+            status: hasStatus,
+            phase: hasPhase,
+            stateRevision: hasStateRevision,
+            activeElapsedSeconds: hasActiveElapsed,
+            tickCount: hasTickCount,
+            tickIntervalSeconds: hasTickInterval,
+            nextTickAt: hasNextTick,
+            runtimeProcessing: hasRuntimeProcessing,
+            pendingRuntimeReasons: hasPendingReasons,
+            currentlyProcessingReasons: hasProcessingReasons,
+            aiPlan: hasAIPlan,
+            aiRationaleNotes: hasAIRationale,
+            lastRuntimeError: hasRuntimeError,
+            lastAITickAt: hasLastAITick,
+            controlPlaneDebug: hasControlPlaneDebug,
+            requestMetadata: hasRequestMetadata,
         )
     }
 }
@@ -1689,112 +1777,97 @@ public struct RuntimeInstructorIntent: Codable, Sendable {
     }
 }
 
-public struct TrainerRuntimeStateOut: Decodable, Sendable {
+public struct EventTimelineEntryDTO: Decodable, Sendable, Identifiable {
+    public let eventID: String
+    public let eventType: String
+    public let createdAt: Date
+    public let payload: [String: JSONValue]
+
+    public var id: String { eventID }
+
+    enum CodingKeys: String, CodingKey {
+        case eventID = "event_id"
+        case eventType = "event_type"
+        case createdAt = "created_at"
+        case payload
+    }
+}
+
+public struct EventTimelineDTO: Decodable, Sendable {
+    public let events: [EventTimelineEntryDTO]
+    public let totalEvents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case events
+        case totalEvents = "total_events"
+    }
+}
+
+public struct SnapshotCacheStatusDTO: Decodable, Sendable {
+    public let status: String?
+    public let updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case updatedAt = "updated_at"
+    }
+}
+
+public struct TrainerRestMetadataDTO: Decodable, Sendable {
+    public let schemaVersion: String?
+    public let cacheStatus: SnapshotCacheStatusDTO?
+    public let raw: [String: JSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case cacheStatus = "cache_status"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
+        cacheStatus = try container.decodeIfPresent(SnapshotCacheStatusDTO.self, forKey: .cacheStatus)
+        let rawContainer = try decoder.singleValueContainer()
+        raw = (try? rawContainer.decode([String: JSONValue].self)) ?? [:]
+    }
+}
+
+public struct TrainerRestViewModelDTO: Decodable, Sendable {
     public let simulationID: Int
     public let sessionID: Int
     public let status: String
-    public let stateRevision: Int
-    public let activeElapsedSeconds: Int
-    public let tickIntervalSeconds: Int?
-    public let nextTickAt: Date?
-    public let scenarioBrief: ScenarioBriefOut?
-    public let currentSnapshot: TrainerRuntimeSnapshot
-    public let aiPlan: RuntimeInstructorIntent?
-    public let aiRationaleNotes: [String]
-    public let pendingRuntimeReasons: [JSONValue]
-    public let pendingReasons: [JSONValue]
-    public let currentlyProcessingReasons: [JSONValue]
-    public let lastRuntimeError: String
-    public let lastAITickAt: Date?
-    public let presence: TrainerRuntimeStatePresence
+    public let scenarioSnapshot: ScenarioSnapshotDTO
+    public let runtimeSnapshot: RuntimeSnapshotDTO
+    public let eventTimeline: EventTimelineDTO
+    public let metadata: TrainerRestMetadataDTO
 
     enum CodingKeys: String, CodingKey {
         case simulationID = "simulation_id"
         case sessionID = "session_id"
         case status
-        case stateRevision = "state_revision"
-        case activeElapsedSeconds = "active_elapsed_seconds"
-        case tickIntervalSeconds = "tick_interval_seconds"
-        case nextTickAt = "next_tick_at"
-        case scenarioBrief = "scenario_brief"
-        case currentSnapshot = "current_snapshot"
-        case aiPlan = "ai_plan"
-        case aiInstructor = "ai_instructor"
-        case aiRationaleNotes = "ai_rationale_notes"
-        case pendingRuntimeReasons = "pending_runtime_reasons"
-        case pendingReasons = "pending_reasons"
-        case currentlyProcessingReasons = "currently_processing_reasons"
-        case lastRuntimeError = "last_runtime_error"
-        case lastAITickAt = "last_ai_tick_at"
+        case scenarioSnapshot = "scenario_snapshot"
+        case runtimeSnapshot = "runtime_snapshot"
+        case eventTimeline = "event_timeline"
+        case metadata
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         simulationID = try container.decode(Int.self, forKey: .simulationID)
-        sessionID = try container.decodeIfPresent(Int.self, forKey: .sessionID) ?? simulationID
+        sessionID = try container.decode(Int.self, forKey: .sessionID)
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
-        stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
-        activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
-        tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds)
-        nextTickAt = try container.decodeIfPresent(Date.self, forKey: .nextTickAt)
-        let hasScenarioBrief = container.contains(.scenarioBrief)
-        scenarioBrief = hasScenarioBrief
-            ? try container.decodeIfPresent(ScenarioBriefOut.self, forKey: .scenarioBrief)
-            : nil
-        currentSnapshot = try container.decodeIfPresent(TrainerRuntimeSnapshot.self, forKey: .currentSnapshot)
-            ?? TrainerRuntimeSnapshot(presence: .none)
-        let decodedAIPlan = try container.decodeAliasedValue(
-            RuntimeInstructorIntent.self,
-            primary: .aiPlan,
-            aliases: [.aiInstructor],
-        )
-        aiPlan = decodedAIPlan.value
-        let hasAIRationaleNotes = container.contains(.aiRationaleNotes)
-        aiRationaleNotes = try hasAIRationaleNotes
-            ? (container.decodeIfPresent([String].self, forKey: .aiRationaleNotes) ?? [])
-            : []
-        pendingRuntimeReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingRuntimeReasons) ?? []
-        pendingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .pendingReasons) ?? []
-        currentlyProcessingReasons = try container.decodeIfPresent([JSONValue].self, forKey: .currentlyProcessingReasons) ?? []
-        lastRuntimeError = try container.decodeIfPresent(String.self, forKey: .lastRuntimeError) ?? ""
-        lastAITickAt = try container.decodeIfPresent(Date.self, forKey: .lastAITickAt)
-        presence = TrainerRuntimeStatePresence(
-            scenarioBrief: hasScenarioBrief,
-            aiPlan: decodedAIPlan.present,
-            aiRationaleNotes: hasAIRationaleNotes,
-        )
+        scenarioSnapshot = try container.decode(ScenarioSnapshotDTO.self, forKey: .scenarioSnapshot)
+        runtimeSnapshot = try container.decode(RuntimeSnapshotDTO.self, forKey: .runtimeSnapshot)
+        eventTimeline = try container.decode(EventTimelineDTO.self, forKey: .eventTimeline)
+        metadata = try container.decodeIfPresent(TrainerRestMetadataDTO.self, forKey: .metadata) ?? TrainerRestMetadataDTO(schemaVersion: nil, cacheStatus: nil, raw: [:])
     }
 }
 
-private extension KeyedDecodingContainer where K == TrainerRuntimeSnapshot.CodingKeys {
-    func decodeAliasedArray<T: Decodable>(
-        _ type: [T].Type,
-        primary: K,
-        aliases: [K],
-    ) throws -> (value: [T], present: Bool) {
-        if contains(primary) {
-            return try (decodeIfPresent(type, forKey: primary) ?? [], true)
-        }
-        for alias in aliases where contains(alias) {
-            return try (decodeIfPresent(type, forKey: alias) ?? [], true)
-        }
-        return ([], false)
-    }
-}
-
-private extension KeyedDecodingContainer where K == TrainerRuntimeStateOut.CodingKeys {
-    func decodeAliasedValue<T: Decodable>(
-        _ type: T.Type,
-        primary: K,
-        aliases: [K],
-    ) throws -> (value: T?, present: Bool) {
-        if contains(primary) {
-            return try (decodeIfPresent(type, forKey: primary), true)
-        }
-        for alias in aliases where contains(alias) {
-            return try (decodeIfPresent(type, forKey: alias), true)
-        }
-        return (nil, false)
+private extension TrainerRestMetadataDTO {
+    init(schemaVersion: String?, cacheStatus: SnapshotCacheStatusDTO?, raw: [String: JSONValue]) {
+        self.schemaVersion = schemaVersion
+        self.cacheStatus = cacheStatus
+        self.raw = raw
     }
 }
 

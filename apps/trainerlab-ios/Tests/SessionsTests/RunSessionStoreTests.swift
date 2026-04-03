@@ -23,8 +23,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var retryInitialCalls: [Int] = []
     var retryInitialResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
     var getRuntimeStateCalls: [Int] = []
-    var getRuntimeStateResultsQueue: [Result<TrainerRuntimeStateOut, Error>] = []
-    var getRuntimeStateResult: Result<TrainerRuntimeStateOut, Error> = .failure(MockServiceError.unused)
+    var getRuntimeStateResultsQueue: [Result<TrainerRestViewModelDTO, Error>] = []
+    var getRuntimeStateResult: Result<TrainerRestViewModelDTO, Error> = .failure(MockServiceError.unused)
     var listEventsCalls: [(simulationID: Int, cursor: String?, limit: Int)] = []
     var listEventsResultsQueue: [Result<PaginatedResponse<EventEnvelope>, Error>] = []
     var listEventsResult: Result<PaginatedResponse<EventEnvelope>, Error> = .failure(MockServiceError.unused)
@@ -59,7 +59,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         return try retryInitialResult.get()
     }
 
-    func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {
+    func getRuntimeState(simulationID: Int) async throws -> TrainerRestViewModelDTO {
         getRuntimeStateCalls.append(simulationID)
         if !getRuntimeStateResultsQueue.isEmpty {
             return try getRuntimeStateResultsQueue.removeFirst().get()
@@ -442,7 +442,7 @@ final class RunSessionStoreTests: XCTestCase {
         defer { store.stopConsole() }
 
         await waitUntil(timeout: 2.0) {
-            store.runtimeState?.stateRevision == 4
+            store.runtimeState?.runtimeSnapshot.stateRevision == 4
                 && store.state.clinicalTimelineEntries.count == 2
                 && realtime.connectCalls.first?.cursor == "run-1"
         }
@@ -453,7 +453,7 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
         XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
         XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
-        XCTAssertEqual(store.runtimeState?.aiPlan?.summary, "Escalate respiratory distress")
+        XCTAssertEqual(store.runtimeState?.runtimeSnapshot.aiPlan?.summary, "Escalate respiratory distress")
         XCTAssertEqual(store.state.clinicalTimelineEntries.map(\.title), ["Run Started", "Scenario Ready"])
         XCTAssertEqual(
             store.state.timeline.map(\.eventType),
@@ -861,7 +861,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         await waitUntil(timeout: 2.0) {
             service.getRuntimeStateCalls.count == 2
-                && store.runtimeState?.aiPlan?.summary == "Reassess airway"
+                && store.runtimeState?.runtimeSnapshot.aiPlan?.summary == "Reassess airway"
         }
 
         XCTAssertEqual(store.state.clinicalTimelineEntries.first?.title, "AI Instructor")
@@ -1750,7 +1750,7 @@ final class RunSessionStoreTests: XCTestCase {
         defer { store.stopConsole() }
 
         await waitUntil(timeout: 1.5) {
-            store.runtimeState?.stateRevision == 3
+            store.runtimeState?.runtimeSnapshot.stateRevision == 3
         }
 
         realtime.emit(event: makeStatusUpdatedEvent(
@@ -1877,7 +1877,7 @@ final class RunSessionStoreTests: XCTestCase {
         disposition: [String: Any]? = nil,
         patientStatus: [String: Any] = [:],
         aiPlan: [String: Any]? = nil,
-    ) throws -> TrainerRuntimeStateOut {
+    ) throws -> TrainerRestViewModelDTO {
         let payload: [String: Any] = [
             "simulation_id": 420,
             "session_id": 420,
@@ -1912,11 +1912,11 @@ final class RunSessionStoreTests: XCTestCase {
         return try decodeRuntimeStatePayload(payload)
     }
 
-    private func decodeRuntimeStatePayload(_ payload: [String: Any]) throws -> TrainerRuntimeStateOut {
+    private func decodeRuntimeStatePayload(_ payload: [String: Any]) throws -> TrainerRestViewModelDTO {
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(TrainerRuntimeStateOut.self, from: data)
+        return try decoder.decode(TrainerRestViewModelDTO.self, from: data)
     }
 
     private func makeAliasedSessionRuntimeSeed() -> [String: JSONValue] {
