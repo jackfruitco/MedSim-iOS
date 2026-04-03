@@ -276,6 +276,40 @@ final class ChatRealtimeClientTests: XCTestCase {
         XCTAssertEqual(event.eventID, "evt-good")
     }
 
+    func testParserHandlesSSEIDLinesAndCarriageReturnBoundaries() throws {
+        let firstEventJSON = try makeEnvelopeJSON(
+            eventID: "evt-first",
+            payload: ["message_id": 904, "conversation_id": 5, "content": "first"],
+        )
+        let secondEventJSON = try makeEnvelopeJSON(
+            eventID: "evt-second",
+            payload: ["message_id": 905, "conversation_id": 5, "content": "second", "is_from_ai": true],
+        )
+        let items = ChatSSEParser.parseLines(
+            [
+                "id: upstream-first",
+                "event: simulation",
+                "data: \(firstEventJSON)",
+                "\r",
+                "id: upstream-second",
+                "event: simulation",
+                "data: \(secondEventJSON)",
+                "\r",
+            ],
+            decoder: makeDecoder(),
+        )
+
+        XCTAssertEqual(items.count, 2)
+        guard case let .event(firstEvent) = items[0] else {
+            return XCTFail("Expected the first SSE event to decode")
+        }
+        guard case let .event(secondEvent) = items[1] else {
+            return XCTFail("Expected the second SSE event to decode")
+        }
+        XCTAssertEqual(firstEvent.eventID, "evt-first")
+        XCTAssertEqual(secondEvent.eventID, "evt-second")
+    }
+
     func testNonSuccessStreamOpenTransitionsToReconnectAndCatchup() async throws {
         let baseURL = try XCTUnwrap(URL(string: "https://example.com"))
         let authLoader = RecordingAuthorizedResourceLoader(baseURL: baseURL)

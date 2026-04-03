@@ -41,6 +41,48 @@ private actor ChatSSEFreshnessTracker {
 }
 
 enum ChatSSEParser {
+    private static func normalizedLine(_ line: String) -> String {
+        line.trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+    }
+
+    private static func flushPendingEvent(
+        decoder: JSONDecoder,
+        dataLines: inout [String],
+        currentEventType: inout String?,
+        currentEventID: inout String?,
+        reason: String,
+    ) -> ChatSSEStreamItem? {
+        defer {
+            dataLines.removeAll(keepingCapacity: true)
+            currentEventType = nil
+            currentEventID = nil
+        }
+
+        if currentEventType == "heartbeat" {
+            chatRealtimeLogger.debug("[ChatRealtime] named heartbeat boundary received reason=\(reason, privacy: .public)")
+            return .keepAlive
+        }
+        guard !dataLines.isEmpty else {
+            return nil
+        }
+
+        let payload = dataLines.joined(separator: "\n")
+        let eventTypeSnapshot = currentEventType
+        let eventIDSnapshot = currentEventID
+        chatRealtimeLogger.debug("[ChatRealtime] assembled SSE payload reason=\(reason, privacy: .public) eventName=\(eventTypeSnapshot ?? "nil", privacy: .public) eventID=\(eventIDSnapshot ?? "nil", privacy: .public) payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
+        do {
+            if let event = try parseEvent(dataString: payload, decoder: decoder) {
+                chatRealtimeLogger.info("[ChatRealtime] decoded envelope eventID=\(event.eventID, privacy: .public) eventType=\(event.eventType, privacy: .public) conversationID=\(ChatRealtimeClient.payloadInt(event.payload, keys: ["conversation_id"]) ?? -1)")
+                return .event(event)
+            }
+            chatRealtimeLogger.error("[ChatRealtime] parseEvent returned nil; dropping payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
+            return nil
+        } catch {
+            chatRealtimeLogger.error("[ChatRealtime] failed to decode SSE payload error=\(ChatRealtimeClient.describe(error), privacy: .public) eventID=\(eventIDSnapshot ?? "nil", privacy: .public) payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
+            return nil
+        }
+    }
+
     static func parseEvent(dataString: String, decoder: JSONDecoder) throws -> ChatEventEnvelope? {
         guard let data = dataString.data(using: .utf8) else {
             chatRealtimeLogger.error("[ChatRealtime] SSE payload was not valid UTF-8; dropping payload prefix=\(String(dataString.prefix(256)), privacy: .public)")
@@ -52,6 +94,7 @@ enum ChatSSEParser {
     static func parseLines(_ lines: [String], decoder: JSONDecoder) -> [ChatSSEStreamItem] {
         var dataLines: [String] = []
         var currentEventType: String?
+        var currentEventID: String?
         var items: [ChatSSEStreamItem] = []
 
         for line in lines {
@@ -60,9 +103,20 @@ enum ChatSSEParser {
                 decoder: decoder,
                 dataLines: &dataLines,
                 currentEventType: &currentEventType,
+                currentEventID: &currentEventID,
             ) {
                 items.append(item)
             }
+        }
+
+        if let item = flushPendingEvent(
+            decoder: decoder,
+            dataLines: &dataLines,
+            currentEventType: &currentEventType,
+            currentEventID: &currentEventID,
+            reason: "end of input",
+        ) {
+            items.append(item)
         }
 
         return items
@@ -73,58 +127,62 @@ enum ChatSSEParser {
         decoder: JSONDecoder,
         dataLines: inout [String],
         currentEventType: inout String?,
+        currentEventID: inout String?,
     ) -> ChatSSEStreamItem? {
-        if line.hasPrefix(":") {
-            chatRealtimeLogger.debug("[ChatRealtime] comment/heartbeat line \(ChatRealtimeClient.truncate(line), privacy: .public)")
+        let normalizedLine = normalizedLine(line)
+        let trimmedLine = normalizedLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        var emittedItem: ChatSSEStreamItem?
+
+        if normalizedLine.hasPrefix(":") {
+            chatRealtimeLogger.debug("[ChatRealtime] comment/heartbeat line \(ChatRealtimeClient.truncate(normalizedLine), privacy: .public)")
             return .keepAlive
         }
 
-        if line.isEmpty {
-            defer {
-                dataLines.removeAll(keepingCapacity: true)
-                currentEventType = nil
-            }
-
-            if currentEventType == "heartbeat" {
-                chatRealtimeLogger.debug("[ChatRealtime] named heartbeat boundary received")
-                return .keepAlive
-            }
-            guard !dataLines.isEmpty else {
-                return nil
-            }
-
-            let payload = dataLines.joined(separator: "\n")
-            let eventTypeSnapshot = currentEventType
-            chatRealtimeLogger.debug("[ChatRealtime] assembled SSE payload eventName=\(eventTypeSnapshot ?? "nil", privacy: .public) payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
-            do {
-                if let event = try parseEvent(dataString: payload, decoder: decoder) {
-                    chatRealtimeLogger.info("[ChatRealtime] decoded envelope eventID=\(event.eventID, privacy: .public) eventType=\(event.eventType, privacy: .public) conversationID=\(ChatRealtimeClient.payloadInt(event.payload, keys: ["conversation_id"]) ?? -1)")
-                    return .event(event)
-                }
-                chatRealtimeLogger.error("[ChatRealtime] parseEvent returned nil; dropping payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
-                return nil
-            } catch {
-                chatRealtimeLogger.error("[ChatRealtime] failed to decode SSE payload error=\(ChatRealtimeClient.describe(error), privacy: .public) payload=\(ChatRealtimeClient.truncate(payload), privacy: .public)")
-                return nil
-            }
+        if trimmedLine.isEmpty {
+            return flushPendingEvent(
+                decoder: decoder,
+                dataLines: &dataLines,
+                currentEventType: &currentEventType,
+                currentEventID: &currentEventID,
+                reason: "blank line",
+            )
         }
 
-        if line.hasPrefix("event:") {
-            currentEventType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+        if !dataLines.isEmpty,
+           normalizedLine.hasPrefix("id:") || normalizedLine.hasPrefix("event:")
+        {
+            emittedItem = flushPendingEvent(
+                decoder: decoder,
+                dataLines: &dataLines,
+                currentEventType: &currentEventType,
+                currentEventID: &currentEventID,
+                reason: "next event field",
+            )
+        }
+
+        if normalizedLine.hasPrefix("id:") {
+            currentEventID = String(normalizedLine.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+            let currentEventIDSnapshot = currentEventID
+            chatRealtimeLogger.debug("[ChatRealtime] id line eventID=\(currentEventIDSnapshot ?? "nil", privacy: .public)")
+            return emittedItem
+        }
+
+        if normalizedLine.hasPrefix("event:") {
+            currentEventType = String(normalizedLine.dropFirst(6)).trimmingCharacters(in: .whitespaces)
             let eventTypeSnapshot = currentEventType
             chatRealtimeLogger.debug("[ChatRealtime] event line eventName=\(eventTypeSnapshot ?? "nil", privacy: .public)")
-            return nil
+            return emittedItem
         }
 
-        if line.hasPrefix("data:") {
-            let value = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+        if normalizedLine.hasPrefix("data:") {
+            let value = String(normalizedLine.dropFirst(5)).trimmingCharacters(in: .whitespaces)
             chatRealtimeLogger.debug("[ChatRealtime] data line payload=\(ChatRealtimeClient.truncate(value), privacy: .public)")
             dataLines.append(value)
-            return nil
+            return emittedItem
         }
 
-        chatRealtimeLogger.debug("[ChatRealtime] ignored SSE line \(ChatRealtimeClient.truncate(line), privacy: .public)")
-        return nil
+        chatRealtimeLogger.debug("[ChatRealtime] ignored SSE line \(ChatRealtimeClient.truncate(normalizedLine), privacy: .public)")
+        return emittedItem
     }
 }
 
@@ -293,6 +351,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
 
                     var dataLines: [String] = []
                     var currentEventType: String?
+                    var currentEventID: String?
 
                     for try await line in bytes.lines {
                         if Task.isCancelled {
@@ -303,9 +362,21 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                             decoder: decoder,
                             dataLines: &dataLines,
                             currentEventType: &currentEventType,
+                            currentEventID: &currentEventID,
                         ) else {
                             continue
                         }
+                        await freshness.markSignal()
+                        continuation.yield(item)
+                    }
+
+                    if let item = ChatSSEParser.consumeLine(
+                        "",
+                        decoder: decoder,
+                        dataLines: &dataLines,
+                        currentEventType: &currentEventType,
+                        currentEventID: &currentEventID,
+                    ) {
                         await freshness.markSignal()
                         continuation.yield(item)
                     }
