@@ -543,6 +543,150 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertTrue(store.activityItems.isEmpty)
     }
 
+    func testMessageCreatedAcceptsIDOnlyAndAIFlagAlias() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        try await waitUntil { store.activeTypingUsers == [patientConversation.displayName] }
+
+        realtime.pushEvent(
+            makeEvent(
+                type: SimulationEventType.messageItemCreated,
+                payload: [
+                    "id": .number(302),
+                    "content": .string("Alias reply"),
+                    "conversation_id": .number(Double(patientConversation.id)),
+                    "isFromAI": .bool(true),
+                    "displayName": .string(patientConversation.displayName),
+                    "timestamp": .string(isoTimestamp()),
+                    "delivery_status": .string("sent"),
+                ],
+            ),
+        )
+
+        try await waitUntil {
+            store.activeTypingUsers.isEmpty &&
+                store.activeMessages.contains(where: { $0.serverID == 302 && $0.isFromSelf == false })
+        }
+    }
+
+    func testDuplicateLiveMessageIsIgnoredByServerID() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let payload: [String: JSONValue] = [
+            "message_id": .number(303),
+            "conversation_id": .number(Double(patientConversation.id)),
+            "content": .string("Only once"),
+            "is_from_ai": .bool(true),
+            "display_name": .string(patientConversation.displayName),
+            "timestamp": .string(isoTimestamp()),
+            "delivery_status": .string("sent"),
+        ]
+
+        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: payload))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: payload))
+
+        try await waitUntil {
+            store.activeMessages.filter { $0.serverID == 303 }.count == 1
+        }
+        XCTAssertEqual(store.activeMessages.filter { $0.serverID == 303 }.count, 1)
+    }
+
+    func testLiveMessageWithoutConversationIDFallsBackToActiveConversation() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(
+            makeEvent(
+                type: SimulationEventType.messageItemCreated,
+                payload: [
+                    "message_id": .number(304),
+                    "content": .string("Fallback conversation"),
+                    "is_from_ai": .bool(true),
+                    "display_name": .string(patientConversation.displayName),
+                    "timestamp": .string(isoTimestamp()),
+                    "delivery_status": .string("sent"),
+                ],
+            ),
+        )
+
+        try await waitUntil {
+            store.activeMessages.contains(where: { $0.serverID == 304 && $0.conversationID == patientConversation.id })
+        }
+    }
+
+    func testLiveMessageForInactiveConversationIncrementsUnread() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation(id: 1, type: "simulated_patient", name: "Jordan Lee")
+        let feedbackConversation = makeConversation(id: 2, type: "simulated_feedback", name: "Stitch")
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation, feedbackConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.messagesByConversation[feedbackConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(
+            makeEvent(
+                type: SimulationEventType.messageItemCreated,
+                payload: [
+                    "message_id": .number(305),
+                    "conversation_id": .number(Double(feedbackConversation.id)),
+                    "content": .string("Feedback update"),
+                    "is_from_ai": .bool(true),
+                    "display_name": .string(feedbackConversation.displayName),
+                    "timestamp": .string(isoTimestamp()),
+                    "delivery_status": .string("sent"),
+                ],
+            ),
+        )
+
+        try await waitUntil {
+            store.unreadByConversation[feedbackConversation.id] == 1 &&
+                (store.messagesByConversation[feedbackConversation.id] ?? []).contains(where: { $0.serverID == 305 })
+        }
+        XCTAssertFalse(store.activeMessages.contains(where: { $0.serverID == 305 }))
+    }
+
     func testTransientNoOpEventsDoNotCreateActivityItems() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()

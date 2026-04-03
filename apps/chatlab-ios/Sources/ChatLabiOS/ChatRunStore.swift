@@ -1,6 +1,9 @@
 import Foundation
 import Networking
+import OSLog
 import SharedModels
+
+private let chatRunStoreLogger = Logger(subsystem: "com.jackfruit.medsim", category: "ChatRunStore")
 
 private enum AwaitingReplyReason: Equatable {
     case initialGeneration
@@ -456,28 +459,29 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func handleEvent(_ event: ChatEventEnvelope) {
-        let event = event.canonicalized()
-        captureActivity(from: event)
-        switch event.eventType {
+        let canonicalEvent = event.canonicalized()
+        chatRunStoreLogger.info("[ChatRunStore] handleEvent eventID=\(event.eventID, privacy: .public) rawType=\(event.eventType, privacy: .public) canonicalType=\(canonicalEvent.eventType, privacy: .public) payload=\(Self.summarizePayload(canonicalEvent.payload), privacy: .public)")
+        captureActivity(from: canonicalEvent)
+        switch canonicalEvent.eventType {
         case SimulationEventType.messageItemCreated:
-            handleMessageCreated(event.payload)
+            handleMessageCreated(canonicalEvent.payload)
             toolRefreshToken = UUID()
 
         case SimulationEventType.messageDeliveryUpdated:
-            handleMessageStatusUpdate(event.payload)
+            handleMessageStatusUpdate(canonicalEvent.payload)
 
         case SimulationEventType.typing:
-            setTyping(event.payload, started: true)
+            setTyping(canonicalEvent.payload, started: true)
 
         case SimulationEventType.stoppedTyping:
-            setTyping(event.payload, started: false)
+            setTyping(canonicalEvent.payload, started: false)
 
         case SimulationEventType.simulationStatusUpdated:
-            handleSimulationStatusUpdated(event.payload)
+            handleSimulationStatusUpdated(canonicalEvent.payload)
 
         case SimulationEventType.feedbackGenerationFailed:
-            feedbackFailureText = string(event.payload, keys: ["error_text"]) ?? "Feedback generation failed."
-            feedbackRetryable = bool(event.payload, key: "retryable") ?? true
+            feedbackFailureText = string(canonicalEvent.payload, keys: ["error_text"]) ?? "Feedback generation failed."
+            feedbackRetryable = bool(canonicalEvent.payload, key: "retryable") ?? true
 
         case SimulationEventType.feedbackGenerationUpdated:
             feedbackFailureText = nil
@@ -531,6 +535,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func refreshAfterForegroundOrReconnect() {
+        chatRunStoreLogger.info("[ChatRunStore] refreshAfterForegroundOrReconnect() transportState=\(Self.describe(self.transportState), privacy: .public) lastRealtimeSignalAt=\(self.lastRealtimeSignalAt?.ISO8601Format() ?? "nil", privacy: .public)")
         Task {
             await refreshServerState(
                 reconnectRealtime: shouldForceRealtimeRecovery(),
@@ -540,6 +545,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func refreshAwaitingReplyStatus() {
+        chatRunStoreLogger.info("[ChatRunStore] refreshAwaitingReplyStatus() activeConversationID=\(self.activeConversationID ?? -1)")
         Task {
             await refreshServerState(
                 reconnectRealtime: false,
@@ -549,6 +555,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func reconnectRealtimeAndRefresh() {
+        chatRunStoreLogger.info("[ChatRunStore] reconnectRealtimeAndRefresh() activeConversationID=\(self.activeConversationID ?? -1)")
         Task {
             await refreshServerState(
                 reconnectRealtime: true,
@@ -558,21 +565,30 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func handleMessageCreated(_ payload: [String: JSONValue]) {
+        chatRunStoreLogger.info("[ChatRunStore] handleMessageCreated payload=\(Self.summarizePayload(payload), privacy: .public)")
         let serverID = int(payload, keys: ["message_id", "id"])
-        guard let serverID else { return }
-        guard !seenMessageIDs.contains(serverID) else { return }
+        guard let serverID else {
+            chatRunStoreLogger.error("[ChatRunStore] skipping live message: missing message_id/id")
+            return
+        }
+        guard !seenMessageIDs.contains(serverID) else {
+            chatRunStoreLogger.debug("[ChatRunStore] skipping live message: duplicate serverID=\(serverID)")
+            return
+        }
         seenMessageIDs.insert(serverID)
 
-        let conversationID = int(payload, keys: ["conversation_id"]) ?? activeConversationID ?? 0
-        let isFromAI = bool(payload, key: "is_from_ai")
+        let explicitConversationID = int(payload, keys: ["conversation_id"])
+        let conversationID = explicitConversationID ?? activeConversationID ?? 0
+        let rawIsFromAI = bool(payload, key: "is_from_ai")
             ?? bool(payload, key: "isFromAi")
             ?? bool(payload, key: "isFromAI")
-            ?? false
+        let isFromAI = rawIsFromAI ?? false
         let senderID = int(payload, keys: ["sender_id", "senderId"]) ?? -1
         let content = string(payload, keys: ["content"]) ?? ""
         let displayName = string(payload, keys: ["display_name", "displayName"]) ?? (isFromAI ? "AI" : localUserMarker)
         let statusRaw = string(payload, keys: ["delivery_status", "status"])
         let status = DeliveryStatus(rawValue: statusRaw ?? "sent") ?? .sent
+        chatRunStoreLogger.info("[ChatRunStore] live message resolved serverID=\(serverID) conversationID=\(conversationID) fallbackConversation=\(explicitConversationID == nil) isFromAI=\(isFromAI) rawAI=\(String(describing: rawIsFromAI), privacy: .public) senderID=\(senderID) status=\(status.rawValue, privacy: .public)")
 
         if isFromAI {
             stopAwaitingReply(for: conversationID)
@@ -585,7 +601,9 @@ public final class ChatRunStore: ObservableObject {
                 content: content,
                 status: status,
             ) {
+                chatRunStoreLogger.info("[ChatRunStore] reconciled local echo serverID=\(serverID) conversationID=\(conversationID)")
                 if conversationID == activeConversationID {
+                    chatRunStoreLogger.debug("[ChatRunStore] skipping append after local echo reconciliation for active conversation serverID=\(serverID)")
                     return
                 }
             }
@@ -609,15 +627,21 @@ public final class ChatRunStore: ObservableObject {
 
         if conversationID != activeConversationID {
             unreadByConversation[conversationID, default: 0] += 1
+            chatRunStoreLogger.info("[ChatRunStore] live message targeted non-active conversation conversationID=\(conversationID) activeConversationID=\(self.activeConversationID ?? -1) unreadCount=\(self.unreadByConversation[conversationID] ?? 0)")
         }
         appendMessage(item)
         if conversationID == activeConversationID, !item.isFromSelf {
+            chatRunStoreLogger.info("[ChatRunStore] marking active conversation read after incoming live message conversationID=\(conversationID) serverID=\(serverID)")
             markConversationRead(conversationID: conversationID)
         }
     }
 
     private func handleMessageStatusUpdate(_ payload: [String: JSONValue]) {
-        guard let serverID = int(payload, keys: ["id", "message_id"]) else { return }
+        chatRunStoreLogger.info("[ChatRunStore] handleMessageStatusUpdate payload=\(Self.summarizePayload(payload), privacy: .public)")
+        guard let serverID = int(payload, keys: ["id", "message_id"]) else {
+            chatRunStoreLogger.error("[ChatRunStore] skipping message status update: missing id/message_id")
+            return
+        }
         let status = DeliveryStatus(rawValue: string(payload, keys: ["status"]) ?? "sent") ?? .sent
         let retryable = bool(payload, key: "retryable") ?? true
         let errorText = string(payload, keys: ["error_text"])
@@ -628,6 +652,7 @@ public final class ChatRunStore: ObservableObject {
             items[index].retryable = retryable
             items[index].errorText = errorText
             messagesByConversation[conversationID] = items
+            chatRunStoreLogger.info("[ChatRunStore] applied message status update serverID=\(serverID) conversationID=\(conversationID) status=\(status.rawValue, privacy: .public) retryable=\(retryable)")
             if status == .failed {
                 stopAwaitingReply(for: conversationID)
             }
@@ -739,6 +764,7 @@ public final class ChatRunStore: ObservableObject {
         var items = messagesByConversation[item.conversationID] ?? []
         items.append(item)
         messagesByConversation[item.conversationID] = dedupeMessages(items)
+        chatRunStoreLogger.info("[ChatRunStore] appended live message conversationID=\(item.conversationID) serverID=\(item.serverID ?? -1) isFromSelf=\(item.isFromSelf) totalMessages=\((self.messagesByConversation[item.conversationID] ?? []).count)")
     }
 
     private var activeConversation: ChatConversation? {
@@ -817,6 +843,7 @@ public final class ChatRunStore: ObservableObject {
         _ state: ChatRealtimeConnectionState,
         previousState: ChatRealtimeConnectionState,
     ) {
+        chatRunStoreLogger.info("[ChatRunStore] transport state \(Self.describe(previousState), privacy: .public) -> \(Self.describe(state), privacy: .public)")
         switch state {
         case .connected:
             lastRealtimeSignalAt = Date()
@@ -958,12 +985,15 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func stopAwaitingReply(for conversationID: Int) {
+        let hadState = awaitingReplyByConversation[conversationID] != nil
+        chatRunStoreLogger.info("[ChatRunStore] stopAwaitingReply(for:) conversationID=\(conversationID) hadState=\(hadState)")
         awaitingReplyTasks[conversationID]?.cancel()
         awaitingReplyTasks.removeValue(forKey: conversationID)
         awaitingReplyByConversation.removeValue(forKey: conversationID)
     }
 
     private func stopAwaitingReply() {
+        chatRunStoreLogger.info("[ChatRunStore] stopAwaitingReply() clearingAll count=\(self.awaitingReplyByConversation.count)")
         cancelAwaitingReplyTasks()
         awaitingReplyByConversation.removeAll()
     }
@@ -1010,6 +1040,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func refreshServerState(reconnectRealtime: Bool, trigger: RefreshTrigger) async {
+        chatRunStoreLogger.info("[ChatRunStore] refreshServerState(trigger=\(Self.describe(trigger), privacy: .public), reconnectRealtime=\(reconnectRealtime))")
         do {
             let updated = try await service.getSimulation(simulationID: simulation.id)
             applySimulation(updated)
@@ -1056,6 +1087,7 @@ public final class ChatRunStore: ObservableObject {
             }
 
             if reconnectRealtime {
+                chatRunStoreLogger.info("[ChatRunStore] refreshServerState reconnecting realtime simulationID=\(self.simulation.id)")
                 realtimeClient.disconnect()
                 await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
                 if trigger == .foregroundHealthCheck {
@@ -1232,5 +1264,49 @@ public final class ChatRunStore: ObservableObject {
             }
         }
         return nil
+    }
+
+    private static func summarizePayload(_ payload: [String: JSONValue], limit: Int = 256) -> String {
+        let sorted = payload.keys.sorted().reduce(into: [String: Any]()) { result, key in
+            result[key] = payload[key]?.rawValue
+        }
+        guard JSONSerialization.isValidJSONObject(sorted),
+              let data = try? JSONSerialization.data(withJSONObject: sorted),
+              var text = String(data: data, encoding: .utf8)
+        else {
+            return String(describing: sorted)
+        }
+        if text.count > limit {
+            text = String(text.prefix(limit)) + "..."
+        }
+        return text
+    }
+
+    private static func describe(_ state: ChatRealtimeConnectionState) -> String {
+        switch state {
+        case .disconnected:
+            return "disconnected"
+        case .connecting:
+            return "connecting"
+        case .connected:
+            return "connected"
+        case let .reconnecting(attempt):
+            return "reconnecting(\(attempt))"
+        case .catchingUp:
+            return "catchingUp"
+        }
+    }
+
+    private static func describe(_ trigger: RefreshTrigger) -> String {
+        switch trigger {
+        case .foregroundHealthCheck:
+            return "foregroundHealthCheck"
+        case .manualStatusRefresh:
+            return "manualStatusRefresh"
+        case .manualReconnect:
+            return "manualReconnect"
+        case .automaticReconnect:
+            return "automaticReconnect"
+        }
     }
 }
