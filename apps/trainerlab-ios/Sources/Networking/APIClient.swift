@@ -834,8 +834,8 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
             throw APIClientError.unauthorized
         }
         let accountUUID = await accountContextProvider.selectedAccountUUID()
-        return try route.makeURLRequest(
-            baseURL: await baseURL(),
+        return try await route.makeURLRequest(
+            baseURL: baseURL(),
             accessToken: tokens.accessToken,
             accountUUID: accountUUID,
         )

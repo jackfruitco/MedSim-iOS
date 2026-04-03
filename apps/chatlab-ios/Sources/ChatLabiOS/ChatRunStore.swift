@@ -835,7 +835,7 @@ public final class ChatRunStore: ObservableObject {
                         message: "Missed updates were reconciled after reconnecting.",
                     )
                 }
-            } else if previousState != .connected && previousState != .connecting {
+            } else if previousState != .connected, previousState != .connecting {
                 refreshAfterForegroundOrReconnect()
             }
 

@@ -4,7 +4,7 @@ import Networking
 import XCTest
 
 private final class RecordingAuthorizedResourceLoader: AuthorizedResourceLoading, @unchecked Sendable {
-    var base = URL(string: "https://example.com")!
+    var base = URL(fileURLWithPath: "/")
     var dataByURL: [URL: Data] = [:]
     var errorURLs = Set<URL>()
     private(set) var loadedURLs: [URL] = []
@@ -35,12 +35,13 @@ private final class RecordingAuthorizedResourceLoader: AuthorizedResourceLoading
 
 final class ChatMediaLoaderTests: XCTestCase {
     func testAuthenticatedLoaderFallsBackAcrossCandidatesAndCaches() async throws {
-        let thumb = URL(string: "https://example.com/thumb.png")!
-        let full = URL(string: "https://example.com/full.png")!
+        let thumb = try XCTUnwrap(URL(string: "https://example.com/thumb.png"))
+        let full = try XCTUnwrap(URL(string: "https://example.com/full.png"))
 
         let loader = RecordingAuthorizedResourceLoader()
+        loader.base = try XCTUnwrap(URL(string: "https://example.com"))
         loader.errorURLs = [thumb]
-        loader.dataByURL[full] = imageData()
+        loader.dataByURL[full] = try imageData()
 
         let mediaLoader = AuthenticatedChatMediaLoader(authLoader: loader)
         let media = ChatMessageMedia(
@@ -59,9 +60,11 @@ final class ChatMediaLoaderTests: XCTestCase {
         XCTAssertEqual(loader.loadedURLs, [thumb, full])
     }
 
-    private func imageData() -> Data {
-        Data(
-            base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+yF9kAAAAASUVORK5CYII=",
-        )!
+    private func imageData() throws -> Data {
+        try XCTUnwrap(
+            Data(
+                base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+yF9kAAAAASUVORK5CYII=",
+            ),
+        )
     }
 }
