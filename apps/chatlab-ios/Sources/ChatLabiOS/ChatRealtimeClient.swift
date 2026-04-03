@@ -321,9 +321,12 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     private func consumeSSE(simulationID: Int, currentCursor: inout String?) async throws {
         let cursorSnapshot = currentCursor
         chatRealtimeLogger.info("[ChatRealtime] consumeSSE(simulationID=\(simulationID), cursor=\(cursorSnapshot ?? "nil", privacy: .public))")
-        logConnectionState(.connected, reason: "SSE opened")
-        stateContinuation.yield(.connected)
-        for try await item in streamSSE(simulationID: simulationID, cursor: currentCursor) {
+        let onOpen: @Sendable (HTTPURLResponse) -> Void = { [weak self] response in
+            guard let client = self else { return }
+            client.logConnectionState(.connected, reason: "SSE opened status=\(response.statusCode)")
+            client.stateContinuation.yield(.connected)
+        }
+        for try await item in streamSSE(simulationID: simulationID, cursor: currentCursor, onOpen: onOpen) {
             switch item {
             case let .event(event):
                 stateContinuation.yield(.connected)
@@ -341,12 +344,17 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         throw URLError(.networkConnectionLost)
     }
 
-    private func streamSSE(simulationID: Int, cursor: String?) -> AsyncThrowingStream<ChatSSEStreamItem, Error> {
+    private func streamSSE(
+        simulationID: Int,
+        cursor: String?,
+        onOpen: @escaping @Sendable (HTTPURLResponse) -> Void = { _ in },
+    ) -> AsyncThrowingStream<ChatSSEStreamItem, Error> {
         AsyncThrowingStream { continuation in
             let freshness = ChatSSEFreshnessTracker()
             let task = Task {
                 do {
                     let (bytes, response) = try await openSSEBytes(simulationID: simulationID, cursor: cursor)
+                    onOpen(response)
                     chatRealtimeLogger.info("[ChatRealtime] SSE stream consuming lines status=\(response.statusCode)")
 
                     var dataLines: [String] = []

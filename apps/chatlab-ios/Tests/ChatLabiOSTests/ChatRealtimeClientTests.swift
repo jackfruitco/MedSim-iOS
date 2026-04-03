@@ -8,8 +8,9 @@ private enum ChatRealtimeClientTestError: Error {
     case unexpectedCall
 }
 
-private final class ChatRealtimeURLProtocolMock: URLProtocol {
+private final class ChatRealtimeURLProtocolMock: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    nonisolated(unsafe) static var streamingHandler: ((ChatRealtimeURLProtocolMock, URLRequest, URLProtocolClient) throws -> Void)?
 
     override class func canInit(with _: URLRequest) -> Bool {
         true
@@ -20,6 +21,15 @@ private final class ChatRealtimeURLProtocolMock: URLProtocol {
     }
 
     override func startLoading() {
+        if let handler = Self.streamingHandler, let client {
+            do {
+                try handler(self, request, client)
+            } catch {
+                client.urlProtocol(self, didFailWithError: error)
+            }
+            return
+        }
+
         guard let handler = Self.requestHandler else {
             XCTFail("Missing request handler")
             return
@@ -200,6 +210,7 @@ final class ChatRealtimeClientTests: XCTestCase {
     override func tearDown() {
         super.tearDown()
         ChatRealtimeURLProtocolMock.requestHandler = nil
+        ChatRealtimeURLProtocolMock.streamingHandler = nil
     }
 
     func testParserProducesMessageEventFromValidEnvelope() throws {
@@ -340,6 +351,7 @@ final class ChatRealtimeClientTests: XCTestCase {
             let states = await stateBuffer.snapshot()
             let catchupCalls = await service.listEventsCalls
             return states.contains(.catchingUp) &&
+                !states.contains(.connected) &&
                 states.contains(where: {
                     if case .reconnecting(attempt: 1) = $0 { return true }
                     return false
@@ -348,12 +360,91 @@ final class ChatRealtimeClientTests: XCTestCase {
         }
     }
 
+    func testStreamingTransportDeliversLiveEventThroughConnectPipeline() async throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://example.com"))
+        let authLoader = RecordingAuthorizedResourceLoader(baseURL: baseURL)
+        let service = RealtimeClientServiceStub()
+        let streamedEventJSON = try makeEnvelopeJSON(
+            eventID: "evt-streamed",
+            payload: ["message_id": 906, "conversation_id": 6, "content": "streamed", "is_from_ai": true],
+        )
+
+        let session = makeStreamingSession { `protocol`, request, client in
+            let url = try XCTUnwrap(request.url)
+            let response = try XCTUnwrap(
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": "text/event-stream"],
+                ),
+            )
+            let queue = DispatchQueue(label: "ChatRealtimeURLProtocolMock.stream")
+            client.urlProtocol(`protocol`, didReceive: response, cacheStoragePolicy: .notAllowed)
+            queue.async {
+                client.urlProtocol(`protocol`, didLoad: Data(": keep-alive\r\n".utf8))
+            }
+            queue.asyncAfter(deadline: .now() + 0.02) {
+                client.urlProtocol(`protocol`, didLoad: Data("id: upstream-streamed\r\n".utf8))
+                client.urlProtocol(`protocol`, didLoad: Data("event: simulation\r\n".utf8))
+            }
+            queue.asyncAfter(deadline: .now() + 0.04) {
+                client.urlProtocol(`protocol`, didLoad: Data("data: \(streamedEventJSON)\r\n".utf8))
+                client.urlProtocol(`protocol`, didLoad: Data("\r\n".utf8))
+                client.urlProtocolDidFinishLoading(`protocol`)
+            }
+        }
+
+        let realtime = ChatRealtimeClient(authLoader: authLoader, service: service, session: session, staleThresholdSeconds: 5)
+        let eventBuffer = AsyncBuffer<ChatEventEnvelope>()
+        let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
+        let eventTask = Task {
+            for await event in realtime.events {
+                await eventBuffer.append(event)
+            }
+        }
+        let stateTask = Task {
+            for await state in realtime.connectionStates {
+                await stateBuffer.append(state)
+            }
+        }
+        defer {
+            realtime.disconnect()
+            eventTask.cancel()
+            stateTask.cancel()
+        }
+
+        await realtime.connect(simulationID: 8, cursor: nil)
+
+        try await waitUntil {
+            let events = await eventBuffer.snapshot()
+            return events.contains(where: { $0.eventID == "evt-streamed" })
+        }
+
+        let events = await eventBuffer.snapshot()
+        let states = await stateBuffer.snapshot()
+        XCTAssertTrue(events.contains(where: { $0.eventID == "evt-streamed" && $0.eventType == SimulationEventType.messageItemCreated }))
+        XCTAssertTrue(states.contains(.connecting))
+        XCTAssertTrue(states.contains(.connected))
+    }
+
     private func makeSession(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data),
     ) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ChatRealtimeURLProtocolMock.self]
         ChatRealtimeURLProtocolMock.requestHandler = handler
+        ChatRealtimeURLProtocolMock.streamingHandler = nil
+        return URLSession(configuration: configuration)
+    }
+
+    private func makeStreamingSession(
+        handler: @escaping (ChatRealtimeURLProtocolMock, URLRequest, URLProtocolClient) throws -> Void,
+    ) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatRealtimeURLProtocolMock.self]
+        ChatRealtimeURLProtocolMock.requestHandler = nil
+        ChatRealtimeURLProtocolMock.streamingHandler = handler
         return URLSession(configuration: configuration)
     }
 
