@@ -196,6 +196,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
     private let stateContinuation: AsyncStream<ChatRealtimeConnectionState>.Continuation
     private(set) var connectCalls = 0
     private(set) var disconnectCalls = 0
+    private(set) var connectCursors: [String?] = []
 
     init() {
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
@@ -212,8 +213,9 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation = stateCont
     }
 
-    func connect(simulationID _: Int, cursor _: String?) async {
+    func connect(simulationID _: Int, cursor: String?) async {
         connectCalls += 1
+        connectCursors.append(cursor)
         stateContinuation.yield(.connected)
     }
 
@@ -541,6 +543,9 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await waitUntil { store.activeMessages.contains(where: { $0.serverID == 301 }) }
         XCTAssertTrue(store.activityItems.isEmpty)
+        let initialToken = store.toolRefreshToken
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(store.toolRefreshToken, initialToken)
     }
 
     func testMessageCreatedAcceptsIDOnlyAndAIFlagAlias() async throws {
@@ -594,6 +599,7 @@ final class ChatRunStoreTests: XCTestCase {
         defer { store.stop() }
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
+        let initialToken = store.toolRefreshToken
 
         let payload: [String: JSONValue] = [
             "message_id": .number(303),
@@ -612,6 +618,8 @@ final class ChatRunStoreTests: XCTestCase {
             store.activeMessages.count { $0.serverID == 303 } == 1
         }
         XCTAssertEqual(store.activeMessages.count { $0.serverID == 303 }, 1)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(store.toolRefreshToken, initialToken)
     }
 
     func testLiveMessageWithoutConversationIDFallsBackToActiveConversation() async throws {
@@ -1056,6 +1064,88 @@ final class ChatRunStoreTests: XCTestCase {
         }
     }
 
+    func testDuplicateReplayStillAdvancesCursor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let existingMessage = makeMessage(
+            id: 401,
+            conversationID: patientConversation.id,
+            isFromAI: true,
+            content: "Existing reply",
+        )
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [existingMessage]
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let replayEvent = makeEvent(
+            id: "evt-replay-duplicate",
+            type: SimulationEventType.messageItemCreated,
+            payload: [
+                "message_id": .number(401),
+                "conversation_id": .number(Double(patientConversation.id)),
+                "content": .string("Existing reply"),
+                "is_from_ai": .bool(true),
+                "display_name": .string(patientConversation.displayName),
+                "timestamp": .string(isoTimestamp()),
+                "delivery_status": .string("sent"),
+            ],
+        )
+
+        realtime.pushEvent(replayEvent)
+
+        try await waitUntil { store.lastEventCursor == replayEvent.eventID }
+        XCTAssertEqual(store.activeMessages.count { $0.serverID == 401 }, 1)
+    }
+
+    func testManualReconnectReusesLastEventCursor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        let initialConnects = realtime.connectCalls
+
+        let liveEvent = makeEvent(
+            id: "evt-live-cursor",
+            type: SimulationEventType.messageItemCreated,
+            payload: [
+                "message_id": .number(402),
+                "conversation_id": .number(Double(patientConversation.id)),
+                "content": .string("Cursor anchor"),
+                "is_from_ai": .bool(true),
+                "display_name": .string(patientConversation.displayName),
+                "timestamp": .string(isoTimestamp()),
+                "delivery_status": .string("sent"),
+            ],
+        )
+        realtime.pushEvent(liveEvent)
+
+        try await waitUntil { store.lastEventCursor == liveEvent.eventID }
+
+        store.reconnectRealtimeAndRefresh()
+
+        try await waitUntil {
+            realtime.connectCalls > initialConnects &&
+                realtime.connectCursors.last == liveEvent.eventID
+        }
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
         condition: @escaping @MainActor () -> Bool,
@@ -1147,9 +1237,13 @@ final class ChatRunStoreTests: XCTestCase {
         )
     }
 
-    private func makeEvent(type: String, payload: [String: JSONValue]) -> ChatEventEnvelope {
+    private func makeEvent(
+        id: String = UUID().uuidString.lowercased(),
+        type: String,
+        payload: [String: JSONValue],
+    ) -> ChatEventEnvelope {
         ChatEventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
+            eventID: id,
             eventType: type,
             createdAt: Date(),
             correlationID: nil,
