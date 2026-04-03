@@ -267,15 +267,15 @@ public struct ChatRunView: View {
 
     private func runHeader(layoutMode: ChatRunLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
-                backButton
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+            ZStack {
                 patientIdentityHeader
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, headerCenterPadding(for: layoutMode))
 
-                headerActions(layoutMode: layoutMode)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(alignment: .center, spacing: 12) {
+                    backButton
+                    Spacer(minLength: 12)
+                    headerActions(layoutMode: layoutMode)
+                }
             }
 
             HStack(spacing: 8) {
@@ -330,7 +330,17 @@ public struct ChatRunView: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
+    private func headerCenterPadding(for layoutMode: ChatRunLayoutMode) -> CGFloat {
+        switch layoutMode {
+        case .compactMessenger:
+            110
+        case .widePhoneMessenger:
+            150
+        case .padWorkspace:
+            180
+        }
+    }
+
     private func headerActions(layoutMode: ChatRunLayoutMode) -> some View {
         HStack(spacing: 8) {
             if layoutMode != .padWorkspace {
@@ -383,15 +393,15 @@ public struct ChatRunView: View {
     private var transportStatusSymbol: String {
         switch store.transportState {
         case .connected:
-            return "dot.radiowaves.left.and.right"
+            "dot.radiowaves.left.and.right"
         case .catchingUp:
-            return "arrow.triangle.2.circlepath"
+            "arrow.triangle.2.circlepath"
         case .reconnecting:
-            return "bolt.horizontal.circle"
+            "bolt.horizontal.circle"
         case .connecting:
-            return "hourglass"
+            "hourglass"
         case .disconnected:
-            return "wifi.slash"
+            "wifi.slash"
         }
     }
 
@@ -774,8 +784,6 @@ public struct ChatRunView: View {
                 Text("\(toolsStore.stagedOrders.count) order\(toolsStore.stagedOrders.count == 1 ? "" : "s") ready")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
             }
 
             VStack(alignment: .leading, spacing: 0) {
