@@ -5,6 +5,7 @@ public struct ChatLabRootView: View {
     @StateObject private var homeStore: ChatLabHomeStore
     private let makeRunStore: (ChatSimulation) -> ChatRunStore
     private let makeToolsStore: (Int) -> ChatToolsStore
+    private let mediaLoader: ChatMediaLoading
     private let onExit: () -> Void
 
     @State private var selectedSimulation: ChatSimulation?
@@ -13,11 +14,13 @@ public struct ChatLabRootView: View {
         homeStore: ChatLabHomeStore,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
+        mediaLoader: ChatMediaLoading,
         onExit: @escaping () -> Void,
     ) {
         _homeStore = StateObject(wrappedValue: homeStore)
         self.makeRunStore = makeRunStore
         self.makeToolsStore = makeToolsStore
+        self.mediaLoader = mediaLoader
         self.onExit = onExit
     }
 
@@ -29,6 +32,7 @@ public struct ChatLabRootView: View {
                         simulation: simulation,
                         makeRunStore: makeRunStore,
                         makeToolsStore: makeToolsStore,
+                        mediaLoader: mediaLoader,
                         onBack: { selectedSimulation = nil },
                     )
                 } else {
@@ -55,6 +59,7 @@ private struct ChatRunScreen: View {
     let simulation: ChatSimulation
     let makeRunStore: (ChatSimulation) -> ChatRunStore
     let makeToolsStore: (Int) -> ChatToolsStore
+    let mediaLoader: ChatMediaLoading
     let onBack: () -> Void
 
     @StateObject private var runStore: ChatRunStore
@@ -64,11 +69,13 @@ private struct ChatRunScreen: View {
         simulation: ChatSimulation,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
+        mediaLoader: ChatMediaLoading,
         onBack: @escaping () -> Void,
     ) {
         self.simulation = simulation
         self.makeRunStore = makeRunStore
         self.makeToolsStore = makeToolsStore
+        self.mediaLoader = mediaLoader
         self.onBack = onBack
         _runStore = StateObject(wrappedValue: makeRunStore(simulation))
         _toolsStore = StateObject(wrappedValue: makeToolsStore(simulation.id))
@@ -78,6 +85,7 @@ private struct ChatRunScreen: View {
         ChatRunView(
             store: runStore,
             toolsStore: toolsStore,
+            mediaLoader: mediaLoader,
             onBack: onBack,
         )
     }

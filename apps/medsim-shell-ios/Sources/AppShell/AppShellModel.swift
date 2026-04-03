@@ -47,6 +47,7 @@ public final class AppShellModel: ObservableObject {
     private let apiClient: APIClient
     private let trainerService: TrainerLabService
     private let chatService: ChatLabService
+    private let chatMediaLoader: AuthenticatedChatMediaLoader
     private let commandQueue: CommandQueueStoreProtocol
     private var cancellables = Set<AnyCancellable>()
 
@@ -79,6 +80,7 @@ public final class AppShellModel: ObservableObject {
         let trainerService = TrainerLabService(apiClient: apiClient)
         self.trainerService = trainerService
         chatService = ChatLabService(apiClient: apiClient)
+        chatMediaLoader = AuthenticatedChatMediaLoader(authLoader: apiClient)
 
         let accountSessionStore = AccountSessionStore(
             apiClient: apiClient,
@@ -153,9 +155,7 @@ public final class AppShellModel: ObservableObject {
 
     public func makeChatRunStore(simulation: ChatSimulation) -> ChatRunStore {
         let realtime = ChatRealtimeClient(
-            baseURLProvider: { self.mutableBaseURLProvider.currentURL() },
-            tokenProvider: tokenStore,
-            accountContextProvider: selectedAccountContext,
+            authLoader: apiClient,
             service: chatService,
         )
         return ChatRunStore(
@@ -167,6 +167,10 @@ public final class AppShellModel: ObservableObject {
 
     public func makeChatToolsStore(simulationID: Int) -> ChatToolsStore {
         ChatToolsStore(service: chatService, simulationID: simulationID)
+    }
+
+    public func makeChatMediaLoader() -> AuthenticatedChatMediaLoader {
+        chatMediaLoader
     }
 
     public func syncBaseURLFromEnvironment() {
