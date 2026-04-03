@@ -609,9 +609,9 @@ final class ChatRunStoreTests: XCTestCase {
         realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: payload))
 
         try await waitUntil {
-            store.activeMessages.filter { $0.serverID == 303 }.count == 1
+            store.activeMessages.count { $0.serverID == 303 } == 1
         }
-        XCTAssertEqual(store.activeMessages.filter { $0.serverID == 303 }.count, 1)
+        XCTAssertEqual(store.activeMessages.count { $0.serverID == 303 }, 1)
     }
 
     func testLiveMessageWithoutConversationIDFallsBackToActiveConversation() async throws {

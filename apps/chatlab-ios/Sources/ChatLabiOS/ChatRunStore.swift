@@ -535,7 +535,9 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func refreshAfterForegroundOrReconnect() {
-        chatRunStoreLogger.info("[ChatRunStore] refreshAfterForegroundOrReconnect() transportState=\(Self.describe(self.transportState), privacy: .public) lastRealtimeSignalAt=\(self.lastRealtimeSignalAt?.ISO8601Format() ?? "nil", privacy: .public)")
+        let transportStateDescription = Self.describe(transportState)
+        let realtimeSignalDescription = lastRealtimeSignalAt?.ISO8601Format() ?? "nil"
+        chatRunStoreLogger.info("[ChatRunStore] refreshAfterForegroundOrReconnect() transportState=\(transportStateDescription, privacy: .public) lastRealtimeSignalAt=\(realtimeSignalDescription, privacy: .public)")
         Task {
             await refreshServerState(
                 reconnectRealtime: shouldForceRealtimeRecovery(),
@@ -545,7 +547,8 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func refreshAwaitingReplyStatus() {
-        chatRunStoreLogger.info("[ChatRunStore] refreshAwaitingReplyStatus() activeConversationID=\(self.activeConversationID ?? -1)")
+        let activeConversationIDSnapshot = activeConversationID ?? -1
+        chatRunStoreLogger.info("[ChatRunStore] refreshAwaitingReplyStatus() activeConversationID=\(activeConversationIDSnapshot)")
         Task {
             await refreshServerState(
                 reconnectRealtime: false,
@@ -555,7 +558,8 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func reconnectRealtimeAndRefresh() {
-        chatRunStoreLogger.info("[ChatRunStore] reconnectRealtimeAndRefresh() activeConversationID=\(self.activeConversationID ?? -1)")
+        let activeConversationIDSnapshot = activeConversationID ?? -1
+        chatRunStoreLogger.info("[ChatRunStore] reconnectRealtimeAndRefresh() activeConversationID=\(activeConversationIDSnapshot)")
         Task {
             await refreshServerState(
                 reconnectRealtime: true,
@@ -627,7 +631,9 @@ public final class ChatRunStore: ObservableObject {
 
         if conversationID != activeConversationID {
             unreadByConversation[conversationID, default: 0] += 1
-            chatRunStoreLogger.info("[ChatRunStore] live message targeted non-active conversation conversationID=\(conversationID) activeConversationID=\(self.activeConversationID ?? -1) unreadCount=\(self.unreadByConversation[conversationID] ?? 0)")
+            let activeConversationIDSnapshot = activeConversationID ?? -1
+            let unreadCount = unreadByConversation[conversationID] ?? 0
+            chatRunStoreLogger.info("[ChatRunStore] live message targeted non-active conversation conversationID=\(conversationID) activeConversationID=\(activeConversationIDSnapshot) unreadCount=\(unreadCount)")
         }
         appendMessage(item)
         if conversationID == activeConversationID, !item.isFromSelf {
@@ -764,7 +770,8 @@ public final class ChatRunStore: ObservableObject {
         var items = messagesByConversation[item.conversationID] ?? []
         items.append(item)
         messagesByConversation[item.conversationID] = dedupeMessages(items)
-        chatRunStoreLogger.info("[ChatRunStore] appended live message conversationID=\(item.conversationID) serverID=\(item.serverID ?? -1) isFromSelf=\(item.isFromSelf) totalMessages=\((self.messagesByConversation[item.conversationID] ?? []).count)")
+        let totalMessages = (messagesByConversation[item.conversationID] ?? []).count
+        chatRunStoreLogger.info("[ChatRunStore] appended live message conversationID=\(item.conversationID) serverID=\(item.serverID ?? -1) isFromSelf=\(item.isFromSelf) totalMessages=\(totalMessages)")
     }
 
     private var activeConversation: ChatConversation? {
@@ -993,7 +1000,8 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func stopAwaitingReply() {
-        chatRunStoreLogger.info("[ChatRunStore] stopAwaitingReply() clearingAll count=\(self.awaitingReplyByConversation.count)")
+        let awaitingReplyCount = awaitingReplyByConversation.count
+        chatRunStoreLogger.info("[ChatRunStore] stopAwaitingReply() clearingAll count=\(awaitingReplyCount)")
         cancelAwaitingReplyTasks()
         awaitingReplyByConversation.removeAll()
     }
@@ -1087,7 +1095,8 @@ public final class ChatRunStore: ObservableObject {
             }
 
             if reconnectRealtime {
-                chatRunStoreLogger.info("[ChatRunStore] refreshServerState reconnecting realtime simulationID=\(self.simulation.id)")
+                let simulationID = simulation.id
+                chatRunStoreLogger.info("[ChatRunStore] refreshServerState reconnecting realtime simulationID=\(simulationID)")
                 realtimeClient.disconnect()
                 await realtimeClient.connect(simulationID: simulation.id, cursor: nil)
                 if trigger == .foregroundHealthCheck {
@@ -1285,28 +1294,28 @@ public final class ChatRunStore: ObservableObject {
     private static func describe(_ state: ChatRealtimeConnectionState) -> String {
         switch state {
         case .disconnected:
-            return "disconnected"
+            "disconnected"
         case .connecting:
-            return "connecting"
+            "connecting"
         case .connected:
-            return "connected"
+            "connected"
         case let .reconnecting(attempt):
-            return "reconnecting(\(attempt))"
+            "reconnecting(\(attempt))"
         case .catchingUp:
-            return "catchingUp"
+            "catchingUp"
         }
     }
 
     private static func describe(_ trigger: RefreshTrigger) -> String {
         switch trigger {
         case .foregroundHealthCheck:
-            return "foregroundHealthCheck"
+            "foregroundHealthCheck"
         case .manualStatusRefresh:
-            return "manualStatusRefresh"
+            "manualStatusRefresh"
         case .manualReconnect:
-            return "manualReconnect"
+            "manualReconnect"
         case .automaticReconnect:
-            return "automaticReconnect"
+            "automaticReconnect"
         }
     }
 }

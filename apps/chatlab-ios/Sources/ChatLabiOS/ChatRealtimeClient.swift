@@ -247,7 +247,9 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
 
                 let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
                 let jitter = Double.random(in: 0 ... 0.35)
-                chatRealtimeLogger.info("[ChatRealtime] reconnect backoff attempt=\(self.reconnectAttempt) delay=\(String(format: "%.2f", delaySeconds + jitter), privacy: .public)s")
+                let reconnectAttemptSnapshot = reconnectAttempt
+                let backoffDelay = String(format: "%.2f", delaySeconds + jitter)
+                chatRealtimeLogger.info("[ChatRealtime] reconnect backoff attempt=\(reconnectAttemptSnapshot) delay=\(backoffDelay, privacy: .public)s")
                 try? await Task.sleep(nanoseconds: UInt64((delaySeconds + jitter) * 1_000_000_000))
             }
         }
@@ -457,15 +459,15 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
     fileprivate static func describe(_ state: ChatRealtimeConnectionState) -> String {
         switch state {
         case .disconnected:
-            return "disconnected"
+            "disconnected"
         case .connecting:
-            return "connecting"
+            "connecting"
         case .connected:
-            return "connected"
+            "connected"
         case let .reconnecting(attempt):
-            return "reconnecting(\(attempt))"
+            "reconnecting(\(attempt))"
         case .catchingUp:
-            return "catchingUp"
+            "catchingUp"
         }
     }
 

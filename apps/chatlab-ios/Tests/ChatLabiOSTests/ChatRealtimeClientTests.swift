@@ -46,7 +46,7 @@ private actor RecordingAuthorizedResourceLoader: AuthorizedResourceLoading {
     private(set) var routes: [EventStreamRoute] = []
 
     init(baseURL: URL, accessToken: String = "token-1", accountUUID: String? = "acct-1") {
-        self.baseURLValue = baseURL
+        baseURLValue = baseURL
         self.accountUUID = accountUUID
         self.accessToken = accessToken
     }
@@ -203,10 +203,14 @@ final class ChatRealtimeClientTests: XCTestCase {
     }
 
     func testParserProducesMessageEventFromValidEnvelope() throws {
+        let eventJSON = try makeEnvelopeJSON(
+            eventID: "evt-1",
+            payload: ["message_id": 901, "conversation_id": 3, "content": "hello", "is_from_ai": true],
+        )
         let items = ChatSSEParser.parseLines(
             [
                 "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-1", payload: ["message_id": 901, "conversation_id": 3, "content": "hello", "is_from_ai": true]))",
+                "data: \(eventJSON)",
                 "",
             ],
             decoder: makeDecoder(),
@@ -222,6 +226,10 @@ final class ChatRealtimeClientTests: XCTestCase {
     }
 
     func testCommentLinesDoNotBlockSubsequentEventDelivery() throws {
+        let eventJSON = try makeEnvelopeJSON(
+            eventID: "evt-keepalive",
+            payload: ["message_id": 902, "content": "after heartbeat"],
+        )
         let items = ChatSSEParser.parseLines(
             [
                 ": keep-alive",
@@ -229,7 +237,7 @@ final class ChatRealtimeClientTests: XCTestCase {
                 ": keep-alive",
                 "",
                 "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-keepalive", payload: ["message_id": 902, "content": "after heartbeat"]))",
+                "data: \(eventJSON)",
                 "",
             ],
             decoder: makeDecoder(),
@@ -245,13 +253,17 @@ final class ChatRealtimeClientTests: XCTestCase {
     }
 
     func testMalformedEventIsSkippedAndValidEventStillArrives() throws {
+        let validEventJSON = try makeEnvelopeJSON(
+            eventID: "evt-good",
+            payload: ["message_id": 903, "conversation_id": 4, "content": "still arrives", "is_from_ai": true],
+        )
         let items = ChatSSEParser.parseLines(
             [
                 "event: simulation",
                 "data: {\"event_id\":\"evt-bad\",\"event_type\":\"message.item.created\"",
                 "",
                 "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-good", payload: ["message_id": 903, "conversation_id": 4, "content": "still arrives", "is_from_ai": true]))",
+                "data: \(validEventJSON)",
                 "",
             ],
             decoder: makeDecoder(),
@@ -315,7 +327,7 @@ final class ChatRealtimeClientTests: XCTestCase {
         eventID: String,
         eventType: String = SimulationEventType.messageItemCreated,
         payload: [String: Any],
-    ) -> String {
+    ) throws -> String {
         let envelope: [String: Any] = [
             "event_id": eventID,
             "event_type": eventType,
@@ -323,8 +335,11 @@ final class ChatRealtimeClientTests: XCTestCase {
             "correlation_id": NSNull(),
             "payload": payload,
         ]
-        let data = try! JSONSerialization.data(withJSONObject: envelope)
-        return String(decoding: data, as: UTF8.self)
+        let data = try JSONSerialization.data(withJSONObject: envelope)
+        guard let string = String(data: data, encoding: .utf8) else {
+            throw ChatRealtimeClientTestError.unexpectedCall
+        }
+        return string
     }
 
     private func makeDecoder() -> JSONDecoder {
