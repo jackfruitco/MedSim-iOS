@@ -1513,6 +1513,7 @@ public struct RuntimeSnapshotPresence: Equatable, Sendable {
     public let lastAITickAt: Bool
     public let controlPlaneDebug: Bool
     public let requestMetadata: Bool
+    public let latestEventCursor: Bool
 
     public init(
         status: Bool,
@@ -1531,6 +1532,7 @@ public struct RuntimeSnapshotPresence: Equatable, Sendable {
         lastAITickAt: Bool,
         controlPlaneDebug: Bool,
         requestMetadata: Bool,
+        latestEventCursor: Bool,
     ) {
         self.status = status
         self.phase = phase
@@ -1548,6 +1550,7 @@ public struct RuntimeSnapshotPresence: Equatable, Sendable {
         self.lastAITickAt = lastAITickAt
         self.controlPlaneDebug = controlPlaneDebug
         self.requestMetadata = requestMetadata
+        self.latestEventCursor = latestEventCursor
     }
 
     public static let none = Self(
@@ -1567,6 +1570,7 @@ public struct RuntimeSnapshotPresence: Equatable, Sendable {
         lastAITickAt: false,
         controlPlaneDebug: false,
         requestMetadata: false,
+        latestEventCursor: false,
     )
 }
 
@@ -1669,6 +1673,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let lastAITickAt: Date?
     public let controlPlaneDebug: [String: JSONValue]?
     public let requestMetadata: [String: JSONValue]?
+    public let latestEventCursor: String?
     public let presence: RuntimeSnapshotPresence
 
     enum CodingKeys: String, CodingKey {
@@ -1688,6 +1693,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         case lastAITickAt = "last_ai_tick_at"
         case controlPlaneDebug = "control_plane_debug"
         case requestMetadata = "request_metadata"
+        case latestEventCursor = "latest_event_cursor"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1724,6 +1730,8 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         controlPlaneDebug = try container.decodeIfPresent([String: JSONValue].self, forKey: .controlPlaneDebug)
         let hasRequestMetadata = container.contains(.requestMetadata)
         requestMetadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .requestMetadata)
+        let hasLatestEventCursor = container.contains(.latestEventCursor)
+        latestEventCursor = try container.decodeIfPresent(String.self, forKey: .latestEventCursor)
 
         presence = RuntimeSnapshotPresence(
             status: hasStatus,
@@ -1742,6 +1750,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
             lastAITickAt: hasLastAITick,
             controlPlaneDebug: hasControlPlaneDebug,
             requestMetadata: hasRequestMetadata,
+            latestEventCursor: hasLatestEventCursor,
         )
     }
 }
@@ -1804,29 +1813,39 @@ public struct EventTimelineDTO: Decodable, Sendable {
 }
 
 public struct SnapshotCacheStatusDTO: Decodable, Sendable {
-    public let status: String?
-    public let updatedAt: Date?
+    public let status: String
+    public let authoritative: Bool
+    public let source: String
+    public let stateRevision: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
-        case updatedAt = "updated_at"
+        case authoritative
+        case source
+        case stateRevision = "state_revision"
     }
 }
 
 public struct TrainerRestMetadataDTO: Decodable, Sendable {
-    public let schemaVersion: String?
-    public let cacheStatus: SnapshotCacheStatusDTO?
+    public let builderVersion: String
+    public let schemaVersion: String
+    public let snapshotCache: SnapshotCacheStatusDTO
+    public let eventTimelineCount: Int
     public let raw: [String: JSONValue]
 
     enum CodingKeys: String, CodingKey {
+        case builderVersion = "builder_version"
         case schemaVersion = "schema_version"
-        case cacheStatus = "cache_status"
+        case snapshotCache = "snapshot_cache"
+        case eventTimelineCount = "event_timeline_count"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decodeIfPresent(String.self, forKey: .schemaVersion)
-        cacheStatus = try container.decodeIfPresent(SnapshotCacheStatusDTO.self, forKey: .cacheStatus)
+        builderVersion = try container.decode(String.self, forKey: .builderVersion)
+        schemaVersion = try container.decode(String.self, forKey: .schemaVersion)
+        snapshotCache = try container.decode(SnapshotCacheStatusDTO.self, forKey: .snapshotCache)
+        eventTimelineCount = try container.decode(Int.self, forKey: .eventTimelineCount)
         let rawContainer = try decoder.singleValueContainer()
         raw = (try? rawContainer.decode([String: JSONValue].self)) ?? [:]
     }
@@ -1859,15 +1878,7 @@ public struct TrainerRestViewModelDTO: Decodable, Sendable {
         scenarioSnapshot = try container.decode(ScenarioSnapshotDTO.self, forKey: .scenarioSnapshot)
         runtimeSnapshot = try container.decode(RuntimeSnapshotDTO.self, forKey: .runtimeSnapshot)
         eventTimeline = try container.decode(EventTimelineDTO.self, forKey: .eventTimeline)
-        metadata = try container.decodeIfPresent(TrainerRestMetadataDTO.self, forKey: .metadata) ?? TrainerRestMetadataDTO(schemaVersion: nil, cacheStatus: nil, raw: [:])
-    }
-}
-
-private extension TrainerRestMetadataDTO {
-    init(schemaVersion: String?, cacheStatus: SnapshotCacheStatusDTO?, raw: [String: JSONValue]) {
-        self.schemaVersion = schemaVersion
-        self.cacheStatus = cacheStatus
-        self.raw = raw
+        metadata = try container.decode(TrainerRestMetadataDTO.self, forKey: .metadata)
     }
 }
 

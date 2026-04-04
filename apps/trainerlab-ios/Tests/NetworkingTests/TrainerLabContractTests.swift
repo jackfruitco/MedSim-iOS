@@ -578,10 +578,27 @@ final class TrainerLabContractTests: XCTestCase {
             "pending_runtime_reasons": [{"kind": "trend"}],
             "currently_processing_reasons": [{"kind": "tick"}],
             "last_runtime_error": "none",
-            "last_ai_tick_at": "2026-03-12T12:01:00Z"
+            "last_ai_tick_at": "2026-03-12T12:01:00Z",
+            "control_plane_debug": {
+              "execution_plan": ["assess", "stabilize"]
+            },
+            "request_metadata": {
+              "request_id": "req-420"
+            },
+            "latest_event_cursor": "cursor-420"
           },
           "event_timeline": { "events": [], "total_events": 0 },
-          "metadata": { "schema_version": "v2" }
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "ready",
+              "authoritative": true,
+              "source": "runtime_event_projection",
+              "state_revision": 12
+            },
+            "event_timeline_count": 0
+          }
         }
         """
 
@@ -596,6 +613,16 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(state.runtimeSnapshot.lastRuntimeError, "none")
         XCTAssertNotNil(state.runtimeSnapshot.nextTickAt)
         XCTAssertNotNil(state.runtimeSnapshot.lastAITickAt)
+        XCTAssertEqual(state.runtimeSnapshot.latestEventCursor, "cursor-420")
+        XCTAssertEqual(state.runtimeSnapshot.controlPlaneDebug?["execution_plan"], .array([.string("assess"), .string("stabilize")]))
+        XCTAssertEqual(state.runtimeSnapshot.requestMetadata?["request_id"], .string("req-420"))
+        XCTAssertEqual(state.metadata.builderVersion, "trainerlab-rest-v1")
+        XCTAssertEqual(state.metadata.schemaVersion, "trainerlab-state-v2")
+        XCTAssertEqual(state.metadata.snapshotCache.status, "ready")
+        XCTAssertEqual(state.metadata.snapshotCache.authoritative, true)
+        XCTAssertEqual(state.metadata.snapshotCache.source, "runtime_event_projection")
+        XCTAssertEqual(state.metadata.snapshotCache.stateRevision, 12)
+        XCTAssertEqual(state.metadata.eventTimelineCount, 0)
     }
 
     func testTrainerRuntimeStateDecodesVitalWithoutLockValue() throws {
@@ -625,7 +652,17 @@ final class TrainerLabContractTests: XCTestCase {
           },
           "runtime_snapshot": { "status": "running", "state_revision": 1, "active_elapsed_seconds": 0 },
           "event_timeline": { "events": [], "total_events": 0 },
-          "metadata": {}
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
         }
         """
 
@@ -661,7 +698,17 @@ final class TrainerLabContractTests: XCTestCase {
             "ai_plan": { "summary": "Watch SpO2" }
           },
           "event_timeline": { "events": [], "total_events": 0 },
-          "metadata": {}
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
         }
         """
 
@@ -712,7 +759,17 @@ final class TrainerLabContractTests: XCTestCase {
             "ai_plan": { "summary": "Control hemorrhage first" }
           },
           "event_timeline": { "events": [], "total_events": 0 },
-          "metadata": {}
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
         }
         """
 

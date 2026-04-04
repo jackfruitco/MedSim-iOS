@@ -668,20 +668,30 @@ final class RunSessionStoreTests: XCTestCase {
                 "simulation_id": 420,
                 "session_id": 420,
                 "status": "running",
-                "state_revision": 2,
-                "active_elapsed_seconds": 0,
-                "tick_interval_seconds": 15,
-                "current_snapshot": [
+                "scenario_snapshot": [
                     "vitals": [[
                         "vital_type": "heart_rate",
                         "min_value": 120,
                         "max_value": 150,
                     ]],
                 ],
-                "pending_runtime_reasons": [],
-                "pending_reasons": [],
-                "currently_processing_reasons": [],
-                "last_runtime_error": "",
+                "runtime_snapshot": [
+                    "status": "running",
+                    "state_revision": 2,
+                    "active_elapsed_seconds": 0,
+                    "tick_interval_seconds": 15,
+                    "pending_runtime_reasons": [],
+                    "currently_processing_reasons": [],
+                    "last_runtime_error": "",
+                    "control_plane_debug": [:],
+                    "request_metadata": [:],
+                    "latest_event_cursor": NSNull(),
+                ],
+                "event_timeline": [
+                    "events": [],
+                    "total_events": 0,
+                ],
+                "metadata": makeRuntimeMetadataPayload(),
             ])),
         ]
 
@@ -765,10 +775,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "simulation_id": 420,
                 "session_id": 420,
                 "status": "running",
-                "state_revision": 2,
-                "active_elapsed_seconds": 0,
-                "tick_interval_seconds": 15,
-                "current_snapshot": [
+                "scenario_snapshot": [
                     "causes": [],
                     "problems": [],
                     "recommended_interventions": [],
@@ -781,10 +788,23 @@ final class RunSessionStoreTests: XCTestCase {
                     "pulses": [],
                     "patient_status": [:],
                 ],
-                "pending_runtime_reasons": [],
-                "pending_reasons": [],
-                "currently_processing_reasons": [],
-                "last_runtime_error": "",
+                "runtime_snapshot": [
+                    "status": "running",
+                    "state_revision": 2,
+                    "active_elapsed_seconds": 0,
+                    "tick_interval_seconds": 15,
+                    "pending_runtime_reasons": [],
+                    "currently_processing_reasons": [],
+                    "last_runtime_error": "",
+                    "control_plane_debug": [:],
+                    "request_metadata": [:],
+                    "latest_event_cursor": NSNull(),
+                ],
+                "event_timeline": [
+                    "events": [],
+                    "total_events": 0,
+                ],
+                "metadata": makeRuntimeMetadataPayload(),
             ])),
         ]
 
@@ -1616,7 +1636,7 @@ final class RunSessionStoreTests: XCTestCase {
             createdAt: Date(),
             correlationID: nil,
             payload: [
-                "diagnostic_id": .number(1101),
+                "result_id": .number(1101),
                 "title": .string("Ultrasound pending"),
                 "status": .string("queued"),
             ],
@@ -1656,16 +1676,18 @@ final class RunSessionStoreTests: XCTestCase {
         ))
 
         await waitUntil(timeout: 2.0) {
-            store.state.causeAnnotations.first?.causeID == 501
-                && store.state.problemAnnotations.first?.problemID == 601
-                && store.state.interventionAnnotations.first?.interventionID == 801
-                && store.state.pulseAnnotations.first?.location == "radial_left"
-                && store.assessmentFindings.first?.findingID == 1001
-                && store.diagnosticResults.first?.resultID == 1101
-                && store.resources.first?.resourceID == 1201
-                && store.disposition?.dispositionID == 1301
-                && store.state.recommendedInterventions.isEmpty
+            store.disposition?.dispositionID == 1301
         }
+
+        XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 501)
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
+        XCTAssertEqual(store.state.interventionAnnotations.first?.interventionID, 801)
+        XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
+        XCTAssertEqual(store.assessmentFindings.first?.findingID, 1001)
+        XCTAssertEqual(store.diagnosticResults.first?.resultID, 1101)
+        XCTAssertEqual(store.resources.first?.resourceID, 1201)
+        XCTAssertEqual(store.disposition?.dispositionID, 1301)
+        XCTAssertTrue(store.state.recommendedInterventions.isEmpty)
     }
 
     func testUnknownEventsNormalizeSafelyWithoutTriggeringRefresh() async throws {
@@ -1882,12 +1904,7 @@ final class RunSessionStoreTests: XCTestCase {
             "simulation_id": 420,
             "session_id": 420,
             "status": status,
-            "state_revision": stateRevision,
-            "active_elapsed_seconds": 0,
-            "tick_interval_seconds": 15,
-            "next_tick_at": NSNull(),
-            "scenario_brief": scenarioBrief ?? NSNull(),
-            "current_snapshot": [
+            "scenario_snapshot": [
                 "causes": causes,
                 "problems": problems,
                 "recommended_interventions": recommendedInterventions,
@@ -1899,17 +1916,49 @@ final class RunSessionStoreTests: XCTestCase {
                 "vitals": vitals,
                 "pulses": pulses,
                 "patient_status": patientStatus,
+                "scenario_brief": scenarioBrief ?? NSNull(),
             ],
-            "ai_plan": aiPlan ?? NSNull(),
-            "ai_rationale_notes": [],
-            "pending_runtime_reasons": [],
-            "pending_reasons": [],
-            "currently_processing_reasons": [],
-            "last_runtime_error": "",
-            "last_ai_tick_at": NSNull(),
+            "runtime_snapshot": [
+                "status": status,
+                "state_revision": stateRevision,
+                "active_elapsed_seconds": 0,
+                "tick_interval_seconds": 15,
+                "next_tick_at": NSNull(),
+                "ai_plan": aiPlan.map { $0 as Any } ?? NSNull(),
+                "ai_rationale_notes": [],
+                "pending_runtime_reasons": [],
+                "currently_processing_reasons": [],
+                "last_runtime_error": "",
+                "last_ai_tick_at": NSNull(),
+                "control_plane_debug": [:],
+                "request_metadata": [:],
+                "latest_event_cursor": NSNull(),
+            ],
+            "event_timeline": [
+                "events": [],
+                "total_events": 0,
+            ],
+            "metadata": makeRuntimeMetadataPayload(stateRevision: stateRevision),
         ]
 
         return try decodeRuntimeStatePayload(payload)
+    }
+
+    private func makeRuntimeMetadataPayload(
+        eventTimelineCount: Int = 0,
+        stateRevision: Int? = nil,
+    ) -> [String: Any] {
+        [
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": [
+                "status": "disabled",
+                "authoritative": false,
+                "source": "disabled",
+                "state_revision": stateRevision.map { $0 as Any } ?? NSNull(),
+            ],
+            "event_timeline_count": eventTimelineCount,
+        ]
     }
 
     private func decodeRuntimeStatePayload(_ payload: [String: Any]) throws -> TrainerRestViewModelDTO {
@@ -1921,59 +1970,99 @@ final class RunSessionStoreTests: XCTestCase {
 
     private func makeAliasedSessionRuntimeSeed() -> [String: JSONValue] {
         [
-            "scenario_brief": .object([
-                "read_aloud_brief": .string("Patrol medic called to blast injury."),
-                "environment": .string("Night operation"),
-            ]),
-            "injuries": .array([
-                .object([
-                    "cause_id": .number(11),
-                    "kind": .string("injury"),
-                    "title": .string("Blast Injury"),
-                    "description": .string("Open wound to the left arm"),
-                    "injury_location": .string("LEFT_ARM"),
+            "simulation_id": .number(420),
+            "session_id": .number(420),
+            "status": .string("seeded"),
+            "scenario_snapshot": .object([
+                "scenario_brief": .object([
+                    "read_aloud_brief": .string("Patrol medic called to blast injury."),
+                    "environment": .string("Night operation"),
+                ]),
+                "causes": .array([
+                    .object([
+                        "cause_id": .number(11),
+                        "kind": .string("injury"),
+                        "title": .string("Blast Injury"),
+                        "description": .string("Open wound to the left arm"),
+                        "injury_location": .string("LEFT_ARM"),
+                    ]),
+                ]),
+                "problems": .array([
+                    .object([
+                        "problem_id": .number(21),
+                        "title": .string("Hemorrhagic Shock"),
+                        "status": .string("active"),
+                        "cause_id": .number(11),
+                        "anatomical_location": .string("LEFT_ARM"),
+                    ]),
+                ]),
+                "recommended_interventions": .array([]),
+                "interventions": .array([
+                    .object([
+                        "intervention_id": .number(31),
+                        "kind": .string("tourniquet"),
+                        "title": .string("Tourniquet"),
+                        "site_code": .string("LEFT_ARM"),
+                        "target_problem_id": .number(21),
+                    ]),
+                ]),
+                "assessment_findings": .array([]),
+                "diagnostic_results": .array([]),
+                "resources": .array([]),
+                "disposition": .null,
+                "pulses": .array([
+                    .object([
+                        "location": .string("radial_left"),
+                        "present": .bool(false),
+                        "quality": .string("weak"),
+                    ]),
+                ]),
+                "vitals": .array([
+                    .object([
+                        "vital_type": .string("heart_rate"),
+                        "min_value": .number(120),
+                        "max_value": .number(140),
+                    ]),
+                ]),
+                "patient_status": .object([
+                    "avpu": .string("verbal"),
+                    "narrative": .string("Increasing respiratory distress."),
+                    "respiratory_distress": .bool(true),
                 ]),
             ]),
-            "conditions": .array([
-                .object([
-                    "problem_id": .number(21),
-                    "title": .string("Hemorrhagic Shock"),
-                    "status": .string("active"),
-                    "cause_id": .number(11),
-                    "anatomical_location": .string("LEFT_ARM"),
+            "runtime_snapshot": .object([
+                "status": .string("seeded"),
+                "state_revision": .number(1),
+                "active_elapsed_seconds": .number(0),
+                "tick_interval_seconds": .number(15),
+                "next_tick_at": .null,
+                "ai_plan": .object([
+                    "summary": .string("Escalate respiratory distress"),
+                    "upcoming_changes": .array([.string("Decrease SpO2")]),
                 ]),
+                "ai_rationale_notes": .array([]),
+                "pending_runtime_reasons": .array([]),
+                "currently_processing_reasons": .array([]),
+                "last_runtime_error": .string(""),
+                "last_ai_tick_at": .null,
+                "control_plane_debug": .object([:]),
+                "request_metadata": .object([:]),
+                "latest_event_cursor": .null,
             ]),
-            "interventions": .array([
-                .object([
-                    "intervention_id": .number(31),
-                    "kind": .string("tourniquet"),
-                    "title": .string("Tourniquet"),
-                    "site_code": .string("LEFT_ARM"),
-                    "target_problem_id": .number(21),
+            "event_timeline": .object([
+                "events": .array([]),
+                "total_events": .number(0),
+            ]),
+            "metadata": .object([
+                "builder_version": .string("trainerlab-rest-v1"),
+                "schema_version": .string("trainerlab-state-v2"),
+                "snapshot_cache": .object([
+                    "status": .string("disabled"),
+                    "authoritative": .bool(false),
+                    "source": .string("disabled"),
+                    "state_revision": .null,
                 ]),
-            ]),
-            "pulses": .array([
-                .object([
-                    "location": .string("radial_left"),
-                    "present": .bool(false),
-                    "quality": .string("weak"),
-                ]),
-            ]),
-            "vitals": .array([
-                .object([
-                    "vital_type": .string("heart_rate"),
-                    "min_value": .number(120),
-                    "max_value": .number(140),
-                ]),
-            ]),
-            "patient_status": .object([
-                "avpu": .string("verbal"),
-                "narrative": .string("Increasing respiratory distress."),
-                "respiratory_distress": .bool(true),
-            ]),
-            "ai_instructor": .object([
-                "summary": .string("Escalate respiratory distress"),
-                "upcoming_changes": .array([.string("Decrease SpO2")]),
+                "event_timeline_count": .number(0),
             ]),
         ]
     }
