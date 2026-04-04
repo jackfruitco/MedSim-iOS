@@ -163,7 +163,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 reconnectAttempt += 1
                 stateContinuation.yield(.reconnecting(attempt: reconnectAttempt))
                 realtimeLogger.warning(
-                    "Chat SSE reconnect attempt \(self.reconnectAttempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
+                    "Chat SSE reconnect attempt \(reconnectAttempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
                 )
 
                 let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)

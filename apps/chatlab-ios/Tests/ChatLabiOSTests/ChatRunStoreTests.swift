@@ -957,7 +957,7 @@ final class ChatRunStoreTests: XCTestCase {
         store.reconnectRealtimeAndRefresh()
 
         try await waitUntil { realtime.connectCursors.count >= 2 }
-        XCTAssertEqual(realtime.connectCursors.last!, committedCursor)
+        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
     }
 
     func testDuplicateMessageEventFastSkipsWithoutToolRefreshSpam() async throws {
@@ -1012,7 +1012,7 @@ final class ChatRunStoreTests: XCTestCase {
         realtime.pushState(.staleCursor)
 
         try await waitUntil { realtime.connectCursors.count >= 2 }
-        XCTAssertEqual(realtime.connectCursors.last!, "evt-bootstrap-b")
+        XCTAssertEqual(realtime.connectCursors.last, "evt-bootstrap-b")
     }
 
     private func waitUntil(
