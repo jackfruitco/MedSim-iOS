@@ -19,7 +19,7 @@ public final class RunSessionStore: ObservableObject {
 
     @Published public private(set) var interventionDictionary: [InterventionGroup] = InterventionDictionary.bundled
     @Published public private(set) var injuryDictionary: InjuryDictionary?
-    @Published public private(set) var runtimeState: TrainerRuntimeStateOut?
+    @Published public private(set) var runtimeState: TrainerRestViewModelDTO?
     @Published public private(set) var scenarioBrief: ScenarioBriefOut?
     @Published public private(set) var controlPlaneDebug: ControlPlaneDebugOut?
     @Published public private(set) var debriefAnnotations: [AnnotationOut] = []
@@ -203,13 +203,13 @@ public final class RunSessionStore: ObservableObject {
 
     /// Loads the runtime state (scenario brief, AI plan, rationale notes) on demand.
     @discardableResult
-    public func loadRuntimeState(reason: String = "manual") async -> TrainerRuntimeStateOut? {
+    public func loadRuntimeState(reason: String = "manual") async -> TrainerRestViewModelDTO? {
         guard let simulationID = state.session?.simulationID else { return nil }
         logger.info("Fetching runtime state for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public))")
         do {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
             logger.info(
-                "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
+                "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.runtimeSnapshot.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
             )
             applyRuntimeState(rs, source: reason)
             return rs
@@ -2174,57 +2174,13 @@ public final class RunSessionStore: ObservableObject {
         applyRuntimeState(seededRuntimeState, source: "session")
     }
 
-    private func decodeRuntimeStateSeed(from session: TrainerSessionDTO) -> TrainerRuntimeStateOut? {
+    private func decodeRuntimeStateSeed(from session: TrainerSessionDTO) -> TrainerRestViewModelDTO? {
         guard !session.runtimeState.isEmpty else {
             return nil
         }
 
-        var payload = session.runtimeState
-        if payload["simulation_id"] == nil {
-            payload["simulation_id"] = .number(Double(session.simulationID))
-        }
-        if payload["session_id"] == nil {
-            payload["session_id"] = .number(Double(session.simulationID))
-        }
-        if payload["status"] == nil {
-            payload["status"] = .string(session.status.rawValue)
-        }
-        if payload["state_revision"] == nil {
-            payload["state_revision"] = .number(0)
-        }
-        if payload["active_elapsed_seconds"] == nil {
-            payload["active_elapsed_seconds"] = .number(0)
-        }
-        if payload["tick_interval_seconds"] == nil {
-            payload["tick_interval_seconds"] = .number(Double(session.tickIntervalSeconds))
-        }
-        if payload["current_snapshot"] == nil {
-            let snapshotKeys: Set = [
-                "causes",
-                "injuries",
-                "problems",
-                "conditions",
-                "recommended_interventions",
-                "interventions",
-                "assessment_findings",
-                "diagnostic_results",
-                "resources",
-                "disposition",
-                "vitals",
-                "pulses",
-                "patient_status",
-            ]
-            let snapshotObject = payload.filter { snapshotKeys.contains($0.key) }
-            payload["current_snapshot"] = .object(snapshotObject)
-        }
-        if payload["last_ai_tick_at"] == nil, let lastAITickAt = session.lastAITickAt {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            payload["last_ai_tick_at"] = .string(formatter.string(from: lastAITickAt))
-        }
-
         do {
-            let data = try JSONSerialization.data(withJSONObject: payload.mapValues(\.rawValue), options: [.sortedKeys])
+            let data = try JSONSerialization.data(withJSONObject: session.runtimeState.mapValues(\.rawValue), options: [.sortedKeys])
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .custom { decoder in
                 let container = try decoder.singleValueContainer()
@@ -2234,7 +2190,7 @@ public final class RunSessionStore: ObservableObject {
                 }
                 throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(value)")
             }
-            return try decoder.decode(TrainerRuntimeStateOut.self, from: data)
+            return try decoder.decode(TrainerRestViewModelDTO.self, from: data)
         } catch {
             logger.debug(
                 "Skipping session runtime hydration seed for simulation \(session.simulationID, privacy: .public): \(error.localizedDescription, privacy: .public)",
@@ -2243,7 +2199,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func hydrateHiddenClinicalState(from snapshot: TrainerRuntimeSnapshot) {
+    private func hydrateHiddenClinicalState(from snapshot: ScenarioSnapshotDTO) {
         if snapshot.presence.assessmentFindings {
             assessmentFindings = snapshot.assessmentFindings
         }
@@ -2306,24 +2262,24 @@ public final class RunSessionStore: ObservableObject {
         )
     }
 
-    private func applyRuntimeState(_ runtimeState: TrainerRuntimeStateOut, source: String) {
-        let snapshot = runtimeState.currentSnapshot
+    private func applyRuntimeState(_ runtimeState: TrainerRestViewModelDTO, source: String) {
+        let snapshot = runtimeState.scenarioSnapshot
         logger.info(
-            "Applying runtime state for simulation \(runtimeState.simulationID, privacy: .public) from \(source, privacy: .public): revision=\(runtimeState.stateRevision, privacy: .public)",
+            "Applying runtime state for simulation \(runtimeState.simulationID, privacy: .public) from \(source, privacy: .public): revision=\(runtimeState.runtimeSnapshot.stateRevision, privacy: .public)",
         )
 
         self.runtimeState = runtimeState
-        if runtimeState.presence.scenarioBrief {
-            scenarioBrief = runtimeState.scenarioBrief
+        if runtimeState.scenarioSnapshot.presence.scenarioBrief {
+            scenarioBrief = runtimeState.scenarioSnapshot.scenarioBrief
         }
-        if runtimeState.presence.aiPlan {
-            aiInstructorIntent = runtimeState.aiPlan
+        if runtimeState.runtimeSnapshot.presence.aiPlan {
+            aiInstructorIntent = runtimeState.runtimeSnapshot.aiPlan
         }
-        if runtimeState.presence.aiRationaleNotes {
-            aiInstructorNotes = runtimeState.aiRationaleNotes
+        if runtimeState.runtimeSnapshot.presence.aiRationaleNotes {
+            aiInstructorNotes = runtimeState.runtimeSnapshot.aiRationaleNotes
         }
         hydrateHiddenClinicalState(from: snapshot)
-        noteLifecycleRevision(runtimeState.stateRevision)
+        noteLifecycleRevision(runtimeState.runtimeSnapshot.stateRevision)
 
         if snapshot.presence.causes {
             hydratedCauses = snapshot.causes
@@ -2516,7 +2472,7 @@ public final class RunSessionStore: ObservableObject {
             x: zone.x,
             y: zone.y,
             present: pulse.present ?? true,
-            quality: pulse.quality ?? "unknown",
+            quality: pulse.description ?? "unknown",
             colorNormal: pulse.colorNormal ?? true,
             colorDescription: pulse.colorDescription ?? "pink",
             conditionNormal: pulse.conditionNormal ?? true,

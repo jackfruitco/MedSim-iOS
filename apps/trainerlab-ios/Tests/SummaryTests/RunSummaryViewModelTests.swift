@@ -32,7 +32,7 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
         throw SummaryMockError.unused
     }
 
-    func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
+    func getRuntimeState(simulationID _: Int) async throws -> TrainerRestViewModelDTO {
         throw SummaryMockError.unused
     }
 
