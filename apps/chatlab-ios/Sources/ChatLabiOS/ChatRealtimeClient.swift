@@ -1,5 +1,6 @@
 import Foundation
 import Networking
+import OSLog
 import SharedModels
 
 public protocol ChatRealtimeClientProtocol: Sendable {
@@ -8,6 +9,12 @@ public protocol ChatRealtimeClientProtocol: Sendable {
     func connect(simulationID: Int, cursor: String?) async
     func disconnect()
     func send(eventType: String, payload: [String: JSONValue]) async
+}
+
+private let realtimeLogger = Logger(subsystem: "com.jackfruit.medsim", category: "ChatRealtime")
+
+enum ChatRealtimeError: Error {
+    case staleCursor
 }
 
 private enum ChatSSEStreamItem {
@@ -138,15 +145,26 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         while !Task.isCancelled {
             do {
                 stateContinuation.yield(.connecting)
+                realtimeLogger.debug(
+                    "Connecting chat SSE for simulation \(simulationID, privacy: .public) with cursor \(currentCursor ?? "nil", privacy: .public)",
+                )
                 try await consumeSSE(simulationID: simulationID, currentCursor: &currentCursor)
                 reconnectAttempt = 0
+            } catch ChatRealtimeError.staleCursor {
+                stateContinuation.yield(.staleCursor)
+                realtimeLogger.warning(
+                    "Detected stale cursor for simulation \(simulationID, privacy: .public). Waiting for re-bootstrap.",
+                )
+                break
             } catch {
                 if Task.isCancelled {
                     break
                 }
                 reconnectAttempt += 1
                 stateContinuation.yield(.reconnecting(attempt: reconnectAttempt))
-                await performCatchup(simulationID: simulationID, currentCursor: &currentCursor)
+                realtimeLogger.warning(
+                    "Chat SSE reconnect attempt \(self.reconnectAttempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
+                )
 
                 let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
                 let jitter = Double.random(in: 0 ... 0.35)
@@ -166,6 +184,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 stateContinuation.yield(.connected)
                 currentCursor = event.eventID
                 cursor = event.eventID
+                realtimeLogger.debug("Chat SSE cursor advanced to \(event.eventID, privacy: .public)")
                 emitIfNew(event)
             case .keepAlive:
                 stateContinuation.yield(.connected)
@@ -276,12 +295,18 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         if initial.1.statusCode == 401 {
             try await authLoader.refreshAccessToken()
             let refreshed = try await open()
+            if [409, 410, 422].contains(refreshed.1.statusCode) {
+                throw ChatRealtimeError.staleCursor
+            }
             guard (200 ..< 300).contains(refreshed.1.statusCode) else {
                 throw URLError(.userAuthenticationRequired)
             }
             return refreshed
         }
 
+        if [409, 410, 422].contains(initial.1.statusCode) {
+            throw ChatRealtimeError.staleCursor
+        }
         guard (200 ..< 300).contains(initial.1.statusCode) else {
             throw URLError(.badServerResponse)
         }
@@ -299,34 +324,6 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             seenEventIDs.remove(oldest)
         }
         eventContinuation.yield(event)
-    }
-
-    private func performCatchup(simulationID: Int, currentCursor: inout String?) async {
-        stateContinuation.yield(.catchingUp)
-        do {
-            while !Task.isCancelled {
-                let page = try await service.listEvents(
-                    simulationID: simulationID,
-                    cursor: currentCursor,
-                    limit: 50,
-                )
-                if page.items.isEmpty, !page.hasMore {
-                    break
-                }
-
-                for event in page.items {
-                    currentCursor = event.eventID
-                    emitIfNew(event)
-                }
-                if !page.hasMore {
-                    break
-                }
-                currentCursor = page.nextCursor
-            }
-            cursor = currentCursor
-        } catch {
-            // Keep reconnect loop alive and try SSE again.
-        }
     }
 
     private nonisolated static func parseISO8601(_ value: String) -> Date? {
