@@ -858,7 +858,7 @@ final class ChatRunStoreTests: XCTestCase {
         }
     }
 
-    func testDisconnectedForegroundRefreshForcesReconnectAndLogsActivity() async throws {
+    func testDisconnectedForegroundRefreshForcesReconnectFromStoredCursorAndLogsActivity() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
         let service = TestChatService()
@@ -873,6 +873,12 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
         let initialConnects = realtime.connectCalls
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("Feedback timed out"),
+            "retryable": .bool(true),
+        ]))
+        try await waitUntil { store.lastEventCursor != nil }
+        let committedCursor = store.lastEventCursor
 
         realtime.pushState(.disconnected)
         try await waitUntil { store.transportState == .disconnected }
@@ -882,6 +888,7 @@ final class ChatRunStoreTests: XCTestCase {
             realtime.connectCalls > initialConnects &&
                 store.activityItems.contains(where: { $0.eventType == "chat.refresh.foreground_recovery" })
         }
+        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
     }
 
     func testRealtimeEventUpdatesHealthMetadata() async throws {
@@ -914,7 +921,7 @@ final class ChatRunStoreTests: XCTestCase {
         }
     }
 
-    func testBootstrapCheckpointCursorIsUsedForInitialConnect() async throws {
+    func testBootstrapLatestEventCursorIsUsedForInitialConnect() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
         let service = TestChatService()
@@ -953,6 +960,7 @@ final class ChatRunStoreTests: XCTestCase {
             "error_text": .string("x"),
             "retryable": .bool(true),
         ]))
+        try await waitUntil { store.lastEventCursor != nil }
         let committedCursor = store.lastEventCursor
         store.reconnectRealtimeAndRefresh()
 
@@ -994,7 +1002,7 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertEqual(store.toolRefreshToken, initialToken)
     }
 
-    func testStaleCursorStateTriggersRebootstrapAndReconnectFromFreshCheckpoint() async throws {
+    func testStaleCursorStateTriggersRebootstrapAndReconnectFromFreshBootstrapCursor() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
         let service = TestChatService()
@@ -1008,11 +1016,20 @@ final class ChatRunStoreTests: XCTestCase {
         defer { store.stop() }
         try await waitUntil { realtime.connectCursors.first == "evt-bootstrap-a" }
 
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("before stale"),
+            "retryable": .bool(true),
+        ]))
+        try await waitUntil { store.lastEventCursor != nil }
+        let staleCommittedCursor = store.lastEventCursor
+
         service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-b")
         realtime.pushState(.staleCursor)
 
         try await waitUntil { realtime.connectCursors.count >= 2 }
+        XCTAssertNotNil(staleCommittedCursor)
         XCTAssertEqual(realtime.connectCursors.last, "evt-bootstrap-b")
+        XCTAssertEqual(store.lastEventCursor, "evt-bootstrap-b")
     }
 
     private func waitUntil(

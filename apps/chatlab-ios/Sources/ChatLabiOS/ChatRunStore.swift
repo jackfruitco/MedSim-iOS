@@ -102,7 +102,7 @@ public final class ChatRunStore: ObservableObject {
     private var markReadInFlight = Set<Int>()
     private let foregroundRecoveryGraceSeconds: TimeInterval = 12
     private var pendingTransportRecovery = false
-    private var bootstrapCheckpointCursor: String?
+    private var bootstrapLatestEventCursor: String?
     private var toolRefreshTask: Task<Void, Never>?
     private var isRebootstrapping = false
 
@@ -1075,11 +1075,15 @@ public final class ChatRunStore: ObservableObject {
         }
     }
 
-    private func bootstrapStateAndConnect(reason: String) async throws {
+    private func bootstrapStateAndConnect(reason: String, resetStoredCursorToBootstrap: Bool = false) async throws {
         let list = try await service.listConversations(simulationID: simulation.id)
         conversations = list.items
-        bootstrapCheckpointCursor = list.latestEventCursor
-        runStoreLogger.info("Bootstrap checkpoint received: \(list.latestEventCursor ?? "nil", privacy: .public)")
+        bootstrapLatestEventCursor = list.latestEventCursor
+        runStoreLogger.info("Bootstrap latest_event_cursor received: \(list.latestEventCursor ?? "nil", privacy: .public)")
+
+        if resetStoredCursorToBootstrap {
+            lastEventCursor = bootstrapLatestEventCursor
+        }
 
         if activeConversationID == nil {
             activeConversationID = conversations.first?.id
@@ -1091,14 +1095,14 @@ public final class ChatRunStore: ObservableObject {
         }
 
         startInitialAwaitingReplyIfNeeded()
-        let connectCursor = lastEventCursor ?? bootstrapCheckpointCursor
+        let connectCursor = lastEventCursor ?? bootstrapLatestEventCursor
         runStoreLogger.info("Connecting realtime (\(reason, privacy: .public)) with cursor \(connectCursor ?? "nil", privacy: .public)")
         await realtimeClient.connect(simulationID: simulation.id, cursor: connectCursor)
         await refreshGuardState()
     }
 
     private func reconnectRealtimeFromStoredCursor() {
-        let cursor = lastEventCursor ?? bootstrapCheckpointCursor
+        let cursor = lastEventCursor ?? bootstrapLatestEventCursor
         runStoreLogger.info("Reconnecting realtime with cursor \(cursor ?? "nil", privacy: .public)")
         realtimeClient.disconnect()
         Task {
@@ -1113,7 +1117,10 @@ public final class ChatRunStore: ObservableObject {
 
         runStoreLogger.warning("Stale cursor detected -> controlled re-bootstrap")
         do {
-            try await bootstrapStateAndConnect(reason: "stale_cursor_rebootstrap")
+            try await bootstrapStateAndConnect(
+                reason: "stale_cursor_rebootstrap",
+                resetStoredCursorToBootstrap: true,
+            )
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }

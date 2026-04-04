@@ -126,15 +126,26 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertEqual(simulation.retryable, true)
     }
 
-    func testConversationBootstrapDecodesLatestEventCheckpoint() throws {
+    func testConversationBootstrapDecodesLatestEventCursor() throws {
         let json = """
         {
           "items": [],
-          "latest_event_id": "evt-447"
+          "latest_event_cursor": "evt-447"
         }
         """
         let response = try JSONDecoder().decode(ChatConversationListResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.latestEventCursor, "evt-447")
+    }
+
+    func testConversationBootstrapFallsBackToLegacyLatestEventID() throws {
+        let json = """
+        {
+          "items": [],
+          "latest_event_id": "evt-legacy-447"
+        }
+        """
+        let response = try JSONDecoder().decode(ChatConversationListResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(response.latestEventCursor, "evt-legacy-447")
     }
 
     func testChatLabServiceUsesExpectedEndpoints() async throws {

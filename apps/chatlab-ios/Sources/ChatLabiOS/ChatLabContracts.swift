@@ -486,11 +486,11 @@ public struct ChatConversationListResponse: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case items
-        case latestEventCursor = "latest_event_id"
+        case latestEventCursor = "latest_event_cursor"
     }
 
     enum CompatibilityCodingKeys: String, CodingKey {
-        case latestEventCursorFallback = "latest_event_cursor"
+        case latestEventID = "latest_event_id"
         case latestEventCheckpoint = "latest_event_checkpoint"
     }
 
@@ -507,7 +507,7 @@ public struct ChatConversationListResponse: Codable, Sendable {
             return
         }
         let compatibilityContainer = try decoder.container(keyedBy: CompatibilityCodingKeys.self)
-        latestEventCursor = try compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventCursorFallback)
+        latestEventCursor = try compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventID)
             ?? compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventCheckpoint)
     }
 }
