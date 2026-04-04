@@ -255,12 +255,13 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                     break
                 }
                 reconnectAttempt += 1
-                stateContinuation.yield(.reconnecting(attempt: reconnectAttempt))
+                let attempt = reconnectAttempt
+                stateContinuation.yield(.reconnecting(attempt: attempt))
                 realtimeLogger.warning(
-                    "Chat SSE reconnect attempt \(self.reconnectAttempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
+                    "Chat SSE reconnect attempt \(attempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
                 )
 
-                let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
+                let delaySeconds = min(pow(2.0, Double(max(attempt - 1, 0))), 15.0)
                 let jitter = Double.random(in: 0 ... 0.35)
                 try? await Task.sleep(nanoseconds: UInt64((delaySeconds + jitter) * 1_000_000_000))
             }
