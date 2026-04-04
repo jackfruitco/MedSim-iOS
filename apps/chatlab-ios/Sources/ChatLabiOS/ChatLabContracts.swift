@@ -477,11 +477,39 @@ public enum ChatRealtimeConnectionState: Sendable, Equatable {
     case connecting
     case connected
     case reconnecting(attempt: Int)
-    case catchingUp
+    case staleCursor
 }
 
 public struct ChatConversationListResponse: Codable, Sendable {
     public let items: [ChatConversation]
+    public let latestEventCursor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case items
+        case latestEventCursor = "latest_event_cursor"
+    }
+
+    enum CompatibilityCodingKeys: String, CodingKey {
+        case latestEventID = "latest_event_id"
+        case latestEventCheckpoint = "latest_event_checkpoint"
+    }
+
+    public init(items: [ChatConversation], latestEventCursor: String? = nil) {
+        self.items = items
+        self.latestEventCursor = latestEventCursor
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([ChatConversation].self, forKey: .items)
+        if let latest = try container.decodeIfPresent(String.self, forKey: .latestEventCursor) {
+            latestEventCursor = latest
+            return
+        }
+        let compatibilityContainer = try decoder.container(keyedBy: CompatibilityCodingKeys.self)
+        latestEventCursor = try compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventID)
+            ?? compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventCheckpoint)
+    }
 }
 
 public struct ChatCreateConversationRequest: Codable, Sendable {

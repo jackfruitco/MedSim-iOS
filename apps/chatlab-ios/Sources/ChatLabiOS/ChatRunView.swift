@@ -379,10 +379,10 @@ public struct ChatRunView: View {
                 return "Checking"
             }
             return "Live"
-        case .catchingUp:
-            return "Catching Up"
         case .reconnecting:
             return "Recovering"
+        case .staleCursor:
+            return "Resyncing"
         case .connecting:
             return "Connecting"
         case .disconnected:
@@ -394,10 +394,10 @@ public struct ChatRunView: View {
         switch store.transportState {
         case .connected:
             "dot.radiowaves.left.and.right"
-        case .catchingUp:
-            "arrow.triangle.2.circlepath"
         case .reconnecting:
             "bolt.horizontal.circle"
+        case .staleCursor:
+            "arrow.clockwise.icloud"
         case .connecting:
             "hourglass"
         case .disconnected:
@@ -414,9 +414,9 @@ public struct ChatRunView: View {
                 return .orange
             }
             return .green
-        case .catchingUp:
-            return .blue
         case .reconnecting, .connecting:
+            return .orange
+        case .staleCursor:
             return .orange
         case .disconnected:
             return .secondary

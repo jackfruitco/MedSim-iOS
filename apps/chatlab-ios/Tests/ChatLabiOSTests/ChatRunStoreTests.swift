@@ -196,6 +196,7 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
     private let stateContinuation: AsyncStream<ChatRealtimeConnectionState>.Continuation
     private(set) var connectCalls = 0
     private(set) var disconnectCalls = 0
+    private(set) var connectCursors: [String?] = []
 
     init() {
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
@@ -212,8 +213,9 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
         stateContinuation = stateCont
     }
 
-    func connect(simulationID _: Int, cursor _: String?) async {
+    func connect(simulationID _: Int, cursor: String?) async {
         connectCalls += 1
+        connectCursors.append(cursor)
         stateContinuation.yield(.connected)
     }
 
@@ -856,7 +858,7 @@ final class ChatRunStoreTests: XCTestCase {
         }
     }
 
-    func testDisconnectedForegroundRefreshForcesReconnectAndLogsActivity() async throws {
+    func testDisconnectedForegroundRefreshForcesReconnectFromStoredCursorAndLogsActivity() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let patientConversation = makeConversation()
         let service = TestChatService()
@@ -871,6 +873,12 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
         let initialConnects = realtime.connectCalls
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("Feedback timed out"),
+            "retryable": .bool(true),
+        ]))
+        try await waitUntil { store.lastEventCursor != nil }
+        let committedCursor = store.lastEventCursor
 
         realtime.pushState(.disconnected)
         try await waitUntil { store.transportState == .disconnected }
@@ -880,6 +888,7 @@ final class ChatRunStoreTests: XCTestCase {
             realtime.connectCalls > initialConnects &&
                 store.activityItems.contains(where: { $0.eventType == "chat.refresh.foreground_recovery" })
         }
+        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
     }
 
     func testRealtimeEventUpdatesHealthMetadata() async throws {
@@ -910,6 +919,117 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil {
             store.lastEventCursor != nil && store.lastRealtimeSignalAt != nil
         }
+    }
+
+    func testBootstrapLatestEventCursorIsUsedForInitialConnect() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(
+            items: [patientConversation],
+            latestEventCursor: "evt-bootstrap-9",
+        )
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil {
+            realtime.connectCursors.first == "evt-bootstrap-9"
+        }
+    }
+
+    func testReconnectUsesLatestCommittedCursor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-1")
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("x"),
+            "retryable": .bool(true),
+        ]))
+        try await waitUntil { store.lastEventCursor != nil }
+        let committedCursor = store.lastEventCursor
+        store.reconnectRealtimeAndRefresh()
+
+        try await waitUntil { realtime.connectCursors.count >= 2 }
+        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
+    }
+
+    func testDuplicateMessageEventFastSkipsWithoutToolRefreshSpam() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let initialToken = store.toolRefreshToken
+        let duplicatePayload: [String: JSONValue] = [
+            "id": .number(801),
+            "message_id": .number(801),
+            "conversation_id": .number(Double(patientConversation.id)),
+            "content": .string("same"),
+            "is_from_ai": .bool(true),
+            "display_name": .string(patientConversation.displayName),
+            "timestamp": .string(isoTimestamp()),
+            "delivery_status": .string("sent"),
+        ]
+        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: duplicatePayload))
+        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: duplicatePayload))
+
+        try await waitUntil {
+            (store.messagesByConversation[patientConversation.id] ?? []).count == 1
+        }
+        XCTAssertEqual(store.toolRefreshToken, initialToken)
+    }
+
+    func testStaleCursorStateTriggersRebootstrapAndReconnectFromFreshBootstrapCursor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-a")
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+        try await waitUntil { realtime.connectCursors.first == "evt-bootstrap-a" }
+
+        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
+            "error_text": .string("before stale"),
+            "retryable": .bool(true),
+        ]))
+        try await waitUntil { store.lastEventCursor != nil }
+        let staleCommittedCursor = store.lastEventCursor
+
+        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-b")
+        realtime.pushState(.staleCursor)
+
+        try await waitUntil { realtime.connectCursors.count >= 2 }
+        XCTAssertNotNil(staleCommittedCursor)
+        XCTAssertEqual(realtime.connectCursors.last, "evt-bootstrap-b")
+        XCTAssertEqual(store.lastEventCursor, "evt-bootstrap-b")
     }
 
     private func waitUntil(
