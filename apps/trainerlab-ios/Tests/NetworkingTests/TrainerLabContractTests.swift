@@ -869,6 +869,23 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(state.scenarioSnapshot.causes.first?.causeID, 99)
     }
 
+    func testRuntimeCauseStateEncodesBackendSnapshotIDKey() throws {
+        let json = """
+        {
+          "id": 11,
+          "kind": "injury",
+          "title": "Blast Injury"
+        }
+        """
+
+        let cause = try makeContractDecoder().decode(RuntimeCauseState.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(cause)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        XCTAssertEqual(payload["id"] as? Int, 11)
+        XCTAssertNil(payload["cause_id"])
+    }
+
     func testTrainerRuntimeStateDecodesDiagnosticResultIDFromBackendField() throws {
         let json = """
         {
@@ -917,6 +934,23 @@ final class TrainerLabContractTests: XCTestCase {
         let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
         XCTAssertEqual(state.scenarioSnapshot.diagnosticResults.first?.resultID, 144)
+    }
+
+    func testRuntimeDiagnosticResultStateEncodesBackendDiagnosticIDKey() throws {
+        let json = """
+        {
+          "diagnostic_id": 144,
+          "title": "Portable ultrasound",
+          "status": "queued"
+        }
+        """
+
+        let diagnosticResult = try makeContractDecoder().decode(RuntimeDiagnosticResultState.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(diagnosticResult)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        XCTAssertEqual(payload["diagnostic_id"] as? Int, 144)
+        XCTAssertNil(payload["result_id"])
     }
 
     func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {

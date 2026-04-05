@@ -1010,7 +1010,7 @@ public struct RuntimeCauseState: Codable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(causeID, forKey: .causeID)
+        try container.encodeIfPresent(causeID, forKey: .id)
         try container.encodeIfPresent(domainEventID, forKey: .domainEventID)
         try container.encodeIfPresent(kind, forKey: .kind)
         try container.encodeIfPresent(code, forKey: .code)
@@ -1335,7 +1335,7 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(resultID, forKey: .resultID)
+        try container.encodeIfPresent(resultID, forKey: .diagnosticID)
         try container.encodeIfPresent(kind, forKey: .kind)
         try container.encodeIfPresent(code, forKey: .code)
         try container.encodeIfPresent(title, forKey: .title)
@@ -1871,7 +1871,9 @@ public struct EventTimelineEntryDTO: Decodable, Sendable, Identifiable {
     public let createdAt: Date
     public let payload: [String: JSONValue]
 
-    public var id: String { eventID }
+    public var id: String {
+        eventID
+    }
 
     enum CodingKeys: String, CodingKey {
         case eventID = "event_id"
