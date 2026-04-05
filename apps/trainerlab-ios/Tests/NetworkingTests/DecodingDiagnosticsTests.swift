@@ -29,7 +29,7 @@ private struct NestingOuter: Decodable {
 final class FormatDecodingErrorTests: XCTestCase {
     // MARK: typeMismatch
 
-    func testTypeMismatchContainsExpectedComponents() throws {
+    func testTypeMismatchContainsExpectedComponents() {
         // "value" field is a String in JSON but expected as Int
         let json = Data(#"{"value": "not-a-number"}"#.utf8)
         let error = catchDecodingError { try JSONDecoder().decode(IntWrapper.self, from: json) }
@@ -41,7 +41,7 @@ final class FormatDecodingErrorTests: XCTestCase {
 
     // MARK: keyNotFound
 
-    func testKeyNotFoundContainsKeyNameAndPath() throws {
+    func testKeyNotFoundContainsKeyNameAndPath() {
         // "name" field is missing entirely
         let json = Data(#"{}"#.utf8)
         let error = catchDecodingError { try JSONDecoder().decode(RequiredString.self, from: json) }
@@ -53,7 +53,7 @@ final class FormatDecodingErrorTests: XCTestCase {
 
     // MARK: dataCorrupted
 
-    func testDataCorruptedContainsPath() throws {
+    func testDataCorruptedContainsPath() {
         // Trigger dataCorrupted via a custom decoder that rejects a date string
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -85,7 +85,7 @@ final class FormatDecodingErrorTests: XCTestCase {
 
     // MARK: nested coding path
 
-    func testNestedCodingPathRenderedAsDotSeparated() throws {
+    func testNestedCodingPathRenderedAsDotSeparated() {
         // "count" is a String instead of Int — produces typeMismatch at "inner.count"
         let json = Data(#"{"inner": {"count": "bad"}}"#.utf8)
         let error = catchDecodingError { try JSONDecoder().decode(NestingOuter.self, from: json) }
@@ -96,7 +96,7 @@ final class FormatDecodingErrorTests: XCTestCase {
 
     // MARK: root-level path
 
-    func testRootLevelPathProducesNonEmptyResult() throws {
+    func testRootLevelPathProducesNonEmptyResult() {
         // Decoding a plain Int from a JSON string produces an error at root level
         let json = Data(#""not-an-int""#.utf8)
         let error = catchDecodingError { try JSONDecoder().decode(Int.self, from: json) }
@@ -183,7 +183,6 @@ final class BodyPreviewTests: XCTestCase {
 // MARK: - Integration: decode failure produces APIClientError.decoding
 
 final class DecodingDiagnosticsIntegrationTests: XCTestCase {
-    // Duplicated from APIClientTests.swift — kept private to this file.
     private final class URLProtocolMock: URLProtocol {
         nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
