@@ -19,6 +19,12 @@ private final class RecordingAuthorizedResourceLoader: AuthorizedResourceLoading
         return request
     }
 
+    func makeWebSocketRequest(for route: WebSocketRoute) async throws -> URLRequest {
+        var request = URLRequest(url: base.appendingPathComponent(route.path))
+        request.httpMethod = "GET"
+        return request
+    }
+
     func loadData(from url: URL, accept _: String?, requiresAccountContext _: Bool) async throws -> Data {
         loadedURLs.append(url)
         if errorURLs.contains(url) {
@@ -34,7 +40,7 @@ private final class RecordingAuthorizedResourceLoader: AuthorizedResourceLoading
 }
 
 final class ChatMediaLoaderTests: XCTestCase {
-    func testAuthenticatedLoaderFallsBackAcrossCandidatesAndCaches() async throws {
+    func testAuthenticatedLoaderFallsBackAcrossCanonicalMediaCandidatesAndCaches() async throws {
         let thumb = try XCTUnwrap(URL(string: "https://example.com/thumb.png"))
         let full = try XCTUnwrap(URL(string: "https://example.com/full.png"))
 
@@ -49,7 +55,6 @@ final class ChatMediaLoaderTests: XCTestCase {
             uuid: "media-1",
             originalURL: full.absoluteString,
             thumbnailURL: thumb.absoluteString,
-            url: full.absoluteString,
             mimeType: "image/png",
             description: "Portable chest x-ray",
         )

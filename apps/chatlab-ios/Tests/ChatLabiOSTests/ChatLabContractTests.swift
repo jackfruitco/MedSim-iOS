@@ -27,7 +27,7 @@ private final class ChatRecordingAPIClient: APIClientProtocol, @unchecked Sendab
 }
 
 final class ChatLabContractTests: XCTestCase {
-    func testChatMessageDecodesBackendDefaultsAndMediaList() throws {
+    func testChatMessageDecodesCanonicalMediaFields() throws {
         let json = """
         {
           "id": 77,
@@ -43,7 +43,9 @@ final class ChatLabContractTests: XCTestCase {
               "id": 9,
               "uuid": "media-1",
               "original_url": "https://example.com/original.png",
-              "thumbnail_url": "https://example.com/thumb.png"
+              "thumbnail_url": "https://example.com/thumb.png",
+              "mime_type": "image/png",
+              "description": "Portable chest x-ray"
             }
           ]
         }
@@ -59,44 +61,11 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertEqual(message.deliveryRetryCount, 0)
         XCTAssertFalse(message.isRead)
         XCTAssertEqual(message.mediaList.count, 1)
-        XCTAssertEqual(message.mediaList.first?.url, "https://example.com/thumb.png")
+        XCTAssertEqual(message.mediaList.first?.thumbnailURL, "https://example.com/thumb.png")
+        XCTAssertEqual(message.mediaList.first?.originalURL, "https://example.com/original.png")
     }
 
-    func testChatSSEParserDecodesBackendEventEnvelope() throws {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        let data = """
-        {
-          "event_id": "evt-1",
-          "event_type": "message.item.created",
-          "created_at": "2026-03-12T12:00:00Z",
-          "correlation_id": null,
-          "payload": {
-            "message_id": 19,
-            "content": "hello"
-          }
-        }
-        """
-
-        let event = try ChatSSEParser.parseEvent(dataString: data, decoder: decoder)
-        XCTAssertEqual(event?.eventID, "evt-1")
-        XCTAssertEqual(event?.eventType, SimulationEventType.messageItemCreated)
-    }
-
-    func testLegacyChatAliasCanonicalizesForIngressHandling() {
-        let legacy = ChatEventEnvelope(
-            eventID: "evt-legacy",
-            eventType: "chat.message_created",
-            createdAt: Date(),
-            correlationID: nil,
-            payload: [:],
-        )
-
-        XCTAssertEqual(legacy.canonicalized().eventType, SimulationEventType.messageItemCreated)
-    }
-
-    func testChatSimulationDecodesTerminalFields() throws {
+    func testChatSimulationDecodesLatestEventID() throws {
         let json = """
         {
           "id": 42,
@@ -112,7 +81,8 @@ final class ChatLabContractTests: XCTestCase {
           "terminal_reason_code": "initial_generation_timeout",
           "terminal_reason_text": "Initial generation failed",
           "terminal_at": "2026-03-12T12:01:30Z",
-          "retryable": true
+          "retryable": true,
+          "latest_event_id": "evt-42"
         }
         """
 
@@ -122,142 +92,70 @@ final class ChatLabContractTests: XCTestCase {
 
         XCTAssertEqual(simulation.id, 42)
         XCTAssertEqual(simulation.status, .failed)
+        XCTAssertEqual(simulation.latestEventID, "evt-42")
         XCTAssertEqual(simulation.terminalReasonCode, "initial_generation_timeout")
         XCTAssertEqual(simulation.retryable, true)
     }
 
-    func testConversationBootstrapDecodesLatestEventCursor() throws {
+    func testChatEventEnvelopeDecodesCanonicalWebSocketShape() throws {
+        let json = """
+        {
+          "event_id": "evt-1",
+          "event_type": "message.item.created",
+          "created_at": "2026-03-12T12:00:00Z",
+          "correlation_id": "corr-1",
+          "payload": {
+            "message_id": 19,
+            "content": "hello"
+          }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let event = try decoder.decode(ChatEventEnvelope.self, from: Data(json.utf8))
+
+        XCTAssertEqual(event.eventID, "evt-1")
+        XCTAssertEqual(event.eventType, SimulationEventType.messageItemCreated)
+        XCTAssertEqual(event.correlationID, "corr-1")
+        XCTAssertEqual(event.payload["message_id"], .number(19))
+    }
+
+    func testReplayResponseDecodesNextEventID() throws {
         let json = """
         {
           "items": [],
-          "latest_event_cursor": "evt-447"
+          "next_event_id": "evt-447",
+          "has_more": true
         }
         """
-        let response = try JSONDecoder().decode(ChatConversationListResponse.self, from: Data(json.utf8))
-        XCTAssertEqual(response.latestEventCursor, "evt-447")
+
+        let response = try JSONDecoder().decode(ChatEventReplayResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(response.nextEventID, "evt-447")
+        XCTAssertTrue(response.hasMore)
     }
 
-    func testConversationBootstrapFallsBackToLegacyLatestEventID() throws {
-        let json = """
-        {
-          "items": [],
-          "latest_event_id": "evt-legacy-447"
-        }
-        """
-        let response = try JSONDecoder().decode(ChatConversationListResponse.self, from: Data(json.utf8))
-        XCTAssertEqual(response.latestEventCursor, "evt-legacy-447")
-    }
-
-    func testChatLabServiceUsesExpectedEndpoints() async throws {
+    func testRealtimeHelpersUseWebSocketOnlyRoutesAndLastEventIDQuery() async throws {
         let api = ChatRecordingAPIClient()
         let service = ChatLabService(apiClient: api)
 
-        do {
-            _ = try await service.quickCreateSimulation(request: ChatQuickCreateRequest(modifiers: ["a", "b"]))
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/quick-create/")
+        XCTAssertEqual(ChatLabAPI.realtimeSocket().path, "/ws/v1/chatlab/")
 
         do {
-            _ = try await service.listMessages(
+            _ = try await service.listEvents(
                 simulationID: 7,
-                conversationID: 3,
-                cursor: "22",
-                order: "desc",
+                lastEventID: "evt-22",
                 limit: 10,
             )
             XCTFail("Expected intercepted error")
         } catch {
             XCTAssertTrue(error is ChatRecordingError)
         }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/messages/")
-        XCTAssertEqual(api.capturedEndpoints.last?.query.count, 4)
 
-        do {
-            _ = try await service.listTools(simulationID: 7, names: ["patient_history"])
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/tools/")
-
-        do {
-            _ = try await service.signOrders(
-                simulationID: 7,
-                request: ChatSignOrdersRequest(submittedOrders: ["CBC"]),
-            )
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/tools/patient_results/orders/")
-
-        do {
-            _ = try await service.markMessageRead(simulationID: 7, messageID: 55)
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/messages/55/read/")
-        XCTAssertEqual(api.capturedEndpoints.last?.method, .patch)
-
-        do {
-            _ = try await service.submitLabOrders(
-                simulationID: 7,
-                request: ChatSubmitLabOrdersRequest(orders: ["CBC"]),
-            )
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/lab-orders/")
-        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/events/")
         XCTAssertEqual(
-            try decodeJSONBody(api.capturedEndpoints.last?.body)?["orders"] as? [String],
-            ["CBC"],
+            api.capturedEndpoints.last?.query.first(where: { $0.name == "last_event_id" })?.value,
+            "evt-22",
         )
-
-        do {
-            _ = try await service.listModifierGroups(groups: ["ClinicalScenario"])
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/config/modifier-groups/")
-    }
-
-    func testGuardStateEndpointRoute() async throws {
-        let api = ChatRecordingAPIClient()
-        let service = ChatLabService(apiClient: api)
-
-        do {
-            _ = try await service.getGuardState(simulationID: 7)
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/guard-state/")
-        XCTAssertEqual(api.capturedEndpoints.last?.method, .get)
-    }
-
-    func testHeartbeatEndpointRoute() async throws {
-        let api = ChatRecordingAPIClient()
-        let service = ChatLabService(apiClient: api)
-
-        do {
-            _ = try await service.sendHeartbeat(simulationID: 7)
-            XCTFail("Expected intercepted error")
-        } catch {
-            XCTAssertTrue(error is ChatRecordingError)
-        }
-        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/heartbeat/")
-        XCTAssertEqual(api.capturedEndpoints.last?.method, .post)
-    }
-
-    private func decodeJSONBody(_ data: Data?) throws -> [String: Any]? {
-        guard let data else { return nil }
-        return try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
     }
 }

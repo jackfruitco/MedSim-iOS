@@ -69,7 +69,7 @@ public actor AuthenticatedChatMediaLoader: ChatMediaLoading {
 
     private func candidateURLs(for media: ChatMessageMedia) -> [URL] {
         var seen = Set<String>()
-        return [media.thumbnailURL, media.url, media.originalURL]
+        return [media.thumbnailURL, media.originalURL]
             .compactMap { raw in
                 guard !raw.isEmpty, seen.insert(raw).inserted else {
                     return nil

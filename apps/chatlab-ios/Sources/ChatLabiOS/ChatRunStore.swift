@@ -67,9 +67,9 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var isMessagesLoading = false
     @Published public private(set) var isOlderLoading = false
     @Published public private(set) var socketDisconnected = false
-    @Published public private(set) var transportState: ChatRealtimeConnectionState = .disconnected
+    @Published public private(set) var transportState: ChatRealtimeConnectionState = .idle
     @Published public private(set) var lastRealtimeSignalAt: Date?
-    @Published public private(set) var lastEventCursor: String?
+    @Published public private(set) var lastEventID: String?
 
     @Published public private(set) var simulationFailureText: String?
     @Published public private(set) var simulationRetryable = true
@@ -92,19 +92,24 @@ public final class ChatRunStore: ObservableObject {
     private var hasStarted = false
     private var olderCursorByConversation: [Int: String?] = [:]
     private var seenMessageIDs = Set<Int>()
+    private var appliedDurableEventIDs = Set<String>()
+    private var appliedDurableEventOrder: [String] = []
+    private let appliedDurableEventCapacity = 2000
     private var pendingLocalByKey: [String: (conversationID: Int, content: String)] = [:]
     private var pendingConversationRefreshIDs = Set<Int>()
     private let localUserMarker = "local-user"
     private var awaitingReplyTasks: [Int: Task<Void, Never>] = [:]
-    private var lastConnectionState: ChatRealtimeConnectionState = .disconnected
+    private var lastConnectionState: ChatRealtimeConnectionState = .idle
     private let awaitingReplyTimeoutNanoseconds: UInt64 = 20_000_000_000
+    private let typingStopDebounceNanoseconds: UInt64 = 3_000_000_000
     private let maxActivityItems = 30
     private var markReadInFlight = Set<Int>()
     private let foregroundRecoveryGraceSeconds: TimeInterval = 12
     private var pendingTransportRecovery = false
-    private var bootstrapLatestEventCursor: String?
+    private var bootstrapLatestEventID: String?
     private var toolRefreshTask: Task<Void, Never>?
-    private var isRebootstrapping = false
+    private var isResyncing = false
+    private var isLocallyTyping = false
 
     public init(
         service: ChatLabServiceProtocol,
@@ -176,6 +181,8 @@ public final class ChatRunStore: ObservableObject {
     public func start() {
         guard !hasStarted else { return }
         hasStarted = true
+        transportState = .bootstrapping
+        socketDisconnected = true
         Task {
             await bootstrap()
         }
@@ -185,8 +192,6 @@ public final class ChatRunStore: ObservableObject {
             for await event in realtimeClient.events {
                 await MainActor.run {
                     self.lastRealtimeSignalAt = Date()
-                    self.lastEventCursor = event.eventID
-                    runStoreLogger.debug("Committed cursor advanced to \(event.eventID, privacy: .public)")
                     self.handleEvent(event)
                 }
             }
@@ -198,7 +203,9 @@ public final class ChatRunStore: ObservableObject {
                 await MainActor.run {
                     let previousState = self.lastConnectionState
                     self.lastConnectionState = state
-                    self.transportState = state
+                    if self.transportState != .bootstrapping, self.transportState != .resyncing {
+                        self.transportState = state
+                    }
                     self.socketDisconnected = state != .connected
                     self.handleTransportState(state, previousState: previousState)
                 }
@@ -229,19 +236,24 @@ public final class ChatRunStore: ObservableObject {
         typingStopTask = nil
         toolRefreshTask = nil
         stopAwaitingReply()
+        stopTypingIndicator()
         realtimeClient.disconnect()
+        transportState = .idle
+        socketDisconnected = true
     }
 
     private func bootstrap() async {
         do {
             try await bootstrapStateAndConnect(reason: "initial_bootstrap")
         } catch {
+            transportState = .failed(message: messageText(for: error))
             presentableError = AppErrorPresenter.present(error)
         }
     }
 
     public func switchConversation(_ conversationID: Int) {
         guard conversationID != activeConversationID else { return }
+        stopTypingIndicator()
         activeConversationID = conversationID
         unreadByConversation[conversationID] = 0
         if messagesByConversation[conversationID] == nil || pendingConversationRefreshIDs.contains(conversationID) {
@@ -332,6 +344,7 @@ public final class ChatRunStore: ObservableObject {
         let content = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else { return }
         draftText = ""
+        stopTypingIndicator()
 
         let localID = "local-\(UUID().uuidString.lowercased())"
         pendingLocalByKey[localID] = (conversationID: activeConversationID, content: content)
@@ -419,7 +432,22 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func notifyTypingChanged() {
-        typingStopTask?.cancel()
+        let trimmedDraft = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard activeConversationLocked == false, !trimmedDraft.isEmpty else {
+            stopTypingIndicator()
+            return
+        }
+
+        if isLocallyTyping == false {
+            isLocallyTyping = true
+            Task {
+                await realtimeClient.send(
+                    eventType: ChatRealtimeEventType.typingStarted,
+                    payload: typingPayload(),
+                )
+            }
+        }
+        scheduleTypingStop()
     }
 
     public func endSimulation() {
@@ -459,13 +487,56 @@ public final class ChatRunStore: ObservableObject {
 
     private func handleEvent(_ event: ChatEventEnvelope) {
         let event = event.canonicalized()
+
+        if isLifecycleEventType(event.eventType) {
+            handleLifecycleEvent(event)
+            return
+        }
+
+        if event.eventType == ChatRealtimeEventType.typingStarted {
+            runStoreLogger.debug("Received transient typing.started event_id=\(event.eventID, privacy: .public)")
+            setTyping(event.payload, started: true)
+            return
+        }
+
+        if event.eventType == ChatRealtimeEventType.typingStopped {
+            runStoreLogger.debug("Received transient typing.stopped event_id=\(event.eventID, privacy: .public)")
+            setTyping(event.payload, started: false)
+            return
+        }
+
+        let isDurable = isDurableEventType(event.eventType)
+        if isDurable, appliedDurableEventIDs.contains(event.eventID) {
+            runStoreLogger.info(
+                "Ignoring duplicate durable ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            )
+            return
+        }
+
         captureActivity(from: event)
         switch applyEvent(event) {
         case .ignored:
+            if isTransientEventType(event.eventType) {
+                runStoreLogger.debug("Ignored transient ChatLab event event_type=\(event.eventType, privacy: .public)")
+            }
             break
         case .duplicate:
             runStoreLogger.debug("Fast-skipped duplicate event \(event.eventID, privacy: .public) type \(event.eventType, privacy: .public)")
         case let .applied(needsToolRefresh):
+            if isDurable {
+                rememberAppliedDurableEvent(event.eventID)
+                lastEventID = event.eventID
+                runStoreLogger.info(
+                    "Applied durable ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+                )
+                Task {
+                    await realtimeClient.updateReplayAnchor(event.eventID)
+                }
+            } else {
+                runStoreLogger.debug(
+                    "Applied transient ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public)",
+                )
+            }
             if needsToolRefresh {
                 scheduleToolRefresh(reason: event.eventType)
             }
@@ -479,14 +550,6 @@ public final class ChatRunStore: ObservableObject {
 
         case SimulationEventType.messageDeliveryUpdated:
             return handleMessageStatusUpdate(event.payload) ? .applied(needsToolRefresh: false) : .ignored
-
-        case SimulationEventType.typing:
-            setTyping(event.payload, started: true)
-            return .applied(needsToolRefresh: false)
-
-        case SimulationEventType.stoppedTyping:
-            setTyping(event.payload, started: false)
-            return .applied(needsToolRefresh: false)
 
         case SimulationEventType.simulationStatusUpdated:
             handleSimulationStatusUpdated(event.payload)
@@ -508,16 +571,60 @@ public final class ChatRunStore: ObservableObject {
             Task { await refreshGuardState() }
             return .applied(needsToolRefresh: false)
 
-        case SimulationEventType.connected,
-             SimulationEventType.disconnected,
-             SimulationEventType.initMessage,
-             SimulationEventType.error,
-             SimulationEventType.simulationFeedbackContinueConversation,
-             SimulationEventType.simulationHotwashContinueConversation:
-            return .ignored
-
         default:
             return .ignored
+        }
+    }
+
+    private func handleLifecycleEvent(_ event: ChatEventEnvelope) {
+        switch event.eventType {
+        case ChatRealtimeEventType.sessionReady:
+            runStoreLogger.info(
+                "ChatLab session ready event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            )
+
+        case ChatRealtimeEventType.sessionResumed:
+            runStoreLogger.info(
+                "ChatLab session resumed event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            )
+
+        case ChatRealtimeEventType.sessionResyncRequired:
+            runStoreLogger.warning(
+                "ChatLab hard resync requested event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            )
+            addLocalActivity(
+                eventType: "chat.realtime.resync_required",
+                title: "Realtime Re-Sync Required",
+                message: "ChatLab requested a full resync. Reloading the latest state now.",
+            )
+            Task { await handleResyncRequired(event) }
+
+        case ChatRealtimeEventType.error:
+            let payload = try? event.errorPayload()
+            let debugMessage: String?
+            if let details = payload?.details, !details.isEmpty {
+                debugMessage = String(describing: details)
+            } else {
+                debugMessage = nil
+            }
+            runStoreLogger.error(
+                "ChatLab realtime error event_id=\(event.eventID, privacy: .public) code=\(payload?.code ?? "unknown", privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
+            )
+            presentableError = PresentableAppError(
+                title: "Realtime Error",
+                message: payload?.message ?? "ChatLab realtime reported an error.",
+                debugMessage: debugMessage,
+                correlationID: event.correlationID,
+                recoveryActionLabel: "Reconnect",
+            )
+
+        case ChatRealtimeEventType.pong:
+            runStoreLogger.debug(
+                "Received ChatLab pong event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
+            )
+
+        default:
+            break
         }
     }
 
@@ -580,13 +687,10 @@ public final class ChatRunStore: ObservableObject {
         seenMessageIDs.insert(serverID)
 
         let conversationID = int(payload, keys: ["conversation_id"]) ?? activeConversationID ?? 0
-        let isFromAI = bool(payload, key: "is_from_ai")
-            ?? bool(payload, key: "isFromAi")
-            ?? bool(payload, key: "isFromAI")
-            ?? false
-        let senderID = int(payload, keys: ["sender_id", "senderId"]) ?? -1
+        let isFromAI = bool(payload, key: "is_from_ai") ?? false
+        let senderID = int(payload, keys: ["sender_id"]) ?? -1
         let content = string(payload, keys: ["content"]) ?? ""
-        let displayName = string(payload, keys: ["display_name", "displayName"]) ?? (isFromAI ? "AI" : localUserMarker)
+        let displayName = string(payload, keys: ["display_name"]) ?? (isFromAI ? "AI" : localUserMarker)
         let statusRaw = string(payload, keys: ["delivery_status", "status"])
         let status = DeliveryStatus(rawValue: statusRaw ?? "sent") ?? .sent
 
@@ -654,9 +758,12 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func setTyping(_ payload: [String: JSONValue], started: Bool) {
-        guard let user = string(payload, keys: ["user"]) else { return }
+        guard let rawUser = string(payload, keys: ["user"]) else { return }
         let conversationID = int(payload, keys: ["conversation_id"]) ?? activeConversationID ?? 0
         guard conversationID > 0 else { return }
+        let user = rawUser == "system@medsim.local"
+            ? simulation.patientDisplayName
+            : rawUser
 
         var users = typingUsersByConversation[conversationID] ?? []
         if started {
@@ -692,6 +799,7 @@ public final class ChatRunStore: ObservableObject {
             terminalReasonText: isTerminal ? (statusPayload.effectiveReasonText ?? simulation.terminalReasonText) : "",
             terminalAt: isTerminal ? (statusPayload.terminalAt ?? simulation.terminalAt ?? Date()) : nil,
             retryable: isTerminal ? (statusPayload.retryable ?? simulation.retryable) : nil,
+            latestEventID: simulation.latestEventID,
         )
         applySimulation(updated)
 
@@ -837,6 +945,7 @@ public final class ChatRunStore: ObservableObject {
     ) {
         switch state {
         case .connected:
+            transportState = .connected
             lastRealtimeSignalAt = Date()
             socketDisconnected = false
             if pendingTransportRecovery, previousState != .connected {
@@ -846,7 +955,7 @@ public final class ChatRunStore: ObservableObject {
                     message: "Live updates are healthy again.",
                 )
                 pendingTransportRecovery = false
-            } else if previousState != .connected, previousState != .connecting {
+            } else if previousState != .connected, previousState != .connecting, previousState != .bootstrapping {
                 refreshAfterForegroundOrReconnect()
             }
 
@@ -864,16 +973,26 @@ public final class ChatRunStore: ObservableObject {
         case .connecting:
             socketDisconnected = true
 
-        case .staleCursor:
+        case .bootstrapping:
+            transportState = .bootstrapping
             socketDisconnected = true
-            addLocalActivity(
-                eventType: "chat.realtime.stale_cursor",
-                title: "Realtime Re-Sync Required",
-                message: "Live cursor expired; reloading latest chat state.",
-            )
-            Task { await self.handleStaleCursorDetected() }
 
-        case .disconnected:
+        case .resyncing:
+            transportState = .resyncing
+            socketDisconnected = true
+
+        case let .failed(message):
+            transportState = .failed(message: message)
+            socketDisconnected = true
+            if previousState != state {
+                addLocalActivity(
+                    eventType: "chat.realtime.failed",
+                    title: "Realtime Failed",
+                    message: message ?? "The ChatLab connection failed and needs attention.",
+                )
+            }
+
+        case .idle:
             socketDisconnected = true
         }
     }
@@ -937,6 +1056,7 @@ public final class ChatRunStore: ObservableObject {
                 : updated.terminalReasonText
             simulationRetryable = updated.retryable ?? defaultRetryability(for: updated)
             stopAwaitingReply()
+            stopTypingIndicator()
 
         case .inProgress:
             simulationFailureText = nil
@@ -946,10 +1066,12 @@ public final class ChatRunStore: ObservableObject {
             simulationFailureText = nil
             simulationRetryable = updated.retryable ?? false
             stopAwaitingReply()
+            stopTypingIndicator()
         }
 
         if activeConversationLocked {
             draftText = ""
+            stopTypingIndicator()
         }
     }
 
@@ -1016,12 +1138,27 @@ public final class ChatRunStore: ObservableObject {
         } catch {
             // Non-fatal: maintain current guard state on heartbeat failure
         }
+
+        guard transportState == .connected else {
+            return
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        await realtimeClient.send(
+            eventType: ChatRealtimeEventType.ping,
+            payload: [
+                "client_timestamp": .string(formatter.string(from: Date())),
+                "client_nonce": .string(UUID().uuidString.lowercased()),
+            ],
+        )
     }
 
     private func refreshServerState(reconnectRealtime: Bool, trigger: RefreshTrigger) async {
         do {
             let updated = try await service.getSimulation(simulationID: simulation.id)
             applySimulation(updated)
+            bootstrapLatestEventID = updated.latestEventID
 
             if let activeConversationID {
                 await loadInitialMessages(conversationID: activeConversationID)
@@ -1065,25 +1202,36 @@ public final class ChatRunStore: ObservableObject {
             }
 
             if reconnectRealtime {
-                reconnectRealtimeFromStoredCursor()
+                await reconnectRealtimeFromStoredAnchor()
                 if trigger == .foregroundHealthCheck {
                     pendingTransportRecovery = true
                 }
             }
         } catch {
+            transportState = .failed(message: messageText(for: error))
             presentableError = AppErrorPresenter.present(error)
         }
     }
 
-    private func bootstrapStateAndConnect(reason: String, resetStoredCursorToBootstrap: Bool = false) async throws {
+    private func bootstrapStateAndConnect(reason: String, resetStoredAnchorToBootstrap: Bool = false) async throws {
+        transportState = .bootstrapping
+        socketDisconnected = true
+        appliedDurableEventIDs.removeAll(keepingCapacity: true)
+        appliedDurableEventOrder.removeAll(keepingCapacity: true)
+
+        let updated = try await service.getSimulation(simulationID: simulation.id)
+        applySimulation(updated)
+        bootstrapLatestEventID = updated.latestEventID
+        runStoreLogger.info(
+            "ChatLab bootstrap succeeded reason=\(reason, privacy: .public) simulation_id=\(self.simulation.id, privacy: .public) latest_event_id=\(updated.latestEventID ?? "nil", privacy: .public)",
+        )
+
+        if resetStoredAnchorToBootstrap || lastEventID == nil {
+            lastEventID = bootstrapLatestEventID
+        }
+
         let list = try await service.listConversations(simulationID: simulation.id)
         conversations = list.items
-        bootstrapLatestEventCursor = list.latestEventCursor
-        runStoreLogger.info("Bootstrap latest_event_cursor received: \(list.latestEventCursor ?? "nil", privacy: .public)")
-
-        if resetStoredCursorToBootstrap {
-            lastEventCursor = bootstrapLatestEventCursor
-        }
 
         if activeConversationID == nil {
             activeConversationID = conversations.first?.id
@@ -1095,33 +1243,45 @@ public final class ChatRunStore: ObservableObject {
         }
 
         startInitialAwaitingReplyIfNeeded()
-        let connectCursor = lastEventCursor ?? bootstrapLatestEventCursor
-        runStoreLogger.info("Connecting realtime (\(reason, privacy: .public)) with cursor \(connectCursor ?? "nil", privacy: .public)")
-        await realtimeClient.connect(simulationID: simulation.id, cursor: connectCursor)
         await refreshGuardState()
+        let initialLastEventID = lastEventID ?? bootstrapLatestEventID
+        runStoreLogger.info(
+            "Starting ChatLab realtime reason=\(reason, privacy: .public) simulation_id=\(self.simulation.id, privacy: .public) last_event_id=\(initialLastEventID ?? "nil", privacy: .public)",
+        )
+        await realtimeClient.updateReplayAnchor(initialLastEventID)
+        await realtimeClient.start(simulationID: simulation.id, initialLastEventID: initialLastEventID)
     }
 
-    private func reconnectRealtimeFromStoredCursor() {
-        let cursor = lastEventCursor ?? bootstrapLatestEventCursor
-        runStoreLogger.info("Reconnecting realtime with cursor \(cursor ?? "nil", privacy: .public)")
-        realtimeClient.disconnect()
-        Task {
-            await realtimeClient.connect(simulationID: simulation.id, cursor: cursor)
-        }
+    private func reconnectRealtimeFromStoredAnchor() async {
+        let replayAnchor = lastEventID ?? bootstrapLatestEventID
+        runStoreLogger.info(
+            "Reconnecting ChatLab realtime simulation_id=\(self.simulation.id, privacy: .public) last_event_id=\(replayAnchor ?? "nil", privacy: .public)",
+        )
+        await realtimeClient.updateReplayAnchor(replayAnchor)
+        await realtimeClient.reconnect(simulationID: simulation.id, lastEventID: replayAnchor)
     }
 
-    private func handleStaleCursorDetected() async {
-        guard !isRebootstrapping else { return }
-        isRebootstrapping = true
-        defer { isRebootstrapping = false }
+    private func handleResyncRequired(_ event: ChatEventEnvelope) async {
+        guard !isResyncing else { return }
+        isResyncing = true
+        defer { isResyncing = false }
 
-        runStoreLogger.warning("Stale cursor detected -> controlled re-bootstrap")
+        transportState = .resyncing
+        socketDisconnected = true
+        let payload = try? event.resyncPayload()
+        runStoreLogger.warning(
+            "Starting ChatLab hard resync simulation_id=\(self.simulation.id, privacy: .public) reason=\(payload?.reason ?? "unknown", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+        )
         do {
             try await bootstrapStateAndConnect(
-                reason: "stale_cursor_rebootstrap",
-                resetStoredCursorToBootstrap: true,
+                reason: "hard_resync",
+                resetStoredAnchorToBootstrap: true,
+            )
+            runStoreLogger.info(
+                "Completed ChatLab hard resync simulation_id=\(self.simulation.id, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
             )
         } catch {
+            transportState = .failed(message: messageText(for: error))
             presentableError = AppErrorPresenter.present(error)
         }
     }
@@ -1140,6 +1300,53 @@ public final class ChatRunStore: ObservableObject {
                 runStoreLogger.debug("Tool refresh token advanced")
             }
         }
+    }
+
+    private func rememberAppliedDurableEvent(_ eventID: String) {
+        guard !appliedDurableEventIDs.contains(eventID) else { return }
+        appliedDurableEventIDs.insert(eventID)
+        appliedDurableEventOrder.append(eventID)
+        if appliedDurableEventOrder.count > appliedDurableEventCapacity,
+           let oldest = appliedDurableEventOrder.first
+        {
+            appliedDurableEventOrder.removeFirst()
+            appliedDurableEventIDs.remove(oldest)
+        }
+    }
+
+    private func scheduleTypingStop() {
+        typingStopTask?.cancel()
+        typingStopTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: self?.typingStopDebounceNanoseconds ?? 0)
+            guard let self else { return }
+            await MainActor.run {
+                self.stopTypingIndicator()
+            }
+        }
+    }
+
+    private func stopTypingIndicator() {
+        typingStopTask?.cancel()
+        typingStopTask = nil
+        guard isLocallyTyping else {
+            return
+        }
+        isLocallyTyping = false
+        Task {
+            await realtimeClient.send(
+                eventType: ChatRealtimeEventType.typingStopped,
+                payload: typingPayload(),
+            )
+        }
+    }
+
+    private func typingPayload() -> [String: JSONValue] {
+        guard let activeConversationID else {
+            return [:]
+        }
+        return [
+            "conversation_id": .number(Double(activeConversationID)),
+        ]
     }
 
     private func shouldForceRealtimeRecovery() -> Bool {
@@ -1246,18 +1453,17 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func decodeMediaList(from payload: [String: JSONValue]) -> [ChatMessageMedia] {
-        for key in ["media_list", "mediaList"] {
-            guard let value = payload[key] else { continue }
-            let raw = value.rawValue
-            guard JSONSerialization.isValidJSONObject(raw),
-                  let data = try? JSONSerialization.data(withJSONObject: raw),
-                  let media = try? JSONDecoder().decode([ChatMessageMedia].self, from: data)
-            else {
-                continue
-            }
-            return media
+        guard let value = payload["media_list"] else {
+            return []
         }
-        return []
+        let raw = value.rawValue
+        guard JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw),
+              let media = try? JSONDecoder().decode([ChatMessageMedia].self, from: data)
+        else {
+            return []
+        }
+        return media
     }
 
     private func int(_ payload: [String: JSONValue], keys: [String]) -> Int? {

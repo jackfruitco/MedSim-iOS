@@ -32,7 +32,7 @@ public protocol ChatLabServiceProtocol: Sendable {
     func getMessage(simulationID: Int, messageID: Int) async throws -> ChatMessage
     func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage
 
-    func listEvents(simulationID: Int, cursor: String?, limit: Int) async throws -> PaginatedResponse<ChatEventEnvelope>
+    func listEvents(simulationID: Int, lastEventID: String?, limit: Int) async throws -> ChatEventReplayResponse
 
     func listTools(simulationID: Int, names: [String]?) async throws -> ChatToolListResponse
     func getTool(simulationID: Int, toolName: String) async throws -> ChatToolState
@@ -176,10 +176,10 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         )
     }
 
-    public func listEvents(simulationID: Int, cursor: String?, limit: Int = 50) async throws -> PaginatedResponse<ChatEventEnvelope> {
+    public func listEvents(simulationID: Int, lastEventID: String?, limit: Int = 50) async throws -> ChatEventReplayResponse {
         try await apiClient.request(
-            ChatLabAPI.listEvents(simulationID: simulationID, cursor: cursor, limit: limit),
-            as: PaginatedResponse<ChatEventEnvelope>.self,
+            ChatLabAPI.listEvents(simulationID: simulationID, cursor: lastEventID, limit: limit),
+            as: ChatEventReplayResponse.self,
         )
     }
 

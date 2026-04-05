@@ -31,6 +31,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
     public let terminalReasonText: String
     public let terminalAt: Date?
     public let retryable: Bool?
+    public let latestEventID: String?
 
     public init(
         id: Int,
@@ -47,6 +48,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
         terminalReasonText: String,
         terminalAt: Date?,
         retryable: Bool?,
+        latestEventID: String? = nil,
     ) {
         self.id = id
         self.userID = userID
@@ -62,6 +64,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
         self.terminalReasonText = terminalReasonText
         self.terminalAt = terminalAt
         self.retryable = retryable
+        self.latestEventID = latestEventID
     }
 
     enum CodingKeys: String, CodingKey {
@@ -79,6 +82,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
         case terminalReasonText = "terminal_reason_text"
         case terminalAt = "terminal_at"
         case retryable
+        case latestEventID = "latest_event_id"
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,6 +101,7 @@ public struct ChatSimulation: Codable, Identifiable, Sendable, Equatable {
         terminalReasonText = try container.decodeIfPresent(String.self, forKey: .terminalReasonText) ?? ""
         terminalAt = try container.decodeIfPresent(Date.self, forKey: .terminalAt)
         retryable = try container.decodeIfPresent(Bool.self, forKey: .retryable)
+        latestEventID = try container.decodeIfPresent(String.self, forKey: .latestEventID)
     }
 }
 
@@ -176,7 +181,6 @@ public struct ChatMessageMedia: Codable, Identifiable, Sendable, Equatable {
     public let uuid: String
     public let originalURL: String
     public let thumbnailURL: String
-    public let url: String
     public let mimeType: String
     public let description: String
 
@@ -185,7 +189,6 @@ public struct ChatMessageMedia: Codable, Identifiable, Sendable, Equatable {
         uuid: String,
         originalURL: String,
         thumbnailURL: String,
-        url: String,
         mimeType: String,
         description: String,
     ) {
@@ -193,7 +196,6 @@ public struct ChatMessageMedia: Codable, Identifiable, Sendable, Equatable {
         self.uuid = uuid
         self.originalURL = originalURL
         self.thumbnailURL = thumbnailURL
-        self.url = url
         self.mimeType = mimeType
         self.description = description
     }
@@ -203,7 +205,6 @@ public struct ChatMessageMedia: Codable, Identifiable, Sendable, Equatable {
         case uuid
         case originalURL = "original_url"
         case thumbnailURL = "thumbnail_url"
-        case url
         case mimeType = "mime_type"
         case description
     }
@@ -214,7 +215,6 @@ public struct ChatMessageMedia: Codable, Identifiable, Sendable, Equatable {
         uuid = try container.decode(String.self, forKey: .uuid)
         originalURL = try container.decode(String.self, forKey: .originalURL)
         thumbnailURL = try container.decode(String.self, forKey: .thumbnailURL)
-        url = try container.decodeIfPresent(String.self, forKey: .url) ?? thumbnailURL
         mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType) ?? ""
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
     }
@@ -301,10 +301,6 @@ public struct ChatMessage: Codable, Identifiable, Sendable, Equatable {
         case mediaList = "media_list"
     }
 
-    enum CompatibilityCodingKeys: String, CodingKey {
-        case mediaListCompatibility = "mediaList"
-    }
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(Int.self, forKey: .id)
@@ -324,12 +320,7 @@ public struct ChatMessage: Codable, Identifiable, Sendable, Equatable {
         deliveryRetryable = try container.decodeIfPresent(Bool.self, forKey: .deliveryRetryable) ?? true
         deliveryRetryCount = try container.decodeIfPresent(Int.self, forKey: .deliveryRetryCount) ?? 0
         isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? false
-        if let primaryMedia = try container.decodeIfPresent([ChatMessageMedia].self, forKey: .mediaList) {
-            mediaList = primaryMedia
-        } else {
-            let compatibilityContainer = try decoder.container(keyedBy: CompatibilityCodingKeys.self)
-            mediaList = try compatibilityContainer.decodeIfPresent([ChatMessageMedia].self, forKey: .mediaListCompatibility) ?? []
-        }
+        mediaList = try container.decodeIfPresent([ChatMessageMedia].self, forKey: .mediaList) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -473,42 +464,32 @@ public extension ChatEventEnvelope {
 }
 
 public enum ChatRealtimeConnectionState: Sendable, Equatable {
-    case disconnected
+    case idle
+    case bootstrapping
     case connecting
     case connected
     case reconnecting(attempt: Int)
-    case staleCursor
+    case resyncing
+    case failed(message: String?)
 }
 
 public struct ChatConversationListResponse: Codable, Sendable {
     public let items: [ChatConversation]
-    public let latestEventCursor: String?
+
+    public init(items: [ChatConversation]) {
+        self.items = items
+    }
+}
+
+public struct ChatEventReplayResponse: Codable, Sendable, Equatable {
+    public let items: [ChatEventEnvelope]
+    public let nextEventID: String?
+    public let hasMore: Bool
 
     enum CodingKeys: String, CodingKey {
         case items
-        case latestEventCursor = "latest_event_cursor"
-    }
-
-    enum CompatibilityCodingKeys: String, CodingKey {
-        case latestEventID = "latest_event_id"
-        case latestEventCheckpoint = "latest_event_checkpoint"
-    }
-
-    public init(items: [ChatConversation], latestEventCursor: String? = nil) {
-        self.items = items
-        self.latestEventCursor = latestEventCursor
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        items = try container.decode([ChatConversation].self, forKey: .items)
-        if let latest = try container.decodeIfPresent(String.self, forKey: .latestEventCursor) {
-            latestEventCursor = latest
-            return
-        }
-        let compatibilityContainer = try decoder.container(keyedBy: CompatibilityCodingKeys.self)
-        latestEventCursor = try compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventID)
-            ?? compatibilityContainer.decodeIfPresent(String.self, forKey: .latestEventCheckpoint)
+        case nextEventID = "next_event_id"
+        case hasMore = "has_more"
     }
 }
 

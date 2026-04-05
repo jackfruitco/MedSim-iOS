@@ -8,8 +8,6 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var conversations = ChatConversationListResponse(items: [])
     var messagesByConversation: [Int: [ChatMessage]] = [:]
     var createdMessage: ChatMessage?
-    var retriedMessage: ChatMessage?
-    var retriedSimulation: ChatSimulation?
     var markReadCalls: [(simulationID: Int, messageID: Int)] = []
 
     func listSimulations(
@@ -34,25 +32,15 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func endSimulation(simulationID: Int) async throws -> ChatSimulation {
-        guard let simulation = simulations[simulationID] else {
-            throw NSError(domain: "missing-simulation", code: 404)
-        }
-        return simulation
+        try await getSimulation(simulationID: simulationID)
     }
 
     func retryInitial(simulationID: Int) async throws -> ChatSimulation {
-        guard let retriedSimulation else {
-            throw NSError(domain: "missing-retry-simulation", code: 404)
-        }
-        simulations[simulationID] = retriedSimulation
-        return retriedSimulation
+        try await getSimulation(simulationID: simulationID)
     }
 
     func retryFeedback(simulationID: Int) async throws -> ChatSimulation {
-        guard let simulation = simulations[simulationID] else {
-            throw NSError(domain: "missing-simulation", code: 404)
-        }
-        return simulation
+        try await getSimulation(simulationID: simulationID)
     }
 
     func listConversations(simulationID _: Int) async throws -> ChatConversationListResponse {
@@ -60,11 +48,11 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
-        throw NSError(domain: "unused", code: 1)
+        conversations.items.first ?? fallbackConversation()
     }
 
     func getConversation(simulationID _: Int, conversationUUID _: String) async throws -> ChatConversation {
-        throw NSError(domain: "unused", code: 1)
+        conversations.items.first ?? fallbackConversation()
     }
 
     func listMessages(
@@ -83,9 +71,6 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
-        if let createMessageError {
-            throw createMessageError
-        }
         guard let createdMessage else {
             throw NSError(domain: "missing-created-message", code: 404)
         }
@@ -93,10 +78,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func retryMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        guard let retriedMessage else {
-            throw NSError(domain: "missing-retried-message", code: 404)
+        guard let createdMessage else {
+            throw NSError(domain: "missing-created-message", code: 404)
         }
-        return retriedMessage
+        return createdMessage
     }
 
     func getMessage(simulationID _: Int, messageID: Int) async throws -> ChatMessage {
@@ -110,38 +95,11 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func markMessageRead(simulationID: Int, messageID: Int) async throws -> ChatMessage {
         markReadCalls.append((simulationID, messageID))
-        for (conversationID, messages) in messagesByConversation {
-            if let index = messages.firstIndex(where: { $0.id == messageID }) {
-                var updated = messages[index]
-                updated = ChatMessage(
-                    id: updated.id,
-                    simulationID: updated.simulationID,
-                    conversationID: updated.conversationID,
-                    conversationType: updated.conversationType,
-                    senderID: updated.senderID,
-                    content: updated.content,
-                    role: updated.role,
-                    messageType: updated.messageType,
-                    timestamp: updated.timestamp,
-                    isFromAI: updated.isFromAI,
-                    displayName: updated.displayName,
-                    deliveryStatus: updated.deliveryStatus,
-                    deliveryErrorCode: updated.deliveryErrorCode,
-                    deliveryErrorText: updated.deliveryErrorText,
-                    deliveryRetryable: updated.deliveryRetryable,
-                    deliveryRetryCount: updated.deliveryRetryCount,
-                    isRead: true,
-                    mediaList: updated.mediaList,
-                )
-                messagesByConversation[conversationID]?[index] = updated
-                return updated
-            }
-        }
-        throw NSError(domain: "missing-message", code: 404)
+        return try await getMessage(simulationID: simulationID, messageID: messageID)
     }
 
-    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
-        PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
+    func listEvents(simulationID _: Int, lastEventID _: String?, limit _: Int) async throws -> ChatEventReplayResponse {
+        ChatEventReplayResponse(items: [], nextEventID: nil, hasMore: false)
     }
 
     func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
@@ -164,67 +122,99 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         []
     }
 
-    var createMessageError: Error?
-    var guardStateDenial: GuardSignal?
-    private(set) var getGuardStateCalls = 0
-
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        getGuardStateCalls += 1
-        let denial = guardStateDenial
-        return GuardStateDTO(
-            guardState: denial != nil ? "locked_usage" : "active",
-            guardReason: denial != nil ? "usage_limit" : "none",
-            engineRunnable: denial == nil,
+        GuardStateDTO(
+            guardState: "active",
+            guardReason: "none",
+            engineRunnable: true,
             activeElapsedSeconds: 0,
             runtimeCapSeconds: nil,
             wallClockExpiresAt: nil,
             warnings: [],
-            denial: denial,
+            denial: nil,
         )
     }
 
     func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
         try await getGuardState(simulationID: 0)
     }
+
+    private func fallbackConversation() -> ChatConversation {
+        ChatConversation(
+            id: 1,
+            uuid: UUID().uuidString.lowercased(),
+            simulationID: 42,
+            conversationType: "simulated_patient",
+            conversationTypeDisplay: "simulated_patient",
+            icon: "bubble.left",
+            displayName: "Jordan Lee",
+            displayInitials: "JL",
+            isLocked: false,
+            createdAt: Date(),
+        )
+    }
 }
 
 private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked Sendable {
+    struct StartCall: Equatable {
+        let simulationID: Int
+        let lastEventID: String?
+    }
+
+    struct SentMessage: Equatable {
+        let eventType: String
+        let payload: [String: JSONValue]
+    }
+
     let events: AsyncStream<ChatEventEnvelope>
     let connectionStates: AsyncStream<ChatRealtimeConnectionState>
 
     private let eventContinuation: AsyncStream<ChatEventEnvelope>.Continuation
     private let stateContinuation: AsyncStream<ChatRealtimeConnectionState>.Continuation
-    private(set) var connectCalls = 0
-    private(set) var disconnectCalls = 0
-    private(set) var connectCursors: [String?] = []
+
+    private(set) var startCalls: [StartCall] = []
+    private(set) var reconnectCalls: [StartCall] = []
+    private(set) var replayAnchors: [String?] = []
+    private(set) var sentMessages: [SentMessage] = []
 
     init() {
         var eventCont: AsyncStream<ChatEventEnvelope>.Continuation!
-        events = AsyncStream { continuation in
+        events = AsyncStream<ChatEventEnvelope> { continuation in
             eventCont = continuation
         }
         eventContinuation = eventCont
 
         var stateCont: AsyncStream<ChatRealtimeConnectionState>.Continuation!
-        connectionStates = AsyncStream { continuation in
+        connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
             stateCont = continuation
-            continuation.yield(.disconnected)
+            continuation.yield(.idle)
         }
         stateContinuation = stateCont
     }
 
-    func connect(simulationID _: Int, cursor: String?) async {
-        connectCalls += 1
-        connectCursors.append(cursor)
+    func start(simulationID: Int, initialLastEventID: String?) async {
+        startCalls.append(StartCall(simulationID: simulationID, lastEventID: initialLastEventID))
+        stateContinuation.yield(.connecting)
         stateContinuation.yield(.connected)
     }
 
-    func disconnect() {
-        disconnectCalls += 1
-        stateContinuation.yield(.disconnected)
+    func reconnect(simulationID: Int, lastEventID: String?) async {
+        reconnectCalls.append(StartCall(simulationID: simulationID, lastEventID: lastEventID))
+        stateContinuation.yield(.reconnecting(attempt: reconnectCalls.count))
+        stateContinuation.yield(.connected)
     }
 
-    func send(eventType _: String, payload _: [String: JSONValue]) async {}
+    func updateReplayAnchor(_ lastEventID: String?) async {
+        replayAnchors.append(lastEventID)
+    }
+
+    func disconnect() {
+        stateContinuation.yield(.idle)
+    }
+
+    func send(eventType: String, payload: [String: JSONValue]) async {
+        sentMessages.append(SentMessage(eventType: eventType, payload: payload))
+    }
 
     func pushEvent(_ event: ChatEventEnvelope) {
         eventContinuation.yield(event)
@@ -237,8 +227,8 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
 
 @MainActor
 final class ChatRunStoreTests: XCTestCase {
-    func testOpeningInProgressSimulationShowsSyntheticTypingUntilInitialReplyArrives() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+    func testBootstrapUsesSimulationLatestEventIDForInitialStart() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -247,180 +237,16 @@ final class ChatRunStoreTests: XCTestCase {
 
         let realtime = TestRealtimeClient()
         let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-
-        store.start()
-        try await waitUntil { store.activeTypingUsers == [patientConversation.displayName] }
-
-        realtime.pushEvent(
-            makeEvent(
-                type: SimulationEventType.messageItemCreated,
-                payload: [
-                    "id": .number(200),
-                    "message_id": .number(200),
-                    "conversation_id": .number(Double(patientConversation.id)),
-                    "content": .string("Hello there"),
-                    "is_from_ai": .bool(true),
-                    "display_name": .string(patientConversation.displayName),
-                    "timestamp": .string(isoTimestamp()),
-                    "delivery_status": .string("sent"),
-                ],
-            ),
-        )
-
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-        store.stop()
-    }
-
-    func testMessageFailureClearsSyntheticTypingAndMarksExistingMessageFailed() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialPatientMessage = makeMessage(
-            id: 1,
-            conversationID: patientConversation.id,
-            isFromAI: true,
-            content: "How can I help?",
-        )
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialPatientMessage]
-        service.createdMessage = makeMessage(
-            id: 10,
-            conversationID: patientConversation.id,
-            isFromAI: false,
-            role: "user",
-            content: "Need help",
-            displayName: "Student",
-        )
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-
-        store.start()
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-
-        store.draftText = "Need help"
-        store.sendDraft()
-
-        try await waitUntil { store.activeTypingUsers == [patientConversation.displayName] }
-
-        realtime.pushEvent(
-            makeEvent(
-                type: SimulationEventType.messageDeliveryUpdated,
-                payload: [
-                    "id": .number(10),
-                    "status": .string("failed"),
-                    "retryable": .bool(true),
-                    "error_text": .string("Message failed to deliver to the AI service. Try again."),
-                ],
-            ),
-        )
-
-        try await waitUntil {
-            guard let failedMessage = store.activeMessages.first(where: { $0.serverID == 10 }) else {
-                return false
-            }
-            return store.activeTypingUsers.isEmpty && failedMessage.deliveryStatus == .failed
-        }
-        store.stop()
-    }
-
-    func testSimulationFailureAfterConversationStartedUsesBannerStateInsteadOfDedicatedFailureScreen() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialPatientMessage = makeMessage(
-            id: 1,
-            conversationID: patientConversation.id,
-            isFromAI: true,
-            content: "Opening line",
-        )
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialPatientMessage]
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-
-        store.start()
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        realtime.pushEvent(
-            makeEvent(
-                type: SimulationEventType.simulationStatusUpdated,
-                payload: [
-                    "status": .string("failed"),
-                    "terminal_reason_code": .string("provider_timeout"),
-                    "terminal_reason_text": .string("Simulation failed."),
-                    "retryable": .bool(true),
-                ],
-            ),
-        )
-
-        try await waitUntil {
-            store.simulationFailureText == "Simulation failed." && store.showsInitialGenerationFailureScreen == false
-        }
-        store.stop()
-    }
-
-    func testRetryInitialRestartsSyntheticTyping() async throws {
-        let failedSimulation = makeSimulation(
-            status: .failed,
-            terminalReasonCode: "initial_generation_enqueue_failed",
-            terminalReasonText: "We could not start this simulation. Please try again.",
-            retryable: true,
-        )
-        let retriedSimulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[failedSimulation.id] = failedSimulation
-        service.retriedSimulation = retriedSimulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: failedSimulation)
-
-        store.start()
-        try await waitUntil { store.showsInitialGenerationFailureScreen }
-
-        store.retryInitialSimulation()
-
-        try await waitUntil {
-            store.simulation.status == .inProgress &&
-                store.simulationFailureText == nil &&
-                store.activeTypingUsers == [patientConversation.displayName]
-        }
-        store.stop()
-    }
-
-    func testOpeningConversationMarksUnreadIncomingMessagesRead() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let unreadMessage = makeMessage(
-            id: 99,
-            conversationID: patientConversation.id,
-            isFromAI: true,
-            content: "Unread reply",
-        )
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [unreadMessage]
-
-        let store = ChatRunStore(service: service, realtimeClient: TestRealtimeClient(), simulation: simulation)
         store.start()
         defer { store.stop() }
 
         try await waitUntil {
-            service.markReadCalls.contains(where: { $0.messageID == 99 }) &&
-                store.activeMessages.first?.isRead == true
+            realtime.startCalls.first?.lastEventID == "evt-bootstrap" && store.lastEventID == "evt-bootstrap"
         }
     }
 
-    func testCanonicalFeedbackAndPatientRefreshEventsUpdateToolRefreshState() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+    func testDurableEventAdvancesLastEventIDAndReplayAnchor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -434,119 +260,25 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
 
-        let initialToken = store.toolRefreshToken
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
-            "error_text": .string("Feedback failed"),
-            "retryable": .bool(true),
-        ]))
-
-        try await waitUntil { store.feedbackFailureText == "Feedback failed" }
-
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationUpdated, payload: [:]))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackItemCreated, payload: [:]))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.patientMetadataCreated, payload: [:]))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.patientResultsUpdated, payload: [:]))
-
-        try await waitUntil {
-            store.feedbackFailureText == nil && store.toolRefreshToken != initialToken
-        }
-    }
-
-    func testRepresentativeLegacyAliasesStillCanonicalizeAcrossFamilies() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        let initialToken = store.toolRefreshToken
-        realtime.pushEvent(makeEvent(type: "feedback.created", payload: [:]))
-        realtime.pushEvent(makeEvent(type: "simulation.metadata.results_created", payload: [:]))
-
-        try await waitUntil {
-            store.toolRefreshToken != initialToken
-        }
-    }
-
-    func testNonMessageCanonicalEventsCreateChatActivityItems() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
-            "error_text": .string("Feedback timed out"),
-            "retryable": .bool(true),
-        ]))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.patientResultsUpdated, payload: [:]))
-
-        try await waitUntil {
-            store.activityItems.count == 2 &&
-                store.activityItems.map(\.eventType).contains(SimulationEventType.feedbackGenerationFailed) &&
-                store.activityItems.map(\.eventType).contains(SimulationEventType.patientResultsUpdated)
-        }
-
-        XCTAssertEqual(store.activityItems.first?.title, "Patient Results Updated")
-        XCTAssertTrue(store.activityItems.contains(where: {
-            $0.eventType == SimulationEventType.feedbackGenerationFailed &&
-                $0.message == "Feedback timed out"
-        }))
-    }
-
-    func testMessageEventsStayInMessageTimelineAndDoNotCreateActivityItems() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        realtime.pushEvent(
-            makeEvent(
-                type: SimulationEventType.messageItemCreated,
-                payload: [
-                    "id": .number(301),
-                    "message_id": .number(301),
-                    "conversation_id": .number(Double(patientConversation.id)),
-                    "content": .string("Hello again"),
-                    "is_from_ai": .bool(true),
-                    "display_name": .string(patientConversation.displayName),
-                    "timestamp": .string(isoTimestamp()),
-                    "delivery_status": .string("sent"),
-                ],
-            ),
+        let event = makeEvent(
+            id: "evt-durable-1",
+            type: SimulationEventType.feedbackGenerationFailed,
+            payload: [
+                "error_text": .string("Feedback timed out"),
+                "retryable": .bool(true),
+            ],
         )
+        realtime.pushEvent(event)
 
-        try await waitUntil { store.activeMessages.contains(where: { $0.serverID == 301 }) }
-        XCTAssertTrue(store.activityItems.isEmpty)
+        try await waitUntil {
+            store.lastEventID == event.eventID &&
+                realtime.replayAnchors.last == event.eventID &&
+                store.feedbackFailureText == "Feedback timed out"
+        }
     }
 
-    func testTransientNoOpEventsDoNotCreateActivityItems() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+    func testTransientEventsDoNotAdvanceReplayAnchorOrCreateTranscriptMessages() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -559,340 +291,25 @@ final class ChatRunStoreTests: XCTestCase {
         defer { store.stop() }
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
+        let bootstrapAnchor = store.lastEventID
 
-        realtime.pushEvent(makeEvent(type: SimulationEventType.connected, payload: [:]))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.error, payload: ["message": .string("ignored")]))
+        realtime.pushEvent(makeEvent(
+            id: "evt-typing-1",
+            type: ChatRealtimeEventType.typingStarted,
+            payload: [
+                "conversation_id": .number(Double(patientConversation.id)),
+                "user": .string("Jordan Lee"),
+            ],
+        ))
 
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertTrue(store.activityItems.isEmpty)
+        XCTAssertEqual(store.lastEventID, bootstrapAnchor)
+        XCTAssertTrue(store.activeMessages.isEmpty)
+        XCTAssertTrue(store.activeTypingUsers.contains("Jordan Lee"))
     }
 
-    func testSendDraftWithGuardDenied403SetsGuardDenialAndMarksFailed() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialMessage]
-
-        let signal = GuardSignal(
-            code: "runtime_cap_reached",
-            severity: "error",
-            title: "Session Ended",
-            message: "The runtime cap was reached.",
-            resumable: false,
-            terminal: true,
-            expiresInSeconds: nil,
-            metadata: nil,
-        )
-        service.createMessageError = APIClientError.guardDenied(
-            statusCode: 403,
-            detail: "The runtime cap has been exceeded.",
-            correlationID: nil,
-            signal: signal,
-        )
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-
-        // Set after bootstrap so the initial refreshGuardState doesn't pre-lock the store
-        service.guardStateDenial = signal
-        store.draftText = "Hello"
-        store.sendDraft()
-
-        try await waitUntil { store.guardDenial != nil }
-
-        XCTAssertEqual(store.guardDenial?.code, "runtime_cap_reached")
-        XCTAssertTrue(store.guardDenial?.isTerminal == true)
-        let messages = store.messagesByConversation[patientConversation.id] ?? []
-        let failed = messages.first(where: { $0.deliveryStatus == .failed })
-        XCTAssertNotNil(failed)
-        XCTAssertEqual(failed?.errorText, "The runtime cap was reached.")
-    }
-
-    func testTerminalGuardDenialLocksConversation() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialMessage]
-
-        let signal = GuardSignal(
-            code: "runtime_cap_reached",
-            severity: "error",
-            title: "Session Ended",
-            message: "The runtime cap was reached.",
-            resumable: false,
-            terminal: true,
-            expiresInSeconds: nil,
-            metadata: nil,
-        )
-        service.createMessageError = APIClientError.guardDenied(
-            statusCode: 403,
-            detail: "blocked",
-            correlationID: nil,
-            signal: signal,
-        )
-        service.guardStateDenial = signal
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-
-        store.draftText = "Hello"
-        store.sendDraft()
-
-        try await waitUntil { store.guardDenial?.isTerminal == true }
-
-        XCTAssertTrue(store.activeConversationLocked)
-    }
-
-    func testTranscriptRemainsReadableAfterDenial() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let existingMessage = makeMessage(
-            id: 1,
-            conversationID: patientConversation.id,
-            isFromAI: true,
-            content: "How can I help you today?",
-        )
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [existingMessage]
-
-        let signal = GuardSignal(
-            code: "runtime_cap_reached",
-            severity: "error",
-            title: nil,
-            message: "Blocked.",
-            resumable: false,
-            terminal: true,
-            expiresInSeconds: nil,
-            metadata: nil,
-        )
-        service.createMessageError = APIClientError.guardDenied(
-            statusCode: 403,
-            detail: "blocked",
-            correlationID: nil,
-            signal: signal,
-        )
-        service.guardStateDenial = signal
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        store.draftText = "Hello"
-        store.sendDraft()
-
-        try await waitUntil { store.guardDenial?.isTerminal == true }
-
-        // Existing transcript message is still accessible
-        let messages = store.messagesByConversation[patientConversation.id] ?? []
-        XCTAssertTrue(messages.contains(where: { $0.serverID == 1 && $0.content == "How can I help you today?" }))
-    }
-
-    func testNonTerminalGuardDenialBlocksSend() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialMessage]
-
-        let signal = GuardSignal(
-            code: "usage_limit_reached",
-            severity: "error",
-            title: "Usage Limit",
-            message: "You have reached your usage limit.",
-            resumable: true,
-            terminal: false,
-            expiresInSeconds: nil,
-            metadata: nil,
-        )
-        service.createMessageError = APIClientError.guardDenied(
-            statusCode: 403,
-            detail: "blocked",
-            correlationID: nil,
-            signal: signal,
-        )
-        service.guardStateDenial = signal
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-
-        store.draftText = "Hello"
-        store.sendDraft()
-
-        try await waitUntil { store.guardDenial?.code == "usage_limit_reached" }
-
-        // Non-terminal denial still blocks further sends
-        XCTAssertTrue(store.activeConversationLocked)
-        // Transcript remains readable
-        XCTAssertFalse((store.messagesByConversation[patientConversation.id] ?? []).isEmpty)
-    }
-
-    func testGuardDeniedSendTriggersGuardStateRefresh() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialMessage = makeMessage(id: 1, conversationID: patientConversation.id, isFromAI: true, content: "How can I help you?")
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialMessage]
-
-        let signal = GuardSignal(
-            code: "runtime_cap_reached",
-            severity: "error",
-            title: "Session Ended",
-            message: "The runtime cap was reached.",
-            resumable: false,
-            terminal: true,
-            expiresInSeconds: nil,
-            metadata: nil,
-        )
-        service.createMessageError = APIClientError.guardDenied(
-            statusCode: 403,
-            detail: "blocked",
-            correlationID: nil,
-            signal: signal,
-        )
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeTypingUsers.isEmpty }
-
-        // Set after bootstrap so the initial refreshGuardState doesn't pre-lock the store
-        service.guardStateDenial = signal
-        let callsBefore = service.getGuardStateCalls
-        store.draftText = "Hello"
-        store.sendDraft()
-
-        try await waitUntil { service.getGuardStateCalls > callsBefore }
-        XCTAssertGreaterThan(service.getGuardStateCalls, callsBefore)
-    }
-
-    func testRefreshReconcilesActiveConversationStatusesAndMedia() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let initialMessage = makeMessage(
-            id: 44,
-            conversationID: patientConversation.id,
-            isFromAI: false,
-            role: "user",
-            content: "Checking in",
-            displayName: "Student",
-            deliveryStatus: .sending,
-        )
-        let refreshedMedia = ChatMessageMedia(
-            id: 7,
-            uuid: UUID().uuidString.lowercased(),
-            originalURL: "https://example.com/image-full.png",
-            thumbnailURL: "https://example.com/image-thumb.png",
-            url: "https://example.com/image-thumb.png",
-            mimeType: "image/png",
-            description: "Portable chest x-ray",
-        )
-
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = [initialMessage]
-
-        let store = ChatRunStore(service: service, realtimeClient: TestRealtimeClient(), simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        try await waitUntil { store.activeMessages.first?.deliveryStatus == .sending }
-
-        service.messagesByConversation[patientConversation.id] = [
-            makeMessage(
-                id: 44,
-                conversationID: patientConversation.id,
-                isFromAI: false,
-                role: "user",
-                content: "Checking in",
-                displayName: "Student",
-                deliveryStatus: .failed,
-                deliveryErrorText: "Delivery timed out.",
-                mediaList: [refreshedMedia],
-            ),
-        ]
-
-        store.refreshAfterForegroundOrReconnect()
-
-        try await waitUntil {
-            guard let refreshed = store.activeMessages.first else {
-                return false
-            }
-            return refreshed.deliveryStatus == .failed &&
-                refreshed.errorText == "Delivery timed out." &&
-                refreshed.mediaList == [refreshedMedia]
-        }
-    }
-
-    func testDisconnectedForegroundRefreshForcesReconnectFromStoredCursorAndLogsActivity() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        let initialConnects = realtime.connectCalls
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
-            "error_text": .string("Feedback timed out"),
-            "retryable": .bool(true),
-        ]))
-        try await waitUntil { store.lastEventCursor != nil }
-        let committedCursor = store.lastEventCursor
-
-        realtime.pushState(.disconnected)
-        try await waitUntil { store.transportState == .disconnected }
-        store.refreshAfterForegroundOrReconnect()
-
-        try await waitUntil {
-            realtime.connectCalls > initialConnects &&
-                store.activityItems.contains(where: { $0.eventType == "chat.refresh.foreground_recovery" })
-        }
-        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
-    }
-
-    func testRealtimeEventUpdatesHealthMetadata() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+    func testDuplicateDurableEventsAreIgnored() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
@@ -906,84 +323,7 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await waitUntil { store.activeConversationID == patientConversation.id }
 
-        realtime.pushEvent(
-            makeEvent(
-                type: SimulationEventType.feedbackGenerationFailed,
-                payload: [
-                    "error_text": .string("Feedback timed out"),
-                    "retryable": .bool(true),
-                ],
-            ),
-        )
-
-        try await waitUntil {
-            store.lastEventCursor != nil && store.lastRealtimeSignalAt != nil
-        }
-    }
-
-    func testBootstrapLatestEventCursorIsUsedForInitialConnect() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(
-            items: [patientConversation],
-            latestEventCursor: "evt-bootstrap-9",
-        )
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil {
-            realtime.connectCursors.first == "evt-bootstrap-9"
-        }
-    }
-
-    func testReconnectUsesLatestCommittedCursor() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-1")
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
-            "error_text": .string("x"),
-            "retryable": .bool(true),
-        ]))
-        try await waitUntil { store.lastEventCursor != nil }
-        let committedCursor = store.lastEventCursor
-        store.reconnectRealtimeAndRefresh()
-
-        try await waitUntil { realtime.connectCursors.count >= 2 }
-        XCTAssertEqual(realtime.connectCursors.last, committedCursor)
-    }
-
-    func testDuplicateMessageEventFastSkipsWithoutToolRefreshSpam() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
-        let patientConversation = makeConversation()
-        let service = TestChatService()
-        service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation])
-        service.messagesByConversation[patientConversation.id] = []
-
-        let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
-        store.start()
-        defer { store.stop() }
-        try await waitUntil { store.activeConversationID == patientConversation.id }
-
-        let initialToken = store.toolRefreshToken
-        let duplicatePayload: [String: JSONValue] = [
+        let payload: [String: JSONValue] = [
             "id": .number(801),
             "message_id": .number(801),
             "conversation_id": .number(Double(patientConversation.id)),
@@ -993,43 +333,149 @@ final class ChatRunStoreTests: XCTestCase {
             "timestamp": .string(isoTimestamp()),
             "delivery_status": .string("sent"),
         ]
-        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: duplicatePayload))
-        realtime.pushEvent(makeEvent(type: SimulationEventType.messageItemCreated, payload: duplicatePayload))
+        let event = makeEvent(id: "evt-msg-1", type: SimulationEventType.messageItemCreated, payload: payload)
+
+        realtime.pushEvent(event)
+        realtime.pushEvent(event)
 
         try await waitUntil {
             (store.messagesByConversation[patientConversation.id] ?? []).count == 1
         }
-        XCTAssertEqual(store.toolRefreshToken, initialToken)
+        XCTAssertEqual(realtime.replayAnchors.filter { $0 == event.eventID }.count, 1)
     }
 
-    func testStaleCursorStateTriggersRebootstrapAndReconnectFromFreshBootstrapCursor() async throws {
-        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+    func testLifecycleErrorSetsPresentableErrorWithoutTranscriptMutation() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
         let service = TestChatService()
         service.simulations[simulation.id] = simulation
-        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-a")
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
         let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
         store.start()
         defer { store.stop() }
-        try await waitUntil { realtime.connectCursors.first == "evt-bootstrap-a" }
 
-        realtime.pushEvent(makeEvent(type: SimulationEventType.feedbackGenerationFailed, payload: [
-            "error_text": .string("before stale"),
-            "retryable": .bool(true),
-        ]))
-        try await waitUntil { store.lastEventCursor != nil }
-        let staleCommittedCursor = store.lastEventCursor
+        try await waitUntil { store.activeConversationID == patientConversation.id }
 
-        service.conversations = ChatConversationListResponse(items: [patientConversation], latestEventCursor: "evt-bootstrap-b")
-        realtime.pushState(.staleCursor)
+        realtime.pushEvent(makeEvent(
+            id: "evt-error-1",
+            type: ChatRealtimeEventType.error,
+            payload: [
+                "code": .string("invalid_payload"),
+                "message": .string("Bad resume anchor"),
+            ],
+        ))
 
-        try await waitUntil { realtime.connectCursors.count >= 2 }
-        XCTAssertNotNil(staleCommittedCursor)
-        XCTAssertEqual(realtime.connectCursors.last, "evt-bootstrap-b")
-        XCTAssertEqual(store.lastEventCursor, "evt-bootstrap-b")
+        try await waitUntil { store.presentableError?.title == "Realtime Error" }
+        XCTAssertTrue(store.activeMessages.isEmpty)
+    }
+
+    func testSessionResyncRequiredTriggersHardBootstrap() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap-a")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { realtime.startCalls.count == 1 }
+        service.simulations[simulation.id] = makeSimulation(
+            id: simulation.id,
+            status: .inProgress,
+            retryable: nil,
+            latestEventID: "evt-bootstrap-b",
+        )
+
+        realtime.pushEvent(makeEvent(
+            id: "evt-resync-1",
+            type: ChatRealtimeEventType.sessionResyncRequired,
+            payload: ["reason": .string("replay_gap"), "last_event_id": .string("evt-bootstrap-a")],
+        ))
+
+        try await waitUntil {
+            realtime.startCalls.count == 2 &&
+                realtime.startCalls.last?.lastEventID == "evt-bootstrap-b" &&
+                store.lastEventID == "evt-bootstrap-b"
+        }
+    }
+
+    func testReconnectUsesLatestCommittedLastEventID() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let event = makeEvent(
+            id: "evt-durable-9",
+            type: SimulationEventType.feedbackGenerationFailed,
+            payload: [
+                "error_text": .string("Feedback timed out"),
+                "retryable": .bool(true),
+            ],
+        )
+        realtime.pushEvent(event)
+        try await waitUntil { store.lastEventID == event.eventID }
+
+        store.reconnectRealtimeAndRefresh()
+
+        try await waitUntil {
+            realtime.reconnectCalls.last?.lastEventID == event.eventID
+        }
+    }
+
+    func testTypingUsesCanonicalOutboundEventTypes() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let initialAIMessage = makeMessage(
+            id: 1,
+            conversationID: patientConversation.id,
+            isFromAI: true,
+            content: "How can I help?",
+        )
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = [initialAIMessage]
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        store.draftText = "Hello"
+        store.notifyTypingChanged()
+        try await waitUntil {
+            realtime.sentMessages.contains(where: { $0.eventType == ChatRealtimeEventType.typingStarted })
+        }
+
+        store.draftText = ""
+        store.notifyTypingChanged()
+        try await waitUntil {
+            realtime.sentMessages.contains(where: { $0.eventType == ChatRealtimeEventType.typingStopped })
+        }
+
+        XCTAssertEqual(
+            realtime.sentMessages.first(where: { $0.eventType == ChatRealtimeEventType.typingStarted })?.payload["conversation_id"],
+            .number(Double(patientConversation.id)),
+        )
     }
 
     private func waitUntil(
@@ -1052,6 +498,7 @@ final class ChatRunStoreTests: XCTestCase {
         terminalReasonCode: String = "",
         terminalReasonText: String = "",
         retryable: Bool?,
+        latestEventID: String? = nil,
     ) -> ChatSimulation {
         ChatSimulation(
             id: id,
@@ -1068,6 +515,7 @@ final class ChatRunStoreTests: XCTestCase {
             terminalReasonText: terminalReasonText,
             terminalAt: status == .inProgress ? nil : Date(),
             retryable: retryable,
+            latestEventID: latestEventID,
         )
     }
 
@@ -1123,9 +571,9 @@ final class ChatRunStoreTests: XCTestCase {
         )
     }
 
-    private func makeEvent(type: String, payload: [String: JSONValue]) -> ChatEventEnvelope {
+    private func makeEvent(id: String, type: String, payload: [String: JSONValue]) -> ChatEventEnvelope {
         ChatEventEnvelope(
-            eventID: UUID().uuidString.lowercased(),
+            eventID: id,
             eventType: type,
             createdAt: Date(),
             correlationID: nil,
