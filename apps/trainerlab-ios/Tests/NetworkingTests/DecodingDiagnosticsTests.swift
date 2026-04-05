@@ -200,6 +200,7 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
                 XCTFail("Missing URLProtocolMock.requestHandler")
                 return
             }
+
             do {
                 let (response, data) = try handler(request)
                 client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

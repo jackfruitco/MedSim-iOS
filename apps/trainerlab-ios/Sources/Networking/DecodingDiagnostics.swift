@@ -7,6 +7,7 @@ func formatDecodingError(_ error: Error) -> String {
     guard let decodingError = error as? DecodingError else {
         return String(reflecting: error)
     }
+
     switch decodingError {
     case let .typeMismatch(type, context):
         return "typeMismatch(\(type)) at \(codingPathString(context.codingPath)): \(context.debugDescription)"
