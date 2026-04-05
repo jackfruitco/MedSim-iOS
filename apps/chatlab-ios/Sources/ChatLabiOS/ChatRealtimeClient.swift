@@ -15,7 +15,7 @@ public protocol ChatRealtimeClientProtocol: Sendable {
 
 private let realtimeLogger = Logger(subsystem: "com.jackfruit.medsim", category: "ChatRealtime")
 
-private enum ChatRealtimeHandshakeMode: String, Sendable {
+private enum ChatRealtimeHandshakeMode: String {
     case hello
     case resume
 }
@@ -152,9 +152,11 @@ private actor ChatRealtimeCoordinator {
     }
 
     func send(eventType: String, payload: [String: JSONValue]) async {
+        let currentSimulationID = simulationID ?? -1
+        let currentLastEventID = lastEventID ?? "nil"
         guard let socketTask else {
             realtimeLogger.warning(
-                "Dropping outbound ChatLab event because no active socket exists. event_type=\(eventType, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+                "Dropping outbound ChatLab event because no active socket exists. event_type=\(eventType, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
             return
         }
@@ -173,11 +175,11 @@ private actor ChatRealtimeCoordinator {
             }
             try await socketTask.send(.string(text))
             realtimeLogger.info(
-                "Sent ChatLab outbound event event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+                "Sent ChatLab outbound event event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
         } catch {
             realtimeLogger.error(
-                "Failed sending ChatLab outbound event event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) error=\(error.localizedDescription, privacy: .public)",
+                "Failed sending ChatLab outbound event event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) error=\(error.localizedDescription, privacy: .public)",
             )
         }
     }
@@ -198,8 +200,11 @@ private actor ChatRealtimeCoordinator {
                 }
                 reconnectAttempt += 1
                 emitState(.reconnecting(attempt: reconnectAttempt))
+                let currentReconnectAttempt = reconnectAttempt
+                let currentSimulationID = simulationID ?? -1
+                let currentLastEventID = lastEventID ?? "nil"
                 realtimeLogger.warning(
-                    "ChatLab socket ended unexpectedly; scheduling reconnect attempt=\(self.reconnectAttempt, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+                    "ChatLab socket ended unexpectedly; scheduling reconnect attempt=\(currentReconnectAttempt, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
                 )
             } catch ChatRealtimeCoordinatorError.resyncRequired {
                 emitState(.resyncing)
@@ -214,8 +219,11 @@ private actor ChatRealtimeCoordinator {
 
                 reconnectAttempt += 1
                 emitState(.reconnecting(attempt: reconnectAttempt))
+                let currentReconnectAttempt = reconnectAttempt
+                let currentSimulationID = simulationID ?? -1
+                let currentLastEventID = lastEventID ?? "nil"
                 realtimeLogger.error(
-                    "ChatLab socket failure; scheduling reconnect attempt=\(self.reconnectAttempt, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)",
+                    "ChatLab socket failure; scheduling reconnect attempt=\(currentReconnectAttempt, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public) error=\(error.localizedDescription, privacy: .public)",
                 )
             }
 
@@ -235,9 +243,10 @@ private actor ChatRealtimeCoordinator {
         let request = try await authLoader.makeWebSocketRequest(for: route)
         let socketTask = connector.makeWebSocketTask(with: request)
         self.socketTask = socketTask
+        let currentLastEventID = lastEventID ?? "nil"
 
         realtimeLogger.info(
-            "Opening ChatLab WebSocket simulation_id=\(simulationID, privacy: .public) handshake=\(handshakeMode.rawValue, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            "Opening ChatLab WebSocket simulation_id=\(simulationID, privacy: .public) handshake=\(handshakeMode.rawValue, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
         )
         socketTask.resume()
 
@@ -254,6 +263,7 @@ private actor ChatRealtimeCoordinator {
         var payload: [String: JSONValue] = [
             "simulation_id": .number(Double(simulationID)),
         ]
+        let currentLastEventID = lastEventID ?? "nil"
         switch handshakeMode {
         case .hello:
             if let lastEventID {
@@ -277,7 +287,7 @@ private actor ChatRealtimeCoordinator {
         }
         try await socketTask.send(.string(text))
         realtimeLogger.info(
-            "Sent ChatLab handshake event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(simulationID, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+            "Sent ChatLab handshake event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(simulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
         )
     }
 
@@ -293,8 +303,11 @@ private actor ChatRealtimeCoordinator {
             } catch {
                 let closeCode = socketTask.closeCode.rawValue
                 let closeReason = decodeCloseReason(socketTask.closeReason)
+                let currentSimulationID = simulationID ?? -1
+                let currentLastEventID = lastEventID ?? "nil"
+                let currentReconnectAttempt = reconnectAttempt
                 realtimeLogger.info(
-                    "ChatLab socket closed simulation_id=\(self.simulationID ?? -1, privacy: .public) close_code=\(closeCode, privacy: .public) reason=\(closeReason ?? "nil", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public) reconnect_attempt=\(self.reconnectAttempt, privacy: .public)",
+                    "ChatLab socket closed simulation_id=\(currentSimulationID, privacy: .public) close_code=\(closeCode, privacy: .public) reason=\(closeReason ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public) reconnect_attempt=\(currentReconnectAttempt, privacy: .public)",
                 )
 
                 self.socketTask = nil
@@ -312,9 +325,12 @@ private actor ChatRealtimeCoordinator {
 
     private func handleInboundEnvelope(_ event: ChatEventEnvelope) throws {
         emitEvent(event)
+        let currentSimulationID = simulationID ?? -1
+        let currentLastEventID = lastEventID ?? "nil"
+        let currentReconnectAttempt = reconnectAttempt
 
         realtimeLogger.info(
-            "Received ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public) reconnect_attempt=\(self.reconnectAttempt, privacy: .public)",
+            "Received ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public) reconnect_attempt=\(currentReconnectAttempt, privacy: .public)",
         )
 
         switch event.eventType {
@@ -327,12 +343,12 @@ private actor ChatRealtimeCoordinator {
             resyncRequested = true
             emitState(.resyncing)
             realtimeLogger.warning(
-                "ChatLab server requested hard resync simulation_id=\(self.simulationID ?? -1, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(self.lastEventID ?? "nil", privacy: .public)",
+                "ChatLab server requested hard resync simulation_id=\(currentSimulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
 
         case ChatRealtimeEventType.error:
             let payload = try? event.errorPayload()
-            let terminalCodes: Set<String> = [
+            let terminalCodes: Set = [
                 "access_denied",
                 "session_already_established",
                 "session_required",
@@ -344,7 +360,7 @@ private actor ChatRealtimeCoordinator {
             ]
             if let payload, terminalCodes.contains(payload.code) {
                 realtimeLogger.error(
-                    "Received terminal ChatLab error code=\(payload.code, privacy: .public) simulation_id=\(self.simulationID ?? -1, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
+                    "Received terminal ChatLab error code=\(payload.code, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
                 )
                 throw ChatRealtimeCoordinatorError.terminal(payload.message)
             }

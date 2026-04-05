@@ -32,7 +32,7 @@ final class FormatDecodingErrorTests: XCTestCase {
     func testTypeMismatchContainsExpectedComponents() {
         // "value" field is a String in JSON but expected as Int
         let json = Data(#"{"value": "not-a-number"}"#.utf8)
-        let error = catchDecodingError { try JSONDecoder().decode(IntWrapper.self, from: json) }
+        let error = catchDecodingError { _ = try JSONDecoder().decode(IntWrapper.self, from: json) }
         let formatted = formatDecodingError(error)
 
         XCTAssertTrue(formatted.hasPrefix("typeMismatch"), "Expected typeMismatch prefix, got: \(formatted)")
@@ -44,7 +44,7 @@ final class FormatDecodingErrorTests: XCTestCase {
     func testKeyNotFoundContainsKeyNameAndPath() {
         // "name" field is missing entirely
         let json = Data(#"{}"#.utf8)
-        let error = catchDecodingError { try JSONDecoder().decode(RequiredString.self, from: json) }
+        let error = catchDecodingError { _ = try JSONDecoder().decode(RequiredString.self, from: json) }
         let formatted = formatDecodingError(error)
 
         XCTAssertTrue(formatted.hasPrefix("keyNotFound"), "Expected keyNotFound prefix, got: \(formatted)")
@@ -65,7 +65,7 @@ final class FormatDecodingErrorTests: XCTestCase {
             )
         }
         let json = Data(#"{"at": "not-a-date"}"#.utf8)
-        let error = catchDecodingError { try decoder.decode(DateWrapper.self, from: json) }
+        let error = catchDecodingError { _ = try decoder.decode(DateWrapper.self, from: json) }
         let formatted = formatDecodingError(error)
 
         XCTAssertTrue(formatted.hasPrefix("dataCorrupted"), "Expected dataCorrupted prefix, got: \(formatted)")
@@ -88,7 +88,7 @@ final class FormatDecodingErrorTests: XCTestCase {
     func testNestedCodingPathRenderedAsDotSeparated() {
         // "count" is a String instead of Int — produces typeMismatch at "inner.count"
         let json = Data(#"{"inner": {"count": "bad"}}"#.utf8)
-        let error = catchDecodingError { try JSONDecoder().decode(NestingOuter.self, from: json) }
+        let error = catchDecodingError { _ = try JSONDecoder().decode(NestingOuter.self, from: json) }
         let formatted = formatDecodingError(error)
 
         XCTAssertTrue(formatted.contains("inner.count"), "Expected dot-separated path 'inner.count', got: \(formatted)")
@@ -99,7 +99,7 @@ final class FormatDecodingErrorTests: XCTestCase {
     func testRootLevelPathProducesNonEmptyResult() {
         // Decoding a plain Int from a JSON string produces an error at root level
         let json = Data(#""not-an-int""#.utf8)
-        let error = catchDecodingError { try JSONDecoder().decode(Int.self, from: json) }
+        let error = catchDecodingError { _ = try JSONDecoder().decode(Int.self, from: json) }
         let formatted = formatDecodingError(error)
 
         // Accept any non-empty output — the exact case (typeMismatch or dataCorrupted) may

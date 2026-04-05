@@ -341,7 +341,7 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil {
             (store.messagesByConversation[patientConversation.id] ?? []).count == 1
         }
-        XCTAssertEqual(realtime.replayAnchors.filter { $0 == event.eventID }.count, 1)
+        XCTAssertEqual(realtime.replayAnchors.count(where: { $0 == event.eventID }), 1)
     }
 
     func testLifecycleErrorSetsPresentableErrorWithoutTranscriptMutation() async throws {

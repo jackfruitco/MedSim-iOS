@@ -6,15 +6,15 @@ This report reflects the frontend after the fixes in this branch. Items already 
 
 ## A. Confirmed frontend bugs
 
-### A1. ChatLab realtime transport used an undocumented WebSocket contract instead of backend SSE
+### A1. ChatLab realtime transport drifted from the backend-authoritative WebSocket contract
 - severity: blocking
 - exact affected files: `apps/chatlab-ios/Sources/ChatLabiOS/ChatRealtimeClient.swift`, `apps/chatlab-ios/Sources/ChatLabiOS/ChatRunStore.swift`, `apps/chatlab-ios/Tests/ChatLabiOSTests/ChatLabContractTests.swift`
-- endpoint(s): `/api/v1/simulations/{simulation_id}/events/`, `/api/v1/simulations/{simulation_id}/events/stream/`
-- current behavior: frontend now connects with SSE, performs cursor catch-up, and no longer depends on `/ws/simulation/{id}/` or unsupported outbound typing frames
-- desired behavior: use backend-authoritative SSE plus paginated catch-up
+- endpoint(s): `/api/v1/simulations/{simulation_id}/events/`, `/ws/v1/chatlab/`
+- current behavior: frontend now bootstraps over REST, tracks durable `last_event_id`, connects over `/ws/v1/chatlab/`, and uses `session.hello` / `session.resume` for replay-aware reconnects
+- desired behavior: use the backend-authoritative WebSocket lifecycle plus REST bootstrap/resync
 - recommended fix: frontend-only fix, completed in this branch
 - whether frontend-only fix is sufficient: yes
-- whether backend change is optional or required: optional only if product wants a future upstream realtime channel
+- whether backend change is optional or required: not required
 
 ### A2. Logout previously cleared local tokens without server-side refresh-token revocation
 - severity: high
@@ -102,15 +102,15 @@ This report reflects the frontend after the fixes in this branch. Items already 
 
 ## D. Decision items requiring product/architecture choice
 
-### D1. Generic typing transport: keep local-only typing UX or add a supported upstream realtime contract
+### D1. ChatLab websocket lifecycle remains an area to observe in production
 - severity: medium
 - exact affected files: `apps/chatlab-ios/Sources/ChatLabiOS/ChatRealtimeClient.swift`, `apps/chatlab-ios/Sources/ChatLabiOS/ChatRunStore.swift`
-- endpoint(s): `/api/v1/simulations/{simulation_id}/events/stream/`
-- current behavior: frontend now keeps typing local-only because the backend contract only guarantees SSE downstream events
-- desired behavior: choose whether shared typing indicators matter enough to justify a backend-supported upstream channel
-- recommended fix: recommend frontend adaptation for now; only add backend support if shared typing is a product requirement
+- endpoint(s): `/ws/v1/chatlab/`
+- current behavior: frontend now sends `typing.started`, `typing.stopped`, and `ping` over the canonical websocket envelope and performs hard resync on `session.resync_required`
+- desired behavior: validate production behavior around replay windows, close code `4409`, and reconnect health over longer runs
+- recommended fix: frontend instrumentation is in place; monitor logs and tune only if production traces show issues
 - whether frontend-only fix is sufficient: yes for current scope
-- whether backend change is optional or required: optional
+- whether backend change is optional or required: optional if product wants richer observability fields
 
 ### D2. Trainer note events and debrief annotations should stay separate unless product wants a single concept
 - severity: medium

@@ -85,11 +85,10 @@ private final class MockWebSocketTask: ChatWebSocketTaskProtocol, @unchecked Sen
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
-        let result: Result<URLSessionWebSocketTask.Message, Error>
-        if let queued = lock.withLock({ queuedResults.isEmpty ? nil : queuedResults.removeFirst() }) {
-            result = queued
+        let result: Result<URLSessionWebSocketTask.Message, Error> = if let queued = lock.withLock({ queuedResults.isEmpty ? nil : queuedResults.removeFirst() }) {
+            queued
         } else {
-            result = await withCheckedContinuation { continuation in
+            await withCheckedContinuation { continuation in
                 lock.withLock {
                     waitingContinuation = continuation
                 }
@@ -147,7 +146,7 @@ final class ChatRealtimeClientTests: XCTestCase {
     func testStartSendsSessionHelloWithInitialLastEventID() async throws {
         let task = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [task])
-        let loader = ChatRealtimeAuthorizedResourceLoader(baseURL: URL(string: "https://example.com")!)
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
         let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
@@ -165,7 +164,7 @@ final class ChatRealtimeClientTests: XCTestCase {
     func testReconnectSendsSessionResumeWithLastEventID() async throws {
         let task = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [task])
-        let loader = ChatRealtimeAuthorizedResourceLoader(baseURL: URL(string: "https://example.com")!)
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
         let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         await client.reconnect(simulationID: 42, lastEventID: "evt-9")
@@ -182,7 +181,7 @@ final class ChatRealtimeClientTests: XCTestCase {
     func testLifecycleEventsDriveConnectedAndResyncingStates() async throws {
         let task = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [task])
-        let loader = ChatRealtimeAuthorizedResourceLoader(baseURL: URL(string: "https://example.com")!)
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
         let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
@@ -196,12 +195,12 @@ final class ChatRealtimeClientTests: XCTestCase {
         await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
         defer { client.disconnect() }
 
-        task.enqueue(.success(.string(makeEnvelopeJSON(
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
             eventID: "evt-ready",
             eventType: ChatRealtimeEventType.sessionReady,
             payload: ["simulation_id": .number(42)],
         ))))
-        task.enqueue(.success(.string(makeEnvelopeJSON(
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
             eventID: "evt-resync",
             eventType: ChatRealtimeEventType.sessionResyncRequired,
             payload: ["reason": .string("replay_gap"), "last_event_id": .string("evt-bootstrap")],
@@ -219,13 +218,13 @@ final class ChatRealtimeClientTests: XCTestCase {
         let firstTask = MockWebSocketTask()
         let secondTask = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [firstTask, secondTask])
-        let loader = ChatRealtimeAuthorizedResourceLoader(baseURL: URL(string: "https://example.com")!)
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
         let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         await client.start(simulationID: 42, initialLastEventID: "evt-1")
         defer { client.disconnect() }
 
-        firstTask.enqueue(.success(.string(makeEnvelopeJSON(
+        try firstTask.enqueue(.success(.string(makeEnvelopeJSON(
             eventID: "evt-ready",
             eventType: ChatRealtimeEventType.sessionReady,
             payload: ["simulation_id": .number(42)],
@@ -243,7 +242,7 @@ final class ChatRealtimeClientTests: XCTestCase {
     func testSendUsesCanonicalOutboundEnvelope() async throws {
         let task = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [task])
-        let loader = ChatRealtimeAuthorizedResourceLoader(baseURL: URL(string: "https://example.com")!)
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
         let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         await client.start(simulationID: 42, initialLastEventID: "evt-1")
@@ -279,7 +278,7 @@ final class ChatRealtimeClientTests: XCTestCase {
         eventID: String,
         eventType: String,
         payload: [String: JSONValue],
-    ) -> String {
+    ) throws -> String {
         let envelope = ChatEventEnvelope(
             eventID: eventID,
             eventType: eventType,
@@ -289,8 +288,11 @@ final class ChatRealtimeClientTests: XCTestCase {
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let data = try! encoder.encode(envelope)
-        return String(decoding: data, as: UTF8.self)
+        let data = try encoder.encode(envelope)
+        guard let text = String(bytes: data, encoding: .utf8) else {
+            throw URLError(.cannotDecodeContentData)
+        }
+        return text
     }
 
     private func waitUntil(
