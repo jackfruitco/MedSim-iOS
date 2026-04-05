@@ -1750,7 +1750,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let aiRationaleNotes: [String]
     public let lastRuntimeError: String
     public let lastAITickAt: Date?
-    public let controlPlaneDebug: [String: JSONValue]?
+    public let controlPlaneDebug: ControlPlaneDebugOut?
     public let requestMetadata: [String: JSONValue]?
     public let latestEventCursor: String?
     public let presence: RuntimeSnapshotPresence
@@ -1806,7 +1806,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         let hasLastAITick = container.contains(.lastAITickAt)
         lastAITickAt = try container.decodeIfPresent(Date.self, forKey: .lastAITickAt)
         let hasControlPlaneDebug = container.contains(.controlPlaneDebug)
-        controlPlaneDebug = try container.decodeIfPresent([String: JSONValue].self, forKey: .controlPlaneDebug)
+        controlPlaneDebug = try container.decodeIfPresent(ControlPlaneDebugOut.self, forKey: .controlPlaneDebug)
         let hasRequestMetadata = container.contains(.requestMetadata)
         requestMetadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .requestMetadata)
         let hasLatestEventCursor = container.contains(.latestEventCursor)

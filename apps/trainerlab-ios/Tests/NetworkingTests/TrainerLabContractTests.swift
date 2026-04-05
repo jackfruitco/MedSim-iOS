@@ -641,7 +641,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertNotNil(state.runtimeSnapshot.nextTickAt)
         XCTAssertNotNil(state.runtimeSnapshot.lastAITickAt)
         XCTAssertEqual(state.runtimeSnapshot.latestEventCursor, "cursor-420")
-        XCTAssertEqual(state.runtimeSnapshot.controlPlaneDebug?["execution_plan"], .array([.string("assess"), .string("stabilize")]))
+        XCTAssertEqual(state.runtimeSnapshot.controlPlaneDebug?.executionPlan, ["assess", "stabilize"])
         XCTAssertEqual(state.runtimeSnapshot.requestMetadata?["request_id"], .string("req-420"))
         XCTAssertEqual(state.metadata.builderVersion, "trainerlab-rest-v1")
         XCTAssertEqual(state.metadata.schemaVersion, "trainerlab-state-v2")
@@ -995,6 +995,120 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(debug.queuedReasons.count, 1)
         XCTAssertEqual(debug.lastPatchEvaluationSummary["accepted"], .number(1))
         XCTAssertEqual(debug.statusFlags["paused"], .bool(false))
+    }
+
+    func testStateRuntimeSnapshotControlPlaneDebugDecodesAsTypedOut() throws {
+        let json = """
+        {
+          "simulation_id": 1,
+          "session_id": 1,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [], "problems": [], "recommended_interventions": [],
+            "interventions": [], "assessment_findings": [], "diagnostic_results": [],
+            "resources": [], "disposition": null, "vitals": [], "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 5,
+            "active_elapsed_seconds": 60,
+            "control_plane_debug": {
+              "execution_plan": ["assess", "stabilize", "monitor"],
+              "current_step_index": 2,
+              "queued_reasons": [{"reason": "manual"}],
+              "currently_processing_reasons": [],
+              "last_processed_reasons": [{"reason": "tick"}],
+              "last_failed_step": "stabilize",
+              "last_failed_error": "timeout",
+              "last_patch_evaluation_summary": {"accepted": 3},
+              "last_rejected_or_normalized_summary": {"normalized": true},
+              "status_flags": {"paused": false}
+            }
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled", "authoritative": false,
+              "source": "disabled", "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+        let debug = try XCTUnwrap(state.runtimeSnapshot.controlPlaneDebug)
+
+        XCTAssertEqual(debug.executionPlan, ["assess", "stabilize", "monitor"])
+        XCTAssertEqual(debug.currentStepIndex, 2)
+        XCTAssertEqual(debug.queuedReasons.count, 1)
+        XCTAssertEqual(debug.lastFailedStep, "stabilize")
+        XCTAssertEqual(debug.lastFailedError, "timeout")
+        XCTAssertEqual(debug.lastPatchEvaluationSummary["accepted"], .number(3))
+        XCTAssertEqual(debug.statusFlags["paused"], .bool(false))
+    }
+
+    func testStateControlPlaneDebugIsStructurallyCompatibleWithControlPlaneEndpoint() throws {
+        // The same JSON should decode identically whether consumed as a standalone
+        // /control-plane/ response or as the embedded runtime_snapshot.control_plane_debug
+        // field inside a /state/ response.
+        let debugJSON = """
+        {
+          "execution_plan": ["triage", "treat"],
+          "current_step_index": 1,
+          "queued_reasons": [],
+          "currently_processing_reasons": [{"reason": "tick"}],
+          "last_processed_reasons": [],
+          "last_failed_step": "",
+          "last_failed_error": "",
+          "last_patch_evaluation_summary": {},
+          "last_rejected_or_normalized_summary": {},
+          "status_flags": {"active": true}
+        }
+        """
+
+        // Decode as standalone ControlPlaneDebugOut (mirrors /control-plane/ endpoint shape)
+        let standalone = try JSONDecoder().decode(ControlPlaneDebugOut.self, from: Data(debugJSON.utf8))
+
+        // Decode as embedded field within a /state/ RuntimeSnapshotDTO
+        let stateJSON = """
+        {
+          "simulation_id": 1, "session_id": 1, "status": "running",
+          "scenario_snapshot": {
+            "causes": [], "problems": [], "recommended_interventions": [],
+            "interventions": [], "assessment_findings": [], "diagnostic_results": [],
+            "resources": [], "disposition": null, "vitals": [], "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running", "state_revision": 1, "active_elapsed_seconds": 0,
+            "control_plane_debug": \(debugJSON)
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled", "authoritative": false,
+              "source": "disabled", "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(stateJSON.utf8))
+        let embedded = try XCTUnwrap(state.runtimeSnapshot.controlPlaneDebug)
+
+        XCTAssertEqual(standalone.executionPlan, embedded.executionPlan)
+        XCTAssertEqual(standalone.currentStepIndex, embedded.currentStepIndex)
+        XCTAssertEqual(standalone.statusFlags, embedded.statusFlags)
     }
 
     func testAnnotationEnumsMatchBackendContract() {

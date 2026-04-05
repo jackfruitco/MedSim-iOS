@@ -821,6 +821,9 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
+            logger.error(
+                "Decode failure path=\(endpoint.path, privacy: .public) type=\(String(describing: T.self), privacy: .public) error=\(formatDecodingError(error), privacy: .public) body_preview=\(bodyPreview(data), privacy: .private)",
+            )
             throw APIClientError.decoding(error.localizedDescription)
         }
     }
