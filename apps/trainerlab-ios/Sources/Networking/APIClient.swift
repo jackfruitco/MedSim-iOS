@@ -596,10 +596,10 @@ public enum ChatLabAPI {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/read/", method: .patch, body: Data())
     }
 
-    public static func listEvents(simulationID: Int, cursor: String?, limit: Int) -> Endpoint {
+    public static func listEvents(simulationID: Int, lastEventID: String?, limit: Int) -> Endpoint {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "last_event_id", value: cursor))
+        if let lastEventID {
+            queryItems.append(URLQueryItem(name: "last_event_id", value: lastEventID))
         }
         return Endpoint(path: "/api/v1/simulations/\(simulationID)/events/", query: queryItems)
     }

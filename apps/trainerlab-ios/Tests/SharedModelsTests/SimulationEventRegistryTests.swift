@@ -48,11 +48,13 @@ final class SimulationEventRegistryTests: XCTestCase {
             "patient.vital.updated",
             "patient.pulse.created",
             "patient.pulse.updated",
+            "guard.state.updated",
+            "guard.warning.updated",
         ])
 
         XCTAssertEqual(Set(SimulationEventType.allCanonicalDurable), expected)
         XCTAssertEqual(SimulationEventRegistry.knownCanonicalDurableEventTypes, expected)
-        XCTAssertEqual(expected.count, 44)
+        XCTAssertEqual(expected.count, 46)
 
         for eventType in expected {
             XCTAssertEqual(SimulationEventRegistry.canonicalize(eventType), eventType)
@@ -70,13 +72,11 @@ final class SimulationEventRegistryTests: XCTestCase {
             "stopped_typing",
             "simulation.feedback.continue_conversation",
             "simulation.hotwash.continue_conversation",
-            "guard.state.updated",
-            "guard.warning.updated",
         ])
 
         XCTAssertEqual(Set(SimulationEventType.transientSocketOnly), expected)
         XCTAssertEqual(SimulationEventRegistry.knownTransientEventTypes, expected)
-        XCTAssertEqual(expected.count, 10)
+        XCTAssertEqual(expected.count, 8)
 
         for eventType in expected {
             XCTAssertEqual(SimulationEventRegistry.canonicalize(eventType), eventType)

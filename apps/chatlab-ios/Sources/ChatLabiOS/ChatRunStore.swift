@@ -26,6 +26,7 @@ private let runStoreLogger = Logger(subsystem: "com.jackfruit.medsim", category:
 private enum EventHandlingOutcome {
     case ignored
     case duplicate
+    case acknowledgedNoOp
     case applied(needsToolRefresh: Bool)
 }
 
@@ -237,6 +238,7 @@ public final class ChatRunStore: ObservableObject {
         toolRefreshTask = nil
         stopAwaitingReply()
         stopTypingIndicator()
+        clearRemoteTypingUsers()
         realtimeClient.disconnect()
         transportState = .idle
         socketDisconnected = true
@@ -522,17 +524,11 @@ public final class ChatRunStore: ObservableObject {
             }
         case .duplicate:
             runStoreLogger.debug("Fast-skipped duplicate event \(event.eventID, privacy: .public) type \(event.eventType, privacy: .public)")
+        case .acknowledgedNoOp:
+            acknowledgeDurableEvent(event, appliedToLocalState: false)
         case let .applied(needsToolRefresh):
             if isDurable {
-                rememberAppliedDurableEvent(event.eventID)
-                lastEventID = event.eventID
-                let currentLastEventID = lastEventID ?? "nil"
-                runStoreLogger.info(
-                    "Applied durable ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
-                )
-                Task {
-                    await realtimeClient.updateReplayAnchor(event.eventID)
-                }
+                acknowledgeDurableEvent(event, appliedToLocalState: true)
             } else {
                 runStoreLogger.debug(
                     "Applied transient ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public)",
@@ -573,7 +569,7 @@ public final class ChatRunStore: ObservableObject {
             return .applied(needsToolRefresh: false)
 
         default:
-            return .ignored
+            return isDurableEventType(event.eventType) ? .acknowledgedNoOp : .ignored
         }
     }
 
@@ -962,6 +958,7 @@ public final class ChatRunStore: ObservableObject {
 
         case .reconnecting:
             socketDisconnected = true
+            clearRemoteTypingUsers()
             if previousState != state {
                 pendingTransportRecovery = true
                 addLocalActivity(
@@ -973,18 +970,22 @@ public final class ChatRunStore: ObservableObject {
 
         case .connecting:
             socketDisconnected = true
+            clearRemoteTypingUsers()
 
         case .bootstrapping:
             transportState = .bootstrapping
             socketDisconnected = true
+            clearRemoteTypingUsers()
 
         case .resyncing:
             transportState = .resyncing
             socketDisconnected = true
+            clearRemoteTypingUsers()
 
         case let .failed(message):
             transportState = .failed(message: message)
             socketDisconnected = true
+            clearRemoteTypingUsers()
             if previousState != state {
                 addLocalActivity(
                     eventType: "chat.realtime.failed",
@@ -995,6 +996,7 @@ public final class ChatRunStore: ObservableObject {
 
         case .idle:
             socketDisconnected = true
+            clearRemoteTypingUsers()
         }
     }
 
@@ -1219,6 +1221,7 @@ public final class ChatRunStore: ObservableObject {
         socketDisconnected = true
         appliedDurableEventIDs.removeAll(keepingCapacity: true)
         appliedDurableEventOrder.removeAll(keepingCapacity: true)
+        clearRemoteTypingUsers()
 
         let updated = try await service.getSimulation(simulationID: simulation.id)
         applySimulation(updated)
@@ -1318,6 +1321,23 @@ public final class ChatRunStore: ObservableObject {
             appliedDurableEventOrder.removeFirst()
             appliedDurableEventIDs.remove(oldest)
         }
+    }
+
+    private func acknowledgeDurableEvent(_ event: ChatEventEnvelope, appliedToLocalState: Bool) {
+        rememberAppliedDurableEvent(event.eventID)
+        lastEventID = event.eventID
+        let currentLastEventID = lastEventID ?? "nil"
+        let action = appliedToLocalState ? "Applied" : "Acknowledged"
+        runStoreLogger.info(
+            "\(action, privacy: .public) durable ChatLab event event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+        )
+        Task {
+            await realtimeClient.updateReplayAnchor(event.eventID)
+        }
+    }
+
+    private func clearRemoteTypingUsers() {
+        typingUsersByConversation.removeAll(keepingCapacity: true)
     }
 
     private func scheduleTypingStop() {

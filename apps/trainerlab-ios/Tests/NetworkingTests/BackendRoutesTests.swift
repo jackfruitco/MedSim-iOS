@@ -112,7 +112,7 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(ChatLabAPI.retryMessage(simulationID: 7, messageID: 55).path, "/api/v1/simulations/7/messages/55/retry/")
         XCTAssertEqual(ChatLabAPI.message(simulationID: 7, messageID: 55).path, "/api/v1/simulations/7/messages/55/")
         XCTAssertEqual(ChatLabAPI.markMessageRead(simulationID: 7, messageID: 55).path, "/api/v1/simulations/7/messages/55/read/")
-        XCTAssertEqual(queryPairs(ChatLabAPI.listEvents(simulationID: 7, cursor: "evt-4", limit: 30)), ["limit=30", "last_event_id=evt-4"])
+        XCTAssertEqual(queryPairs(ChatLabAPI.listEvents(simulationID: 7, lastEventID: "evt-4", limit: 30)), ["limit=30", "last_event_id=evt-4"])
         XCTAssertEqual(queryPairs(ChatLabAPI.listTools(simulationID: 7, names: ["patient_history", "patient_results"])), ["names=patient_history", "names=patient_results"])
         XCTAssertEqual(ChatLabAPI.tool(simulationID: 7, toolName: "patient_results").path, "/api/v1/simulations/7/tools/patient_results/")
         XCTAssertEqual(ChatLabAPI.signOrders(simulationID: 7, body: body).path, "/api/v1/simulations/7/tools/patient_results/orders/")

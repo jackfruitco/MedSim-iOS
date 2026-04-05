@@ -344,6 +344,35 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertEqual(realtime.replayAnchors.count(where: { $0 == event.eventID }), 1)
     }
 
+    func testDurableNoOpEventStillAdvancesReplayAnchor() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let event = makeEvent(
+            id: "evt-brief-1",
+            type: SimulationEventType.simulationBriefUpdated,
+            payload: ["summary": .string("Updated brief")],
+        )
+        realtime.pushEvent(event)
+
+        try await waitUntil {
+            store.lastEventID == event.eventID &&
+                realtime.replayAnchors.last == event.eventID
+        }
+        XCTAssertTrue(store.activeMessages.isEmpty)
+    }
+
     func testLifecycleErrorSetsPresentableErrorWithoutTranscriptMutation() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
@@ -476,6 +505,37 @@ final class ChatRunStoreTests: XCTestCase {
             realtime.sentMessages.first(where: { $0.eventType == ChatRealtimeEventType.typingStarted })?.payload["conversation_id"],
             .number(Double(patientConversation.id)),
         )
+    }
+
+    func testReconnectClearsTransientTypingUsers() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(makeEvent(
+            id: "evt-typing-remote",
+            type: ChatRealtimeEventType.typingStarted,
+            payload: [
+                "conversation_id": .number(Double(patientConversation.id)),
+                "user": .string("consultant@example.com"),
+            ],
+        ))
+
+        try await waitUntil { store.activeTypingUsers.contains("consultant@example.com") }
+
+        realtime.pushState(.reconnecting(attempt: 1))
+
+        try await waitUntil { !store.activeTypingUsers.contains("consultant@example.com") }
     }
 
     private func waitUntil(

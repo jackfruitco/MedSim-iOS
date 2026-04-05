@@ -129,7 +129,7 @@ private actor ChatRealtimeCoordinator {
         stopCurrentRun(closeCode: .goingAway, reason: "reconnect")
         self.simulationID = simulationID
         self.lastEventID = lastEventID
-        nextHandshakeMode = .resume
+        nextHandshakeMode = resolvedHandshakeMode(requested: .resume)
         reconnectAttempt = 0
         resyncRequested = false
         isRunning = true
@@ -264,21 +264,24 @@ private actor ChatRealtimeCoordinator {
         simulationID: Int,
         socketTask: ChatWebSocketTaskProtocol,
     ) async throws {
+        let effectiveHandshakeMode = resolvedHandshakeMode(requested: handshakeMode)
         let correlationID = UUID().uuidString.lowercased()
         var payload: [String: JSONValue] = [
             "simulation_id": .number(Double(simulationID)),
         ]
         let currentLastEventID = lastEventID ?? "nil"
-        switch handshakeMode {
+        switch effectiveHandshakeMode {
         case .hello:
             if let lastEventID {
                 payload["last_event_id"] = .string(lastEventID)
             }
         case .resume:
-            payload["last_event_id"] = lastEventID.map(JSONValue.string) ?? .null
+            if let lastEventID {
+                payload["last_event_id"] = .string(lastEventID)
+            }
         }
 
-        let eventType = handshakeMode == .hello
+        let eventType = effectiveHandshakeMode == .hello
             ? ChatRealtimeEventType.sessionHello
             : ChatRealtimeEventType.sessionResume
         let outbound = ChatRealtimeOutboundMessage(

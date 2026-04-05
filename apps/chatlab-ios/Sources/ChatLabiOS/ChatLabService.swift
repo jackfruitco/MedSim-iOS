@@ -178,7 +178,7 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
 
     public func listEvents(simulationID: Int, lastEventID: String?, limit: Int = 50) async throws -> ChatEventReplayResponse {
         try await apiClient.request(
-            ChatLabAPI.listEvents(simulationID: simulationID, cursor: lastEventID, limit: limit),
+            ChatLabAPI.listEvents(simulationID: simulationID, lastEventID: lastEventID, limit: limit),
             as: ChatEventReplayResponse.self,
         )
     }
