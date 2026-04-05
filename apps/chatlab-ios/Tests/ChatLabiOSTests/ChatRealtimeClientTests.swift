@@ -161,6 +161,23 @@ final class ChatRealtimeClientTests: XCTestCase {
         XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-bootstrap"))
     }
 
+    func testStartWithoutAnchorSendsSessionHelloWithoutLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
+    }
+
     func testReconnectSendsSessionResumeWithLastEventID() async throws {
         let task = MockWebSocketTask()
         let connector = MockWebSocketConnector(tasks: [task])
@@ -176,6 +193,23 @@ final class ChatRealtimeClientTests: XCTestCase {
         XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionResume)
         XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
         XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-9"))
+    }
+
+    func testReconnectWithoutAnchorSendsSessionHelloWithoutLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.reconnect(simulationID: 42, lastEventID: nil)
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
     }
 
     func testLifecycleEventsDriveConnectedAndResyncingStates() async throws {
@@ -237,6 +271,32 @@ final class ChatRealtimeClientTests: XCTestCase {
 
         XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionResume)
         XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-1"))
+    }
+
+    func testUnexpectedDisconnectAfterEmptySessionReconnectsWithHelloHandshake() async throws {
+        let firstTask = MockWebSocketTask()
+        let secondTask = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [firstTask, secondTask])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+
+        try firstTask.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        firstTask.setClose(code: .goingAway, reason: "network")
+        firstTask.enqueue(.failure(URLError(.networkConnectionLost)))
+
+        try await waitUntil { secondTask.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(secondTask.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
     }
 
     func testSendUsesCanonicalOutboundEnvelope() async throws {

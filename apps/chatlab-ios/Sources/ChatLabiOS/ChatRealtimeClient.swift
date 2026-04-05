@@ -227,7 +227,7 @@ private actor ChatRealtimeCoordinator {
                 )
             }
 
-            nextHandshakeMode = .resume
+            nextHandshakeMode = resolvedHandshakeMode(requested: .resume)
             let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
             let jitter = Double.random(in: 0 ... 0.35)
             try? await Task.sleep(nanoseconds: UInt64((delaySeconds + jitter) * 1_000_000_000))
@@ -239,6 +239,7 @@ private actor ChatRealtimeCoordinator {
             return
         }
 
+        let resolvedHandshakeMode = resolvedHandshakeMode(requested: handshakeMode)
         let route = ChatLabAPI.realtimeSocket()
         let request = try await authLoader.makeWebSocketRequest(for: route)
         let socketTask = connector.makeWebSocketTask(with: request)
@@ -246,11 +247,15 @@ private actor ChatRealtimeCoordinator {
         let currentLastEventID = lastEventID ?? "nil"
 
         realtimeLogger.info(
-            "Opening ChatLab WebSocket simulation_id=\(simulationID, privacy: .public) handshake=\(handshakeMode.rawValue, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+            "Opening ChatLab WebSocket simulation_id=\(simulationID, privacy: .public) handshake=\(resolvedHandshakeMode.rawValue, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
         )
         socketTask.resume()
 
-        try await sendHandshake(handshakeMode, simulationID: simulationID, socketTask: socketTask)
+        try await sendHandshake(
+            resolvedHandshakeMode,
+            simulationID: simulationID,
+            socketTask: socketTask,
+        )
         try await receiveLoop(socketTask: socketTask)
     }
 
@@ -336,7 +341,7 @@ private actor ChatRealtimeCoordinator {
         switch event.eventType {
         case ChatRealtimeEventType.sessionReady, ChatRealtimeEventType.sessionResumed:
             reconnectAttempt = 0
-            nextHandshakeMode = .resume
+            nextHandshakeMode = resolvedHandshakeMode(requested: .resume)
             emitState(.connected)
 
         case ChatRealtimeEventType.sessionResyncRequired:
@@ -371,6 +376,16 @@ private actor ChatRealtimeCoordinator {
         default:
             break
         }
+    }
+
+    private func resolvedHandshakeMode(requested requestedMode: ChatRealtimeHandshakeMode) -> ChatRealtimeHandshakeMode {
+        guard requestedMode == .resume else {
+            return .hello
+        }
+        guard let lastEventID, !lastEventID.isEmpty else {
+            return .hello
+        }
+        return .resume
     }
 
     private func decodeEnvelope(from text: String) -> ChatEventEnvelope? {
