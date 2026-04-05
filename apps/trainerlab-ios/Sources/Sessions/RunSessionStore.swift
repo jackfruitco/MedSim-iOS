@@ -2175,6 +2175,8 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func decodeRuntimeStateSeed(from session: TrainerSessionDTO) -> TrainerRestViewModelDTO? {
+        // `/state` is authoritative. The session blob is only a best-effort legacy/local seed,
+        // so missing or empty runtime state must cleanly no-op instead of reconstructing anything.
         guard !session.runtimeState.isEmpty else {
             return nil
         }

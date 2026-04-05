@@ -340,6 +340,25 @@ public struct TrainerSessionDTO: Codable, Equatable, Identifiable, Sendable {
         case terminalReasonText = "terminal_reason_text"
         case retryable
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        simulationID = try container.decode(Int.self, forKey: .simulationID)
+        status = try container.decode(TrainerSessionStatus.self, forKey: .status)
+        scenarioSpec = try container.decodeIfPresent([String: JSONValue].self, forKey: .scenarioSpec) ?? [:]
+        runtimeState = try container.decodeIfPresent([String: JSONValue].self, forKey: .runtimeState) ?? [:]
+        initialDirectives = try container.decodeIfPresent(String.self, forKey: .initialDirectives)
+        tickIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .tickIntervalSeconds) ?? 15
+        runStartedAt = try container.decodeIfPresent(Date.self, forKey: .runStartedAt)
+        runPausedAt = try container.decodeIfPresent(Date.self, forKey: .runPausedAt)
+        runCompletedAt = try container.decodeIfPresent(Date.self, forKey: .runCompletedAt)
+        lastAITickAt = try container.decodeIfPresent(Date.self, forKey: .lastAITickAt)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
+        terminalReasonCode = try container.decodeIfPresent(String.self, forKey: .terminalReasonCode)
+        terminalReasonText = try container.decodeIfPresent(String.self, forKey: .terminalReasonText)
+        retryable = try container.decodeIfPresent(Bool.self, forKey: .retryable)
+    }
 }
 
 public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
@@ -945,6 +964,7 @@ public struct RuntimeCauseState: Codable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case id
         case causeID = "cause_id"
         case domainEventID = "domain_event_id"
         case kind
@@ -963,6 +983,51 @@ public struct RuntimeCauseState: Codable, Sendable {
         case source
         case timestamp
         case metadata
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        causeID = try container.decodeIfPresent(Int.self, forKey: .id)
+            ?? container.decodeIfPresent(Int.self, forKey: .causeID)
+        domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        severity = try container.decodeIfPresent(String.self, forKey: .severity)
+        marchCategory = try container.decodeIfPresent(String.self, forKey: .marchCategory)
+        anatomicalLocation = try container.decodeIfPresent(String.self, forKey: .anatomicalLocation)
+        laterality = try container.decodeIfPresent(String.self, forKey: .laterality)
+        injuryLocation = try container.decodeIfPresent(String.self, forKey: .injuryLocation)
+        injuryKind = try container.decodeIfPresent(String.self, forKey: .injuryKind)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(causeID, forKey: .causeID)
+        try container.encodeIfPresent(domainEventID, forKey: .domainEventID)
+        try container.encodeIfPresent(kind, forKey: .kind)
+        try container.encodeIfPresent(code, forKey: .code)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+        try container.encodeIfPresent(label, forKey: .label)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(severity, forKey: .severity)
+        try container.encodeIfPresent(marchCategory, forKey: .marchCategory)
+        try container.encodeIfPresent(anatomicalLocation, forKey: .anatomicalLocation)
+        try container.encodeIfPresent(laterality, forKey: .laterality)
+        try container.encodeIfPresent(injuryLocation, forKey: .injuryLocation)
+        try container.encodeIfPresent(injuryKind, forKey: .injuryKind)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(source, forKey: .source)
+        try container.encodeIfPresent(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }
 
@@ -1244,6 +1309,7 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
     public let metadata: [String: JSONValue]?
 
     enum CodingKeys: String, CodingKey {
+        case diagnosticID = "diagnostic_id"
         case resultID = "result_id"
         case kind
         case code
@@ -1256,7 +1322,8 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        resultID = try container.decodeIfPresent(Int.self, forKey: .resultID)
+        resultID = try container.decodeIfPresent(Int.self, forKey: .diagnosticID)
+            ?? container.decodeIfPresent(Int.self, forKey: .resultID)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         code = try container.decodeIfPresent(String.self, forKey: .code)
         title = try container.decodeIfPresent(String.self, forKey: .title)
@@ -1264,6 +1331,18 @@ public struct RuntimeDiagnosticResultState: Codable, Sendable {
         description = try container.decodeIfPresent(String.self, forKey: .description)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(resultID, forKey: .resultID)
+        try container.encodeIfPresent(kind, forKey: .kind)
+        try container.encodeIfPresent(code, forKey: .code)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
     }
 }
 

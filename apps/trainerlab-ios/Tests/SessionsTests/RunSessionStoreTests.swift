@@ -362,7 +362,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "environment": "Night operation",
             ],
             causes: [[
-                "cause_id": 11,
+                "id": 11,
                 "kind": "injury",
                 "title": "Blast Injury",
                 "description": "Open wound to the left arm",
@@ -563,6 +563,98 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
     }
 
+    func testBindDecodedSessionWithoutRuntimeStateDoesNotSeedRuntimeTruth() throws {
+        let store = RunSessionStore(
+            service: MockTrainerLabService(),
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        let session = try makeSessionDTOFromBackendJSON(
+            """
+            {
+              "simulation_id": 420,
+              "status": "seeded",
+              "scenario_spec": {},
+              "initial_directives": null,
+              "tick_interval_seconds": 15,
+              "run_started_at": null,
+              "run_paused_at": null,
+              "run_completed_at": null,
+              "last_ai_tick_at": null,
+              "created_at": "2026-03-12T12:00:00Z",
+              "modified_at": "2026-03-12T12:00:00Z"
+            }
+            """
+        )
+
+        store.bind(session: session)
+
+        XCTAssertEqual(session.runtimeState, [:])
+        XCTAssertNil(store.runtimeState)
+        XCTAssertNil(store.scenarioBrief)
+        XCTAssertEqual(store.patientStatus.narrative, "")
+        XCTAssertTrue(store.hydratedCauses.isEmpty)
+    }
+
+    func testMissingSessionRuntimeStateDoesNotBlockAuthoritativeStateLoad() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(
+            status: "running",
+            stateRevision: 4,
+            scenarioBrief: [
+                "read_aloud_brief": "Patrol medic called to blast injury.",
+            ],
+            causes: [[
+                "id": 11,
+                "kind": "injury",
+                "title": "Blast Injury",
+                "description": "Open wound to the left arm",
+                "injury_location": "LEFT_ARM",
+            ]],
+            diagnosticResults: [[
+                "diagnostic_id": 88,
+                "title": "Portable ultrasound",
+                "status": "queued",
+            ]],
+            aiPlan: [
+                "summary": "Escalate respiratory distress",
+            ],
+        ))
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        let session = try makeSessionDTOFromBackendJSON(
+            """
+            {
+              "simulation_id": 420,
+              "status": "running",
+              "scenario_spec": {},
+              "initial_directives": null,
+              "tick_interval_seconds": 15,
+              "run_started_at": "2026-03-12T12:00:00Z",
+              "run_paused_at": null,
+              "run_completed_at": null,
+              "last_ai_tick_at": null,
+              "created_at": "2026-03-12T12:00:00Z",
+              "modified_at": "2026-03-12T12:00:00Z"
+            }
+            """
+        )
+
+        store.bind(session: session)
+        let runtimeState = await store.loadRuntimeState(reason: "test")
+
+        XCTAssertEqual(session.runtimeState, [:])
+        XCTAssertEqual(service.getRuntimeStateCalls, [420])
+        XCTAssertEqual(runtimeState?.runtimeSnapshot.stateRevision, 4)
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
+        XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
+        XCTAssertEqual(store.diagnosticResults.first?.resultID, 88)
+        XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
+    }
+
     func testStateUpdatedAuthoritativelyReplacesVitals() async throws {
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
@@ -627,7 +719,7 @@ final class RunSessionStoreTests: XCTestCase {
                     "read_aloud_brief": "Patrol medic called to blast injury.",
                 ],
                 causes: [[
-                    "cause_id": 11,
+                    "id": 11,
                     "kind": "injury",
                     "title": "Blast Injury",
                     "description": "Open wound to the left arm",
@@ -740,7 +832,7 @@ final class RunSessionStoreTests: XCTestCase {
                 status: "running",
                 stateRevision: 1,
                 causes: [[
-                    "cause_id": 11,
+                    "id": 11,
                     "kind": "injury",
                     "title": "Blast Injury",
                     "description": "Open wound to the left arm",
@@ -1636,7 +1728,7 @@ final class RunSessionStoreTests: XCTestCase {
             createdAt: Date(),
             correlationID: nil,
             payload: [
-                "result_id": .number(1101),
+                "diagnostic_id": .number(1101),
                 "title": .string("Ultrasound pending"),
                 "status": .string("queued"),
             ],
@@ -1968,6 +2060,12 @@ final class RunSessionStoreTests: XCTestCase {
         return try decoder.decode(TrainerRestViewModelDTO.self, from: data)
     }
 
+    private func makeSessionDTOFromBackendJSON(_ json: String) throws -> TrainerSessionDTO {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(TrainerSessionDTO.self, from: Data(json.utf8))
+    }
+
     private func makeAliasedSessionRuntimeSeed() -> [String: JSONValue] {
         [
             "simulation_id": .number(420),
@@ -1980,7 +2078,7 @@ final class RunSessionStoreTests: XCTestCase {
                 ]),
                 "causes": .array([
                     .object([
-                        "cause_id": .number(11),
+                        "id": .number(11),
                         "kind": .string("injury"),
                         "title": .string("Blast Injury"),
                         "description": .string("Open wound to the left arm"),

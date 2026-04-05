@@ -53,13 +53,12 @@ private final class RecordingTokenProvider: AuthTokenProvider, @unchecked Sendab
 }
 
 final class TrainerLabContractTests: XCTestCase {
-    func testTrainerRunDecodesWithoutLegacyID() throws {
+    func testTrainerRunDecodesWithoutRuntimeState() throws {
         let json = """
         {
           "simulation_id": 420,
           "status": "seeding",
           "scenario_spec": {},
-          "runtime_state": {},
           "initial_directives": null,
           "tick_interval_seconds": 15,
           "run_started_at": null,
@@ -78,6 +77,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(run.simulationID, 420)
         XCTAssertEqual(run.id, 420)
         XCTAssertEqual(run.status, .seeding)
+        XCTAssertEqual(run.runtimeState, [:])
     }
 
     func testRunSummaryDecodesWithoutLegacySessionID() throws {
@@ -515,7 +515,6 @@ final class TrainerLabContractTests: XCTestCase {
               "simulation_id": 7,
               "status": "seeding",
               "scenario_spec": {},
-              "runtime_state": {},
               "initial_directives": null,
               "tick_interval_seconds": 15,
               "run_started_at": null,
@@ -533,10 +532,38 @@ final class TrainerLabContractTests: XCTestCase {
 
         XCTAssertEqual(session.simulationID, 7)
         XCTAssertEqual(session.status, .seeding)
+        XCTAssertEqual(session.runtimeState, [:])
         XCTAssertEqual(api.capturedEndpoints.map(\.path), [
             "/api/v1/trainerlab/simulations/7/retry-initial/",
             "/api/v1/trainerlab/simulations/7/",
         ])
+    }
+
+    func testTrainerRunDecodeDefaultsRuntimeStateWhenFieldIsMissing() throws {
+        let json = """
+        {
+          "simulation_id": 421,
+          "status": "running",
+          "scenario_spec": {"diagnosis": "Blast injury"},
+          "initial_directives": "Stabilize patient",
+          "tick_interval_seconds": 15,
+          "run_started_at": "2026-03-12T12:00:00Z",
+          "run_paused_at": null,
+          "run_completed_at": null,
+          "last_ai_tick_at": null,
+          "created_at": "2026-03-12T12:00:00Z",
+          "modified_at": "2026-03-12T12:00:00Z",
+          "terminal_reason_code": null,
+          "terminal_reason_text": null,
+          "retryable": null
+        }
+        """
+
+        let session = try makeContractDecoder().decode(TrainerSessionDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(session.simulationID, 421)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.runtimeState, [:])
     }
 
     func testTrainerRuntimeStateDecodesRuntimeAdditions() throws {
@@ -729,7 +756,7 @@ final class TrainerLabContractTests: XCTestCase {
             "scenario_brief": { "read_aloud_brief": "Patient found after blast exposure." },
             "causes": [
               {
-                "cause_id": 11,
+                "id": 11,
                 "kind": "injury",
                 "title": "Blast Injury",
                 "description": "Open wound to the left arm",
@@ -789,6 +816,107 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(state.scenarioSnapshot.presence.vitals, true)
         XCTAssertEqual(state.scenarioSnapshot.presence.patientStatus, true)
         XCTAssertEqual(state.scenarioSnapshot.presence.recommendedInterventions, false)
+    }
+
+    func testTrainerRuntimeStateDecodesCauseIDFromBackendSnapshotID() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [
+              {
+                "id": 99,
+                "kind": "injury",
+                "title": "Femur fracture",
+                "description": "Closed fracture"
+              }
+            ],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.scenarioSnapshot.causes.first?.causeID, 99)
+    }
+
+    func testTrainerRuntimeStateDecodesDiagnosticResultIDFromBackendField() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [
+              {
+                "diagnostic_id": 144,
+                "title": "Portable ultrasound",
+                "status": "queued"
+              }
+            ],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.scenarioSnapshot.diagnosticResults.first?.resultID, 144)
     }
 
     func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {
