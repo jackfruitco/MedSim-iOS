@@ -584,7 +584,7 @@ final class RunSessionStoreTests: XCTestCase {
               "created_at": "2026-03-12T12:00:00Z",
               "modified_at": "2026-03-12T12:00:00Z"
             }
-            """
+            """,
         )
 
         store.bind(session: session)
@@ -640,7 +640,7 @@ final class RunSessionStoreTests: XCTestCase {
               "created_at": "2026-03-12T12:00:00Z",
               "modified_at": "2026-03-12T12:00:00Z"
             }
-            """
+            """,
         )
 
         store.bind(session: session)
