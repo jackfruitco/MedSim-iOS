@@ -47,7 +47,7 @@ final class FormatDecodingErrorTests: XCTestCase {
             let value = try container.decode(String.self)
             throw DecodingError.dataCorruptedError(
                 in: container,
-                debugDescription: "Invalid date: \(value)"
+                debugDescription: "Invalid date: \(value)",
             )
         }
         let json = Data(#"{"at": "not-a-date"}"#.utf8)
@@ -126,15 +126,15 @@ final class BodyPreviewTests: XCTestCase {
 
         XCTAssertTrue(
             preview.hasPrefix(String(repeating: "a", count: 4096)),
-            "Preview should start with the first 4096 'a' characters"
+            "Preview should start with the first 4096 'a' characters",
         )
         XCTAssertTrue(
             preview.contains("5000 bytes total"),
-            "Preview should include total byte count, got: \(preview)"
+            "Preview should include total byte count, got: \(preview)",
         )
         XCTAssertTrue(
             preview.contains("showing first 4096"),
-            "Preview should note the cap, got: \(preview)"
+            "Preview should note the cap, got: \(preview)",
         )
     }
 
