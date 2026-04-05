@@ -15,7 +15,7 @@ public protocol TrainerLabServiceProtocol: Sendable {
     func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO
     func getSession(simulationID: Int) async throws -> TrainerSessionDTO
     func retryInitialSimulation(simulationID: Int) async throws -> TrainerSessionDTO
-    func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut
+    func getRuntimeState(simulationID: Int) async throws -> TrainerRestViewModelDTO
     func getControlPlaneDebug(simulationID: Int) async throws -> ControlPlaneDebugOut
     func runCommand(simulationID: Int, command: RunCommand, idempotencyKey: String) async throws -> TrainerSessionDTO
     func triggerRunTick(simulationID: Int, idempotencyKey: String) async throws -> TrainerCommandAck
@@ -103,10 +103,10 @@ public final class TrainerLabService: TrainerLabServiceProtocol, @unchecked Send
         return try await getSession(simulationID: simulationID)
     }
 
-    public func getRuntimeState(simulationID: Int) async throws -> TrainerRuntimeStateOut {
+    public func getRuntimeState(simulationID: Int) async throws -> TrainerRestViewModelDTO {
         try await apiClient.request(
             TrainerLabAPI.runtimeState(simulationID: simulationID),
-            as: TrainerRuntimeStateOut.self,
+            as: TrainerRestViewModelDTO.self,
         )
     }
 

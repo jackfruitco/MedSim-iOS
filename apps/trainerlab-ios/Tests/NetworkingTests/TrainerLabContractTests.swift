@@ -53,13 +53,12 @@ private final class RecordingTokenProvider: AuthTokenProvider, @unchecked Sendab
 }
 
 final class TrainerLabContractTests: XCTestCase {
-    func testTrainerRunDecodesWithoutLegacyID() throws {
+    func testTrainerRunDecodesWithoutRuntimeState() throws {
         let json = """
         {
           "simulation_id": 420,
           "status": "seeding",
           "scenario_spec": {},
-          "runtime_state": {},
           "initial_directives": null,
           "tick_interval_seconds": 15,
           "run_started_at": null,
@@ -78,6 +77,7 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(run.simulationID, 420)
         XCTAssertEqual(run.id, 420)
         XCTAssertEqual(run.status, .seeding)
+        XCTAssertEqual(run.runtimeState, [:])
     }
 
     func testRunSummaryDecodesWithoutLegacySessionID() throws {
@@ -515,7 +515,6 @@ final class TrainerLabContractTests: XCTestCase {
               "simulation_id": 7,
               "status": "seeding",
               "scenario_spec": {},
-              "runtime_state": {},
               "initial_directives": null,
               "tick_interval_seconds": 15,
               "run_started_at": null,
@@ -533,10 +532,38 @@ final class TrainerLabContractTests: XCTestCase {
 
         XCTAssertEqual(session.simulationID, 7)
         XCTAssertEqual(session.status, .seeding)
+        XCTAssertEqual(session.runtimeState, [:])
         XCTAssertEqual(api.capturedEndpoints.map(\.path), [
             "/api/v1/trainerlab/simulations/7/retry-initial/",
             "/api/v1/trainerlab/simulations/7/",
         ])
+    }
+
+    func testTrainerRunDecodeDefaultsRuntimeStateWhenFieldIsMissing() throws {
+        let json = """
+        {
+          "simulation_id": 421,
+          "status": "running",
+          "scenario_spec": {"diagnosis": "Blast injury"},
+          "initial_directives": "Stabilize patient",
+          "tick_interval_seconds": 15,
+          "run_started_at": "2026-03-12T12:00:00Z",
+          "run_paused_at": null,
+          "run_completed_at": null,
+          "last_ai_tick_at": null,
+          "created_at": "2026-03-12T12:00:00Z",
+          "modified_at": "2026-03-12T12:00:00Z",
+          "terminal_reason_code": null,
+          "terminal_reason_text": null,
+          "retryable": null
+        }
+        """
+
+        let session = try makeContractDecoder().decode(TrainerSessionDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(session.simulationID, 421)
+        XCTAssertEqual(session.status, .running)
+        XCTAssertEqual(session.runtimeState, [:])
     }
 
     func testTrainerRuntimeStateDecodesRuntimeAdditions() throws {
@@ -545,59 +572,93 @@ final class TrainerLabContractTests: XCTestCase {
           "simulation_id": 420,
           "session_id": 420,
           "status": "running",
-          "state_revision": 12,
-          "active_elapsed_seconds": 90,
-          "tick_interval_seconds": 30,
-          "next_tick_at": "2026-03-12T12:01:30Z",
-          "scenario_brief": null,
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "vitals": [],
-            "annotations": [],
+            "pulses": [],
             "assessment_findings": [],
             "diagnostic_results": [],
             "resources": [],
             "disposition": null,
-            "recommended_interventions": []
+            "recommended_interventions": [],
+            "interventions": [],
+            "patient_status": {},
+            "scenario_brief": null
           },
-          "ai_plan": {
-            "summary": "Monitor airway",
-            "rationale": "",
-            "trigger": "",
-            "eta_seconds": null,
-            "confidence": 0.5,
-            "upcoming_changes": [],
-            "monitoring_focus": []
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 12,
+            "active_elapsed_seconds": 90,
+            "tick_interval_seconds": 30,
+            "next_tick_at": "2026-03-12T12:01:30Z",
+            "ai_plan": {
+              "summary": "Monitor airway",
+              "rationale": "",
+              "trigger": "",
+              "eta_seconds": null,
+              "confidence": 0.5,
+              "upcoming_changes": [],
+              "monitoring_focus": []
+            },
+            "ai_rationale_notes": ["watching trend"],
+            "pending_runtime_reasons": [{"kind": "trend"}],
+            "currently_processing_reasons": [{"kind": "tick"}],
+            "last_runtime_error": "none",
+            "last_ai_tick_at": "2026-03-12T12:01:00Z",
+            "control_plane_debug": {
+              "execution_plan": ["assess", "stabilize"]
+            },
+            "request_metadata": {
+              "request_id": "req-420"
+            },
+            "latest_event_cursor": "cursor-420"
           },
-          "ai_rationale_notes": ["watching trend"],
-          "pending_runtime_reasons": [{"kind": "trend"}],
-          "pending_reasons": [{"kind": "manual"}],
-          "currently_processing_reasons": [{"kind": "tick"}],
-          "last_runtime_error": "none",
-          "last_ai_tick_at": "2026-03-12T12:01:00Z"
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "ready",
+              "authoritative": true,
+              "source": "runtime_event_projection",
+              "state_revision": 12
+            },
+            "event_timeline_count": 0
+          }
         }
         """
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let state = try decoder.decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.tickIntervalSeconds, 30)
-        XCTAssertEqual(state.aiPlan?.summary, "Monitor airway")
-        XCTAssertEqual(state.pendingRuntimeReasons.count, 1)
-        XCTAssertEqual(state.currentlyProcessingReasons.count, 1)
-        XCTAssertEqual(state.lastRuntimeError, "none")
-        XCTAssertNotNil(state.nextTickAt)
-        XCTAssertNotNil(state.lastAITickAt)
+        XCTAssertEqual(state.runtimeSnapshot.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Monitor airway")
+        XCTAssertEqual(state.runtimeSnapshot.pendingRuntimeReasons.count, 1)
+        XCTAssertEqual(state.runtimeSnapshot.currentlyProcessingReasons.count, 1)
+        XCTAssertEqual(state.runtimeSnapshot.lastRuntimeError, "none")
+        XCTAssertNotNil(state.runtimeSnapshot.nextTickAt)
+        XCTAssertNotNil(state.runtimeSnapshot.lastAITickAt)
+        XCTAssertEqual(state.runtimeSnapshot.latestEventCursor, "cursor-420")
+        XCTAssertEqual(state.runtimeSnapshot.controlPlaneDebug?["execution_plan"], .array([.string("assess"), .string("stabilize")]))
+        XCTAssertEqual(state.runtimeSnapshot.requestMetadata?["request_id"], .string("req-420"))
+        XCTAssertEqual(state.metadata.builderVersion, "trainerlab-rest-v1")
+        XCTAssertEqual(state.metadata.schemaVersion, "trainerlab-state-v2")
+        XCTAssertEqual(state.metadata.snapshotCache.status, "ready")
+        XCTAssertEqual(state.metadata.snapshotCache.authoritative, true)
+        XCTAssertEqual(state.metadata.snapshotCache.source, "runtime_event_projection")
+        XCTAssertEqual(state.metadata.snapshotCache.stateRevision, 12)
+        XCTAssertEqual(state.metadata.eventTimelineCount, 0)
     }
 
     func testTrainerRuntimeStateDecodesVitalWithoutLockValue() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "recommended_interventions": [],
@@ -615,22 +676,36 @@ final class TrainerLabContractTests: XCTestCase {
             ],
             "pulses": [],
             "patient_status": {}
+          },
+          "runtime_snapshot": { "status": "running", "state_revision": 1, "active_elapsed_seconds": 0 },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
           }
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.currentSnapshot.vitals.first?.vitalType, "heart_rate")
-        XCTAssertNil(state.currentSnapshot.vitals.first?.lockValue)
+        XCTAssertEqual(state.scenarioSnapshot.vitals.first?.vitalType, "heart_rate")
+        XCTAssertNil(state.scenarioSnapshot.vitals.first?.lockValue)
     }
 
     func testTrainerRuntimeStateDecodesSparseAIPlan() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "current_snapshot": {
+          "scenario_snapshot": {
             "causes": [],
             "problems": [],
             "recommended_interventions": [],
@@ -643,38 +718,52 @@ final class TrainerLabContractTests: XCTestCase {
             "pulses": [],
             "patient_status": {}
           },
-          "ai_plan": {
-            "summary": "Watch SpO2"
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0,
+            "ai_plan": { "summary": "Watch SpO2" }
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
           }
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.aiPlan?.summary, "Watch SpO2")
-        XCTAssertEqual(state.aiPlan?.rationale, "")
-        XCTAssertEqual(state.aiPlan?.monitoringFocus, [])
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Watch SpO2")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.rationale, "")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.monitoringFocus, [])
     }
 
-    func testTrainerRuntimeStateDecodesAliasedHydrationKeysWithoutWipingPresence() throws {
+    func testTrainerRuntimeStateDecodesSectionedPresence() throws {
         let json = """
         {
           "simulation_id": 420,
+          "session_id": 420,
           "status": "running",
-          "scenario_brief": {
-            "read_aloud_brief": "Patient found after blast exposure."
-          },
-          "current_snapshot": {
-            "injuries": [
+          "scenario_snapshot": {
+            "scenario_brief": { "read_aloud_brief": "Patient found after blast exposure." },
+            "causes": [
               {
-                "cause_id": 11,
+                "id": 11,
                 "kind": "injury",
                 "title": "Blast Injury",
                 "description": "Open wound to the left arm",
                 "injury_location": "LEFT_ARM"
               }
             ],
-            "conditions": [
+            "problems": [
               {
                 "problem_id": 21,
                 "title": "Hemorrhagic Shock",
@@ -690,28 +779,178 @@ final class TrainerLabContractTests: XCTestCase {
               "narrative": "Bleeding remains uncontrolled."
             }
           },
-          "ai_instructor": {
-            "summary": "Control hemorrhage first"
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0,
+            "ai_plan": { "summary": "Control hemorrhage first" }
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
           }
         }
         """
 
-        let state = try makeContractDecoder().decode(TrainerRuntimeStateOut.self, from: Data(json.utf8))
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
-        XCTAssertEqual(state.scenarioBrief?.readAloudBrief, "Patient found after blast exposure.")
-        XCTAssertEqual(state.currentSnapshot.causes.first?.causeID, 11)
-        XCTAssertEqual(state.currentSnapshot.problems.first?.problemID, 21)
-        XCTAssertEqual(state.currentSnapshot.patientStatus.narrative, "Bleeding remains uncontrolled.")
-        XCTAssertEqual(state.aiPlan?.summary, "Control hemorrhage first")
-        XCTAssertEqual(state.presence.scenarioBrief, true)
-        XCTAssertEqual(state.presence.aiPlan, true)
-        XCTAssertEqual(state.presence.aiRationaleNotes, false)
-        XCTAssertEqual(state.currentSnapshot.presence.causes, true)
-        XCTAssertEqual(state.currentSnapshot.presence.problems, true)
-        XCTAssertEqual(state.currentSnapshot.presence.interventions, true)
-        XCTAssertEqual(state.currentSnapshot.presence.vitals, true)
-        XCTAssertEqual(state.currentSnapshot.presence.patientStatus, true)
-        XCTAssertEqual(state.currentSnapshot.presence.recommendedInterventions, false)
+        XCTAssertEqual(state.scenarioSnapshot.scenarioBrief?.readAloudBrief, "Patient found after blast exposure.")
+        XCTAssertEqual(state.scenarioSnapshot.causes.first?.causeID, 11)
+        XCTAssertEqual(state.scenarioSnapshot.problems.first?.problemID, 21)
+        XCTAssertEqual(state.scenarioSnapshot.patientStatus.narrative, "Bleeding remains uncontrolled.")
+        XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Control hemorrhage first")
+        XCTAssertEqual(state.scenarioSnapshot.presence.scenarioBrief, true)
+        XCTAssertEqual(state.runtimeSnapshot.presence.aiPlan, true)
+        XCTAssertEqual(state.runtimeSnapshot.presence.aiRationaleNotes, false)
+        XCTAssertEqual(state.scenarioSnapshot.presence.causes, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.problems, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.interventions, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.vitals, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.patientStatus, true)
+        XCTAssertEqual(state.scenarioSnapshot.presence.recommendedInterventions, false)
+    }
+
+    func testTrainerRuntimeStateDecodesCauseIDFromBackendSnapshotID() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [
+              {
+                "id": 99,
+                "kind": "injury",
+                "title": "Femur fracture",
+                "description": "Closed fracture"
+              }
+            ],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.scenarioSnapshot.causes.first?.causeID, 99)
+    }
+
+    func testRuntimeCauseStateEncodesBackendSnapshotIDKey() throws {
+        let json = """
+        {
+          "id": 11,
+          "kind": "injury",
+          "title": "Blast Injury"
+        }
+        """
+
+        let cause = try makeContractDecoder().decode(RuntimeCauseState.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(cause)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        XCTAssertEqual(payload["id"] as? Int, 11)
+        XCTAssertNil(payload["cause_id"])
+    }
+
+    func testTrainerRuntimeStateDecodesDiagnosticResultIDFromBackendField() throws {
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [
+              {
+                "diagnostic_id": 144,
+                "title": "Portable ultrasound",
+                "status": "queued"
+              }
+            ],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(state.scenarioSnapshot.diagnosticResults.first?.resultID, 144)
+    }
+
+    func testRuntimeDiagnosticResultStateEncodesBackendDiagnosticIDKey() throws {
+        let json = """
+        {
+          "diagnostic_id": 144,
+          "title": "Portable ultrasound",
+          "status": "queued"
+        }
+        """
+
+        let diagnosticResult = try makeContractDecoder().decode(RuntimeDiagnosticResultState.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(diagnosticResult)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        XCTAssertEqual(payload["diagnostic_id"] as? Int, 144)
+        XCTAssertNil(payload["result_id"])
     }
 
     func testRecommendedInterventionRemovedEnvelopeDecodesWithoutStrictPayloadSchema() throws {

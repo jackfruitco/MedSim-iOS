@@ -200,7 +200,7 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
         sampleSessions[0]
     }
 
-    func getRuntimeState(simulationID _: Int) async throws -> TrainerRuntimeStateOut {
+    func getRuntimeState(simulationID _: Int) async throws -> TrainerRestViewModelDTO {
         fatalError("Readme demo does not call getRuntimeState().")
     }
 

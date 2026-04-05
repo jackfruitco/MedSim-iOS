@@ -767,24 +767,24 @@ public struct RunConsoleView: View {
                     Text("Runtime")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                    debugMetaRow(label: "Status", value: rs.status.replacingOccurrences(of: "_", with: " ").capitalized)
-                    if let tickInterval = rs.tickIntervalSeconds {
+                    debugMetaRow(label: "Status", value: rs.runtimeSnapshot.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                    if let tickInterval = rs.runtimeSnapshot.tickIntervalSeconds {
                         debugMetaRow(label: "Tick Interval", value: "\(tickInterval)s")
                     }
-                    if let nextTickAt = rs.nextTickAt {
+                    if let nextTickAt = rs.runtimeSnapshot.nextTickAt {
                         debugMetaRow(label: "Next Tick", value: nextTickAt.formatted(date: .omitted, time: .standard))
                     }
-                    if let lastAITickAt = rs.lastAITickAt {
+                    if let lastAITickAt = rs.runtimeSnapshot.lastAITickAt {
                         debugMetaRow(label: "Last AI Tick", value: lastAITickAt.formatted(date: .omitted, time: .standard))
                     }
-                    if !rs.pendingRuntimeReasons.isEmpty {
-                        debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.pendingRuntimeReasons.count)")
+                    if !rs.runtimeSnapshot.pendingRuntimeReasons.isEmpty {
+                        debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.runtimeSnapshot.pendingRuntimeReasons.count)")
                     }
-                    if !rs.currentlyProcessingReasons.isEmpty {
-                        debugMetaRow(label: "Processing Reasons", value: "\(rs.currentlyProcessingReasons.count)")
+                    if !rs.runtimeSnapshot.currentlyProcessingReasons.isEmpty {
+                        debugMetaRow(label: "Processing Reasons", value: "\(rs.runtimeSnapshot.currentlyProcessingReasons.count)")
                     }
-                    if !rs.lastRuntimeError.isEmpty {
-                        Text(rs.lastRuntimeError)
+                    if !rs.runtimeSnapshot.lastRuntimeError.isEmpty {
+                        Text(rs.runtimeSnapshot.lastRuntimeError)
                             .font(.caption)
                             .foregroundStyle(TrainerLabTheme.danger)
                     }
