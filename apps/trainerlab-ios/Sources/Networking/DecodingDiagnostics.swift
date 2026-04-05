@@ -27,9 +27,11 @@ func formatDecodingError(_ error: Error) -> String {
 func bodyPreview(_ data: Data, maxBytes: Int = 4096) -> String {
     let slice = data.prefix(maxBytes)
     if let text = String(data: slice, encoding: .utf8) {
-        let suffix = data.count > maxBytes
-            ? "… [\(data.count) bytes total, showing first \(maxBytes)]"
-            : ""
+        let suffix = if data.count > maxBytes {
+            "… [\(data.count) bytes total, showing first \(maxBytes)]"
+        } else {
+            ""
+        }
         return text + suffix
     }
     return "[non-UTF-8 body: \(data.count) bytes]"
