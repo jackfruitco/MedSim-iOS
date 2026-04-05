@@ -6,11 +6,25 @@ import XCTest
 
 // MARK: - formatDecodingError
 
-private struct IntWrapper: Decodable { let value: Int }
-private struct RequiredString: Decodable { let name: String }
-private struct DateWrapper: Decodable { let at: Date }
-private struct NestingInner: Decodable { let count: Int }
-private struct NestingOuter: Decodable { let inner: NestingInner }
+private struct IntWrapper: Decodable {
+    let value: Int
+}
+
+private struct RequiredString: Decodable {
+    let name: String
+}
+
+private struct DateWrapper: Decodable {
+    let at: Date
+}
+
+private struct NestingInner: Decodable {
+    let count: Int
+}
+
+private struct NestingOuter: Decodable {
+    let inner: NestingInner
+}
 
 final class FormatDecodingErrorTests: XCTestCase {
     // MARK: typeMismatch
@@ -173,8 +187,13 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
     private final class URLProtocolMock: URLProtocol {
         nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
-        override class func canInit(with _: URLRequest) -> Bool { true }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with _: URLRequest) -> Bool {
+            true
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
 
         override func startLoading() {
             guard let handler = Self.requestHandler else {
@@ -240,7 +259,11 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
 }
 
 private final class EmptyTokenProvider: AuthTokenProvider, @unchecked Sendable {
-    func loadTokens() -> AuthTokens? { nil }
+    func loadTokens() -> AuthTokens? {
+        nil
+    }
+
     func saveTokens(_: AuthTokens) {}
+
     func clearTokens() {}
 }
