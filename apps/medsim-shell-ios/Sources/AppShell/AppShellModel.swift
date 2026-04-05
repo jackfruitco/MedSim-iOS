@@ -156,7 +156,6 @@ public final class AppShellModel: ObservableObject {
     public func makeChatRunStore(simulation: ChatSimulation) -> ChatRunStore {
         let realtime = ChatRealtimeClient(
             authLoader: apiClient,
-            service: chatService,
         )
         return ChatRunStore(
             service: chatService,

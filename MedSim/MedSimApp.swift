@@ -473,7 +473,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         fatalError("Readme demo does not call markMessageRead().")
     }
 
-    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
+    func listEvents(simulationID _: Int, lastEventID _: String?, limit _: Int) async throws -> ChatEventReplayResponse {
         fatalError("Readme demo does not call listEvents().")
     }
 

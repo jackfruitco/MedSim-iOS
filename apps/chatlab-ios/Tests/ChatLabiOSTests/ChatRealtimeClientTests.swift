@@ -4,46 +4,11 @@ import Networking
 import SharedModels
 import XCTest
 
-private enum ChatRealtimeClientTestError: Error {
-    case unexpectedCall
-}
-
-private final class ChatRealtimeURLProtocolMock: URLProtocol {
-    nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
-
-    override class func canInit(with _: URLRequest) -> Bool {
-        true
-    }
-
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
-        request
-    }
-
-    override func startLoading() {
-        guard let handler = Self.requestHandler else {
-            XCTFail("Missing request handler")
-            return
-        }
-
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-
-    override func stopLoading() {}
-}
-
-private actor RecordingAuthorizedResourceLoader: AuthorizedResourceLoading {
+private final class ChatRealtimeAuthorizedResourceLoader: AuthorizedResourceLoading, @unchecked Sendable {
     private let baseURLValue: URL
     private let accountUUID: String?
-    private var accessToken: String
-    private(set) var refreshCalls = 0
-    private(set) var routes: [EventStreamRoute] = []
+    private let accessToken: String
+    private(set) var webSocketRoutes: [WebSocketRoute] = []
 
     init(baseURL: URL, accessToken: String = "token-1", accountUUID: String? = "acct-1") {
         baseURLValue = baseURL
@@ -56,7 +21,15 @@ private actor RecordingAuthorizedResourceLoader: AuthorizedResourceLoading {
     }
 
     func makeEventStreamRequest(for route: EventStreamRoute) async throws -> URLRequest {
-        routes.append(route)
+        try route.makeURLRequest(
+            baseURL: baseURLValue,
+            accessToken: accessToken,
+            accountUUID: accountUUID,
+        )
+    }
+
+    func makeWebSocketRequest(for route: WebSocketRoute) async throws -> URLRequest {
+        webSocketRoutes.append(route)
         return try route.makeURLRequest(
             baseURL: baseURLValue,
             accessToken: accessToken,
@@ -65,123 +38,10 @@ private actor RecordingAuthorizedResourceLoader: AuthorizedResourceLoading {
     }
 
     func loadData(from _: URL, accept _: String?, requiresAccountContext _: Bool) async throws -> Data {
-        throw ChatRealtimeClientTestError.unexpectedCall
+        throw URLError(.badURL)
     }
 
-    func refreshAccessToken() async throws {
-        refreshCalls += 1
-        accessToken = "token-refreshed"
-    }
-
-    func recordedRoutes() -> [EventStreamRoute] {
-        routes
-    }
-}
-
-private actor RealtimeClientServiceStub: ChatLabServiceProtocol {
-    private(set) var listEventsCalls = 0
-    var catchupResponse = PaginatedResponse<ChatEventEnvelope>(items: [], nextCursor: nil, hasMore: false)
-
-    func listSimulations(
-        limit _: Int,
-        cursor _: String?,
-        status _: String?,
-        query _: String?,
-        searchMessages _: Bool,
-    ) async throws -> PaginatedResponse<ChatSimulation> {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func quickCreateSimulation(request _: ChatQuickCreateRequest) async throws -> ChatSimulation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func getSimulation(simulationID _: Int) async throws -> ChatSimulation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func endSimulation(simulationID _: Int) async throws -> ChatSimulation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func retryInitial(simulationID _: Int) async throws -> ChatSimulation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func retryFeedback(simulationID _: Int) async throws -> ChatSimulation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func listConversations(simulationID _: Int) async throws -> ChatConversationListResponse {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func getConversation(simulationID _: Int, conversationUUID _: String) async throws -> ChatConversation {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func listMessages(
-        simulationID _: Int,
-        conversationID _: Int?,
-        cursor _: String?,
-        order _: String,
-        limit _: Int,
-    ) async throws -> PaginatedResponse<ChatMessage> {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func retryMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func getMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func markMessageRead(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<ChatEventEnvelope> {
-        listEventsCalls += 1
-        return catchupResponse
-    }
-
-    func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func getTool(simulationID _: Int, toolName _: String) async throws -> ChatToolState {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func submitLabOrders(simulationID _: Int, request _: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
-
-    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
-        throw ChatRealtimeClientTestError.unexpectedCall
-    }
+    func refreshAccessToken() async throws {}
 }
 
 private actor AsyncBuffer<Element: Sendable> {
@@ -196,158 +56,353 @@ private actor AsyncBuffer<Element: Sendable> {
     }
 }
 
+private final class MockWebSocketTask: ChatWebSocketTaskProtocol, @unchecked Sendable {
+    private let lock = NSLock()
+    private var queuedResults: [Result<URLSessionWebSocketTask.Message, Error>] = []
+    private var waitingContinuation: CheckedContinuation<Result<URLSessionWebSocketTask.Message, Error>, Never>?
+    private var sentMessagesStorage: [URLSessionWebSocketTask.Message] = []
+
+    var closeCode: URLSessionWebSocketTask.CloseCode = .invalid
+    var closeReason: Data?
+
+    func resume() {}
+
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let continuation = lock.withLock { () -> CheckedContinuation<Result<URLSessionWebSocketTask.Message, Error>, Never>? in
+            self.closeCode = closeCode
+            closeReason = reason
+            let continuation = waitingContinuation
+            waitingContinuation = nil
+            return continuation
+        }
+        continuation?.resume(returning: .failure(URLError(.cancelled)))
+    }
+
+    func send(_ message: URLSessionWebSocketTask.Message) async throws {
+        lock.withLock {
+            sentMessagesStorage.append(message)
+        }
+    }
+
+    func receive() async throws -> URLSessionWebSocketTask.Message {
+        let result: Result<URLSessionWebSocketTask.Message, Error> = if let queued = lock.withLock({ queuedResults.isEmpty ? nil : queuedResults.removeFirst() }) {
+            queued
+        } else {
+            await withCheckedContinuation { continuation in
+                lock.withLock {
+                    waitingContinuation = continuation
+                }
+            }
+        }
+        return try result.get()
+    }
+
+    func enqueue(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
+        let continuation = lock.withLock { () -> CheckedContinuation<Result<URLSessionWebSocketTask.Message, Error>, Never>? in
+            if let waitingContinuation {
+                self.waitingContinuation = nil
+                return waitingContinuation
+            }
+            queuedResults.append(result)
+            return nil
+        }
+        continuation?.resume(returning: result)
+    }
+
+    func setClose(code: URLSessionWebSocketTask.CloseCode, reason: String? = nil) {
+        lock.withLock {
+            closeCode = code
+            closeReason = reason?.data(using: .utf8)
+        }
+    }
+
+    func sentMessages() -> [URLSessionWebSocketTask.Message] {
+        lock.withLock { sentMessagesStorage }
+    }
+}
+
+private final class MockWebSocketConnector: ChatWebSocketConnecting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var tasks: [MockWebSocketTask]
+    private var requests: [URLRequest] = []
+
+    init(tasks: [MockWebSocketTask]) {
+        self.tasks = tasks
+    }
+
+    func makeWebSocketTask(with request: URLRequest) -> ChatWebSocketTaskProtocol {
+        lock.withLock {
+            requests.append(request)
+            return tasks.removeFirst()
+        }
+    }
+
+    func snapshotRequests() -> [URLRequest] {
+        lock.withLock { requests }
+    }
+}
+
 final class ChatRealtimeClientTests: XCTestCase {
-    override func tearDown() {
-        super.tearDown()
-        ChatRealtimeURLProtocolMock.requestHandler = nil
+    func testStartSendsSessionHelloWithInitialLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(loader.webSocketRoutes.first?.path, "/ws/v1/chatlab/")
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-bootstrap"))
     }
 
-    func testParserProducesMessageEventFromValidEnvelope() {
-        let items = ChatSSEParser.parseLines(
-            [
-                "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-1", payload: ["message_id": 901, "conversation_id": 3, "content": "hello", "is_from_ai": true]))",
-                "",
-            ],
-            decoder: makeDecoder(),
-        )
+    func testStartWithoutAnchorSendsSessionHelloWithoutLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
-        XCTAssertEqual(items.count, 1)
-        guard case let .event(event) = items[0] else {
-            return XCTFail("Expected a decoded event")
-        }
-        XCTAssertEqual(event.eventID, "evt-1")
-        XCTAssertEqual(event.eventType, SimulationEventType.messageItemCreated)
-        XCTAssertEqual(event.payload["message_id"], .number(901))
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
     }
 
-    func testCommentLinesDoNotBlockSubsequentEventDelivery() {
-        let items = ChatSSEParser.parseLines(
-            [
-                ": keep-alive",
-                "",
-                ": keep-alive",
-                "",
-                "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-keepalive", payload: ["message_id": 902, "content": "after heartbeat"]))",
-                "",
-            ],
-            decoder: makeDecoder(),
-        )
+    func testReconnectSendsSessionResumeWithLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
-        XCTAssertEqual(items.count, 3)
-        XCTAssertEqual(items[0], .keepAlive)
-        XCTAssertEqual(items[1], .keepAlive)
-        guard case let .event(event) = items[2] else {
-            return XCTFail("Expected the final item to be a decoded event")
-        }
-        XCTAssertEqual(event.eventID, "evt-keepalive")
+        await client.reconnect(simulationID: 42, lastEventID: "evt-9")
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionResume)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-9"))
     }
 
-    func testMalformedEventIsSkippedAndValidEventStillArrives() {
-        let items = ChatSSEParser.parseLines(
-            [
-                "event: simulation",
-                "data: {\"event_id\":\"evt-bad\",\"event_type\":\"message.item.created\"",
-                "",
-                "event: simulation",
-                "data: \(makeEnvelopeJSON(eventID: "evt-good", payload: ["message_id": 903, "conversation_id": 4, "content": "still arrives", "is_from_ai": true]))",
-                "",
-            ],
-            decoder: makeDecoder(),
-        )
+    func testReconnectWithoutAnchorSendsSessionHelloWithoutLastEventID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
-        XCTAssertEqual(items.count, 1)
-        guard case let .event(event) = items[0] else {
-            return XCTFail("Expected the malformed payload to be skipped and the valid one to decode")
-        }
-        XCTAssertEqual(event.eventID, "evt-good")
+        await client.reconnect(simulationID: 42, lastEventID: nil)
+        defer { client.disconnect() }
+
+        try await waitUntil { task.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(task.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
     }
 
-    func testHTTP410StreamOpenTransitionsToStaleCursorState() async throws {
-        let baseURL = try XCTUnwrap(URL(string: "https://example.com"))
-        let authLoader = RecordingAuthorizedResourceLoader(baseURL: baseURL)
-        let service = RealtimeClientServiceStub()
-        let session = makeSession { request in
-            let url = try XCTUnwrap(request.url)
-            return (
-                HTTPURLResponse(url: url, statusCode: 410, httpVersion: nil, headerFields: nil)!,
-                Data(),
-            )
-        }
-        let realtime = ChatRealtimeClient(authLoader: authLoader, service: service, session: session, staleThresholdSeconds: 5)
+    func testLifecycleEventsDriveConnectedAndResyncingStates() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
 
         let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
         let stateTask = Task {
-            for await state in realtime.connectionStates {
+            for await state in client.connectionStates {
                 await stateBuffer.append(state)
             }
         }
-        defer {
-            realtime.disconnect()
-            stateTask.cancel()
-        }
+        defer { stateTask.cancel() }
 
-        await realtime.connect(simulationID: 7, cursor: "evt-bootstrap-9")
+        await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
+        defer { client.disconnect() }
+
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-resync",
+            eventType: ChatRealtimeEventType.sessionResyncRequired,
+            payload: ["reason": .string("replay_gap"), "last_event_id": .string("evt-bootstrap")],
+        ))))
+        task.setClose(code: URLSessionWebSocketTask.CloseCode(rawValue: 4409) ?? .invalid, reason: "resync")
+        task.enqueue(.failure(URLError(.networkConnectionLost)))
 
         try await waitUntil {
             let states = await stateBuffer.snapshot()
-            return states.contains(.staleCursor)
+            return states.last == .resyncing && states.contains(.connected)
         }
 
-        let routes = await authLoader.recordedRoutes()
-        XCTAssertEqual(routes.last?.query.first(where: { $0.name == "cursor" })?.value, "evt-bootstrap-9")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let finalStates = await stateBuffer.snapshot()
+        XCTAssertEqual(finalStates.last, .resyncing)
     }
 
-    func testLegacyStaleCursorErrorFrameTriggersCompatibilityRecovery() throws {
-        XCTAssertThrowsError(
-            try ChatSSEParser.parseFrame(
-                dataLines: ["{\"error\":\"stale_cursor\"}"],
-                eventType: "error",
-                decoder: makeDecoder(),
-            ),
-        ) { error in
-            XCTAssertTrue(error is ChatRealtimeError)
+    func testTerminalErrorLeavesConnectionStateFailed() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
+        let stateTask = Task {
+            for await state in client.connectionStates {
+                await stateBuffer.append(state)
+            }
         }
+        defer { stateTask.cancel() }
+        defer { client.disconnect() }
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
+
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-error",
+            eventType: ChatRealtimeEventType.error,
+            payload: [
+                "code": .string("invalid_payload"),
+                "message": .string("Handshake payload invalid"),
+            ],
+        ))))
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.last == .failed(message: "Handshake payload invalid")
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let finalStates = await stateBuffer.snapshot()
+        XCTAssertEqual(finalStates.last, .failed(message: "Handshake payload invalid"))
     }
 
-    private func makeSession(
-        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data),
-    ) -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ChatRealtimeURLProtocolMock.self]
-        ChatRealtimeURLProtocolMock.requestHandler = handler
-        return URLSession(configuration: configuration)
+    func testUnexpectedDisconnectReconnectsWithResumeHandshake() async throws {
+        let firstTask = MockWebSocketTask()
+        let secondTask = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [firstTask, secondTask])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-1")
+        defer { client.disconnect() }
+
+        try firstTask.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        firstTask.setClose(code: .goingAway, reason: "network")
+        firstTask.enqueue(.failure(URLError(.networkConnectionLost)))
+
+        try await waitUntil { secondTask.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(secondTask.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionResume)
+        XCTAssertEqual(outbound.payload["last_event_id"], .string("evt-1"))
+    }
+
+    func testUnexpectedDisconnectAfterEmptySessionReconnectsWithHelloHandshake() async throws {
+        let firstTask = MockWebSocketTask()
+        let secondTask = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [firstTask, secondTask])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+
+        try firstTask.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        firstTask.setClose(code: .goingAway, reason: "network")
+        firstTask.enqueue(.failure(URLError(.networkConnectionLost)))
+
+        try await waitUntil { secondTask.sentMessages().count == 1 }
+        let outbound = try decodeOutbound(secondTask.sentMessages()[0])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
+        XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
+        XCTAssertNil(outbound.payload["last_event_id"])
+    }
+
+    func testSendUsesCanonicalOutboundEnvelope() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-1")
+        defer { client.disconnect() }
+        try await waitUntil { task.sentMessages().count == 1 }
+
+        await client.send(
+            eventType: ChatRealtimeEventType.typingStarted,
+            payload: ["conversation_id": .number(3)],
+        )
+
+        try await waitUntil { task.sentMessages().count == 2 }
+        let outbound = try decodeOutbound(task.sentMessages()[1])
+
+        XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.typingStarted)
+        XCTAssertEqual(outbound.payload["conversation_id"], .number(3))
+        XCTAssertNotNil(outbound.correlationID)
+    }
+
+    private func decodeOutbound(_ message: URLSessionWebSocketTask.Message) throws -> ChatRealtimeOutboundMessageCapture {
+        switch message {
+        case let .string(text):
+            return try JSONDecoder().decode(ChatRealtimeOutboundMessageCapture.self, from: Data(text.utf8))
+        case let .data(data):
+            return try JSONDecoder().decode(ChatRealtimeOutboundMessageCapture.self, from: data)
+        @unknown default:
+            XCTFail("Unexpected websocket message kind")
+            throw URLError(.unsupportedURL)
+        }
     }
 
     private func makeEnvelopeJSON(
         eventID: String,
-        eventType: String = SimulationEventType.messageItemCreated,
-        payload: [String: Any],
-    ) -> String {
-        let envelope: [String: Any] = [
-            "event_id": eventID,
-            "event_type": eventType,
-            "created_at": "2026-03-12T12:00:00Z",
-            "correlation_id": NSNull(),
-            "payload": payload,
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: envelope) else {
-            XCTFail("Expected envelope payload to serialize")
-            return "{}"
+        eventType: String,
+        payload: [String: JSONValue],
+    ) throws -> String {
+        let envelope = ChatEventEnvelope(
+            eventID: eventID,
+            eventType: eventType,
+            createdAt: Date(timeIntervalSince1970: 1_742_000_000),
+            correlationID: "corr-\(eventID)",
+            payload: payload,
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(envelope)
+        guard let text = String(bytes: data, encoding: .utf8) else {
+            throw URLError(.cannotDecodeContentData)
         }
-        return String(bytes: data, encoding: .utf8) ?? "{}"
-    }
-
-    private func makeDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
+        return text
     }
 
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
-        condition: @escaping () async -> Bool,
+        condition: @escaping @Sendable () async -> Bool,
     ) async throws {
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
         while DispatchTime.now().uptimeNanoseconds < deadline {
@@ -357,5 +412,25 @@ final class ChatRealtimeClientTests: XCTestCase {
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTFail("Timed out waiting for condition")
+    }
+}
+
+private struct ChatRealtimeOutboundMessageCapture: Decodable, Equatable {
+    let eventType: String
+    let correlationID: String?
+    let payload: [String: JSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case eventType = "event_type"
+        case correlationID = "correlation_id"
+        case payload
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
     }
 }

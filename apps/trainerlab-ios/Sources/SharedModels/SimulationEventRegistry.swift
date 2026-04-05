@@ -107,6 +107,8 @@ public enum SimulationEventType {
         patientVitalUpdated,
         patientPulseCreated,
         patientPulseUpdated,
+        guardStateUpdated,
+        guardWarningUpdated,
     ]
 
     public static let transientSocketOnly: [String] = [
@@ -118,8 +120,6 @@ public enum SimulationEventType {
         stoppedTyping,
         simulationFeedbackContinueConversation,
         simulationHotwashContinueConversation,
-        guardStateUpdated,
-        guardWarningUpdated,
     ]
 }
 

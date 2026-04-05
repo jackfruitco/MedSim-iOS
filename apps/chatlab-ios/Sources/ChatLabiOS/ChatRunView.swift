@@ -381,11 +381,15 @@ public struct ChatRunView: View {
             return "Live"
         case .reconnecting:
             return "Recovering"
-        case .staleCursor:
+        case .resyncing:
             return "Resyncing"
         case .connecting:
             return "Connecting"
-        case .disconnected:
+        case .bootstrapping:
+            return "Syncing"
+        case .failed:
+            return "Offline"
+        case .idle:
             return "Offline"
         }
     }
@@ -396,11 +400,15 @@ public struct ChatRunView: View {
             "dot.radiowaves.left.and.right"
         case .reconnecting:
             "bolt.horizontal.circle"
-        case .staleCursor:
+        case .resyncing:
             "arrow.clockwise.icloud"
         case .connecting:
             "hourglass"
-        case .disconnected:
+        case .bootstrapping:
+            "arrow.triangle.2.circlepath"
+        case .failed:
+            "exclamationmark.triangle"
+        case .idle:
             "wifi.slash"
         }
     }
@@ -414,11 +422,13 @@ public struct ChatRunView: View {
                 return .orange
             }
             return .green
-        case .reconnecting, .connecting:
+        case .reconnecting, .connecting, .bootstrapping:
             return .orange
-        case .staleCursor:
+        case .resyncing:
             return .orange
-        case .disconnected:
+        case .failed:
+            return .red
+        case .idle:
             return .secondary
         }
     }

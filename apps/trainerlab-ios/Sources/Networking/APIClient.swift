@@ -95,6 +95,51 @@ public struct EventStreamRoute: Sendable, Equatable {
     }
 }
 
+public struct WebSocketRoute: Sendable, Equatable {
+    public let path: String
+    public let query: [URLQueryItem]
+    public let requiresAccountContext: Bool
+
+    public init(path: String, query: [URLQueryItem] = [], requiresAccountContext: Bool = true) {
+        self.path = path
+        self.query = query
+        self.requiresAccountContext = requiresAccountContext
+    }
+
+    public func makeURLRequest(baseURL: URL, accessToken: String, accountUUID: String?) throws -> URLRequest {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        components.scheme = switch components.scheme?.lowercased() {
+        case "http":
+            "ws"
+        case "https":
+            "wss"
+        case "ws", "wss":
+            components.scheme
+        default:
+            throw URLError(.badURL)
+        }
+        components.path = path
+        var queryItems = query
+        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
+            queryItems.append(URLQueryItem(name: "account_uuid", value: accountUUID))
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = HTTPMethod.get.rawValue
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
+        return request
+    }
+}
+
 public enum AuthAPI {
     public static func signIn(body: Data) -> Endpoint {
         Endpoint(
@@ -551,17 +596,16 @@ public enum ChatLabAPI {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/messages/\(messageID)/read/", method: .patch, body: Data())
     }
 
-    public static func listEvents(simulationID: Int, cursor: String?, limit: Int) -> Endpoint {
+    public static func listEvents(simulationID: Int, lastEventID: String?, limit: Int) -> Endpoint {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
-        if let cursor {
-            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        if let lastEventID {
+            queryItems.append(URLQueryItem(name: "last_event_id", value: lastEventID))
         }
         return Endpoint(path: "/api/v1/simulations/\(simulationID)/events/", query: queryItems)
     }
 
-    public static func eventStream(simulationID: Int, cursor: String?) -> EventStreamRoute {
-        let query = cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []
-        return EventStreamRoute(path: "/api/v1/simulations/\(simulationID)/events/stream/", query: query)
+    public static func realtimeSocket() -> WebSocketRoute {
+        WebSocketRoute(path: "/ws/v1/chatlab/")
     }
 
     public static func listTools(simulationID: Int, names: [String]?) -> Endpoint {
@@ -760,6 +804,7 @@ public protocol APIClientProtocol: Sendable {
 public protocol AuthorizedResourceLoading: Sendable {
     func baseURL() async -> URL
     func makeEventStreamRequest(for route: EventStreamRoute) async throws -> URLRequest
+    func makeWebSocketRequest(for route: WebSocketRoute) async throws -> URLRequest
     func loadData(from url: URL, accept: String?, requiresAccountContext: Bool) async throws -> Data
     func refreshAccessToken() async throws
 }
@@ -833,6 +878,18 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
     }
 
     public func makeEventStreamRequest(for route: EventStreamRoute) async throws -> URLRequest {
+        guard let tokens = tokenProvider.loadTokens() else {
+            throw APIClientError.unauthorized
+        }
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
+        return try await route.makeURLRequest(
+            baseURL: baseURL(),
+            accessToken: tokens.accessToken,
+            accountUUID: accountUUID,
+        )
+    }
+
+    public func makeWebSocketRequest(for route: WebSocketRoute) async throws -> URLRequest {
         guard let tokens = tokenProvider.loadTokens() else {
             throw APIClientError.unauthorized
         }
