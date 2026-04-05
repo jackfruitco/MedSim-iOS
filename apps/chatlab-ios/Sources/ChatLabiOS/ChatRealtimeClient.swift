@@ -1,5 +1,6 @@
 import Foundation
 import Networking
+import OSLog
 import SharedModels
 
 public protocol ChatRealtimeClientProtocol: Sendable {
@@ -10,9 +11,22 @@ public protocol ChatRealtimeClientProtocol: Sendable {
     func send(eventType: String, payload: [String: JSONValue]) async
 }
 
-private enum ChatSSEStreamItem {
+private let realtimeLogger = Logger(subsystem: "com.jackfruit.medsim", category: "ChatRealtime")
+
+enum ChatRealtimeError: Error {
+    case staleCursor
+}
+
+enum ChatSSEStreamItem: Equatable {
     case event(ChatEventEnvelope)
     case keepAlive
+}
+
+private struct ChatLegacySSEErrorFrame: Decodable {
+    let code: String?
+    let error: String?
+    let reason: String?
+    let type: String?
 }
 
 private actor ChatSSEFreshnessTracker {
@@ -40,9 +54,96 @@ private actor ChatSSEFreshnessTracker {
 enum ChatSSEParser {
     static func parseEvent(dataString: String, decoder: JSONDecoder) throws -> ChatEventEnvelope? {
         guard let data = dataString.data(using: .utf8) else {
+            realtimeLogger.error("Dropping chat SSE frame because payload was not valid UTF-8")
             return nil
         }
-        return try decoder.decode(ChatEventEnvelope.self, from: data)
+        do {
+            return try decoder.decode(ChatEventEnvelope.self, from: data)
+        } catch {
+            realtimeLogger.error(
+                "Dropping malformed chat SSE frame: \(error.localizedDescription, privacy: .public). Payload prefix: \(String(dataString.prefix(256)), privacy: .public)",
+            )
+            return nil
+        }
+    }
+
+    static func parseFrame(
+        dataLines: [String],
+        eventType: String?,
+        decoder: JSONDecoder,
+    ) throws -> ChatSSEStreamItem? {
+        if eventType == "heartbeat" {
+            return .keepAlive
+        }
+
+        guard !dataLines.isEmpty else {
+            return nil
+        }
+
+        let payload = dataLines.joined(separator: "\n")
+        if eventType == "error", isLegacyStaleCursorFrame(payload, decoder: decoder) {
+            realtimeLogger.warning("Received legacy stale_cursor SSE error frame; using compatibility recovery")
+            throw ChatRealtimeError.staleCursor
+        }
+
+        guard let event = try parseEvent(dataString: payload, decoder: decoder) else {
+            return nil
+        }
+        return .event(event)
+    }
+
+    static func parseLines(_ lines: [String], decoder: JSONDecoder) -> [ChatSSEStreamItem] {
+        var items: [ChatSSEStreamItem] = []
+        var dataLines: [String] = []
+        var currentEventType: String?
+
+        for line in lines {
+            if line.hasPrefix(":") {
+                items.append(.keepAlive)
+                continue
+            }
+
+            if line.isEmpty {
+                do {
+                    if let item = try parseFrame(
+                        dataLines: dataLines,
+                        eventType: currentEventType,
+                        decoder: decoder,
+                    ) {
+                        items.append(item)
+                    }
+                } catch {
+                    realtimeLogger.warning("Dropping chat SSE frame during parser test helper: \(error.localizedDescription, privacy: .public)")
+                }
+                dataLines.removeAll(keepingCapacity: true)
+                currentEventType = nil
+                continue
+            }
+
+            if line.hasPrefix("event:") {
+                currentEventType = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+
+            if line.hasPrefix("data:") {
+                let value = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                dataLines.append(value)
+            }
+        }
+
+        return items
+    }
+
+    private static func isLegacyStaleCursorFrame(_ payload: String, decoder: JSONDecoder) -> Bool {
+        guard let data = payload.data(using: .utf8),
+              let frame = try? decoder.decode(ChatLegacySSEErrorFrame.self, from: data)
+        else {
+            return false
+        }
+
+        let markers = [frame.code, frame.error, frame.reason, frame.type]
+            .compactMap { $0?.lowercased() }
+        return markers.contains("stale_cursor")
     }
 }
 
@@ -138,17 +239,29 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         while !Task.isCancelled {
             do {
                 stateContinuation.yield(.connecting)
+                realtimeLogger.debug(
+                    "Connecting chat SSE for simulation \(simulationID, privacy: .public) with cursor \(currentCursor ?? "nil", privacy: .public)",
+                )
                 try await consumeSSE(simulationID: simulationID, currentCursor: &currentCursor)
                 reconnectAttempt = 0
+            } catch ChatRealtimeError.staleCursor {
+                stateContinuation.yield(.staleCursor)
+                realtimeLogger.warning(
+                    "Detected stale cursor for simulation \(simulationID, privacy: .public). Waiting for re-bootstrap.",
+                )
+                break
             } catch {
                 if Task.isCancelled {
                     break
                 }
                 reconnectAttempt += 1
-                stateContinuation.yield(.reconnecting(attempt: reconnectAttempt))
-                await performCatchup(simulationID: simulationID, currentCursor: &currentCursor)
+                let attempt = reconnectAttempt
+                stateContinuation.yield(.reconnecting(attempt: attempt))
+                realtimeLogger.warning(
+                    "Chat SSE reconnect attempt \(attempt, privacy: .public) for simulation \(simulationID, privacy: .public) using cursor \(currentCursor ?? "nil", privacy: .public)",
+                )
 
-                let delaySeconds = min(pow(2.0, Double(max(reconnectAttempt - 1, 0))), 15.0)
+                let delaySeconds = min(pow(2.0, Double(max(attempt - 1, 0))), 15.0)
                 let jitter = Double.random(in: 0 ... 0.35)
                 try? await Task.sleep(nanoseconds: UInt64((delaySeconds + jitter) * 1_000_000_000))
             }
@@ -166,6 +279,7 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                 stateContinuation.yield(.connected)
                 currentCursor = event.eventID
                 cursor = event.eventID
+                realtimeLogger.debug("Chat SSE cursor advanced to \(event.eventID, privacy: .public)")
                 emitIfNew(event)
             case .keepAlive:
                 stateContinuation.yield(.connected)
@@ -197,16 +311,13 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
                         }
 
                         if line.isEmpty {
-                            let isHeartbeat = currentEventType == "heartbeat"
-                            if isHeartbeat {
+                            if let item = try ChatSSEParser.parseFrame(
+                                dataLines: dataLines,
+                                eventType: currentEventType,
+                                decoder: decoder,
+                            ) {
                                 await freshness.markSignal()
-                                continuation.yield(.keepAlive)
-                            } else if !dataLines.isEmpty {
-                                let payload = dataLines.joined(separator: "\n")
-                                if let event = try ChatSSEParser.parseEvent(dataString: payload, decoder: decoder) {
-                                    await freshness.markSignal()
-                                    continuation.yield(.event(event))
-                                }
+                                continuation.yield(item)
                             }
                             dataLines.removeAll(keepingCapacity: true)
                             currentEventType = nil
@@ -276,12 +387,26 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
         if initial.1.statusCode == 401 {
             try await authLoader.refreshAccessToken()
             let refreshed = try await open()
+            if refreshed.1.statusCode == 410 {
+                throw ChatRealtimeError.staleCursor
+            }
+            if [409, 422].contains(refreshed.1.statusCode) {
+                realtimeLogger.warning("Received legacy stale-cursor HTTP status \(refreshed.1.statusCode, privacy: .public) after auth refresh")
+                throw ChatRealtimeError.staleCursor
+            }
             guard (200 ..< 300).contains(refreshed.1.statusCode) else {
                 throw URLError(.userAuthenticationRequired)
             }
             return refreshed
         }
 
+        if initial.1.statusCode == 410 {
+            throw ChatRealtimeError.staleCursor
+        }
+        if [409, 422].contains(initial.1.statusCode) {
+            realtimeLogger.warning("Received legacy stale-cursor HTTP status \(initial.1.statusCode, privacy: .public)")
+            throw ChatRealtimeError.staleCursor
+        }
         guard (200 ..< 300).contains(initial.1.statusCode) else {
             throw URLError(.badServerResponse)
         }
@@ -299,34 +424,6 @@ public final class ChatRealtimeClient: ChatRealtimeClientProtocol, @unchecked Se
             seenEventIDs.remove(oldest)
         }
         eventContinuation.yield(event)
-    }
-
-    private func performCatchup(simulationID: Int, currentCursor: inout String?) async {
-        stateContinuation.yield(.catchingUp)
-        do {
-            while !Task.isCancelled {
-                let page = try await service.listEvents(
-                    simulationID: simulationID,
-                    cursor: currentCursor,
-                    limit: 50,
-                )
-                if page.items.isEmpty, !page.hasMore {
-                    break
-                }
-
-                for event in page.items {
-                    currentCursor = event.eventID
-                    emitIfNew(event)
-                }
-                if !page.hasMore {
-                    break
-                }
-                currentCursor = page.nextCursor
-            }
-            cursor = currentCursor
-        } catch {
-            // Keep reconnect loop alive and try SSE again.
-        }
     }
 
     private nonisolated static func parseISO8601(_ value: String) -> Date? {
