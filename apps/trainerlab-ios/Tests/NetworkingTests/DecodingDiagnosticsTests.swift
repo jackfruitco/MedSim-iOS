@@ -1,27 +1,18 @@
-@testable import Networking
 import Foundation
+@testable import Networking
 import Persistence
 import SharedModels
 import XCTest
 
 // MARK: - formatDecodingError
 
+private struct IntWrapper: Decodable { let value: Int }
+private struct RequiredString: Decodable { let name: String }
+private struct DateWrapper: Decodable { let at: Date }
+private struct NestingInner: Decodable { let count: Int }
+private struct NestingOuter: Decodable { let inner: NestingInner }
+
 final class FormatDecodingErrorTests: XCTestCase {
-    // Helpers: small structs that produce known DecodingError cases when decoded
-    // from mismatched JSON.
-
-    private struct IntWrapper: Decodable {
-        let value: Int
-    }
-
-    private struct RequiredString: Decodable {
-        let name: String
-    }
-
-    private struct DateWrapper: Decodable {
-        let at: Date
-    }
-
     // MARK: typeMismatch
 
     func testTypeMismatchContainsExpectedComponents() throws {
@@ -81,13 +72,9 @@ final class FormatDecodingErrorTests: XCTestCase {
     // MARK: nested coding path
 
     func testNestedCodingPathRenderedAsDotSeparated() throws {
-        struct Outer: Decodable {
-            struct Inner: Decodable { let count: Int }
-            let inner: Inner
-        }
         // "count" is a String instead of Int — produces typeMismatch at "inner.count"
         let json = Data(#"{"inner": {"count": "bad"}}"#.utf8)
-        let error = catchDecodingError { try JSONDecoder().decode(Outer.self, from: json) }
+        let error = catchDecodingError { try JSONDecoder().decode(NestingOuter.self, from: json) }
         let formatted = formatDecodingError(error)
 
         XCTAssertTrue(formatted.contains("inner.count"), "Expected dot-separated path 'inner.count', got: \(formatted)")
@@ -95,14 +82,14 @@ final class FormatDecodingErrorTests: XCTestCase {
 
     // MARK: root-level path
 
-    func testRootLevelPathRenderedAsRootLabel() throws {
-        // Decoding a plain Int from a JSON string produces dataCorrupted at <root>
+    func testRootLevelPathProducesNonEmptyResult() throws {
+        // Decoding a plain Int from a JSON string produces an error at root level
         let json = Data(#""not-an-int""#.utf8)
         let error = catchDecodingError { try JSONDecoder().decode(Int.self, from: json) }
         let formatted = formatDecodingError(error)
 
-        // The coding path should be empty (root-level), rendered as "<root>" or the path is present
-        // Accept either typeMismatch or dataCorrupted since Swift version may vary
+        // Accept any non-empty output — the exact case (typeMismatch or dataCorrupted) may
+        // vary by Swift version, but it must be non-empty and well-formed.
         XCTAssertFalse(formatted.isEmpty)
     }
 
@@ -112,7 +99,7 @@ final class FormatDecodingErrorTests: XCTestCase {
         do {
             try body()
             XCTFail("Expected an error to be thrown")
-            return URLError(.badURL)  // unreachable
+            return URLError(.badURL) // unreachable
         } catch {
             return error
         }
@@ -122,7 +109,6 @@ final class FormatDecodingErrorTests: XCTestCase {
 // MARK: - bodyPreview
 
 final class BodyPreviewTests: XCTestCase {
-
     func testUTF8DataUnderCapReturnedVerbatim() {
         let text = "Hello, world!"
         let data = Data(text.utf8)
@@ -138,12 +124,18 @@ final class BodyPreviewTests: XCTestCase {
         let data = Data(text.utf8)
         let preview = bodyPreview(data, maxBytes: 4096)
 
-        XCTAssertTrue(preview.hasPrefix(String(repeating: "a", count: 4096)),
-                      "Preview should start with the first 4096 'a' characters")
-        XCTAssertTrue(preview.contains("5000 bytes total"),
-                      "Preview should include total byte count, got: \(preview)")
-        XCTAssertTrue(preview.contains("showing first 4096"),
-                      "Preview should note the cap, got: \(preview)")
+        XCTAssertTrue(
+            preview.hasPrefix(String(repeating: "a", count: 4096)),
+            "Preview should start with the first 4096 'a' characters"
+        )
+        XCTAssertTrue(
+            preview.contains("5000 bytes total"),
+            "Preview should include total byte count, got: \(preview)"
+        )
+        XCTAssertTrue(
+            preview.contains("showing first 4096"),
+            "Preview should note the cap, got: \(preview)"
+        )
     }
 
     func testExactlyAtCapHasNoTruncationNotice() {
@@ -165,7 +157,7 @@ final class BodyPreviewTests: XCTestCase {
     }
 
     func testCustomMaxBytesIsRespected() {
-        let text = "ABCDEFGHIJ"  // 10 bytes
+        let text = "ABCDEFGHIJ" // 10 bytes
         let data = Data(text.utf8)
         let preview = bodyPreview(data, maxBytes: 5)
 
@@ -177,7 +169,6 @@ final class BodyPreviewTests: XCTestCase {
 // MARK: - Integration: decode failure produces APIClientError.decoding
 
 final class DecodingDiagnosticsIntegrationTests: XCTestCase {
-
     // Duplicated from APIClientTests.swift — kept private to this file.
     private final class URLProtocolMock: URLProtocol {
         nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
@@ -203,12 +194,6 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
         override func stopLoading() {}
     }
 
-    private final class MockTokenProvider: AuthTokenProvider, @unchecked Sendable {
-        func loadTokens() -> AuthTokens? { nil }
-        func saveTokens(_: AuthTokens) {}
-        func clearTokens() {}
-    }
-
     override func tearDown() {
         super.tearDown()
         URLProtocolMock.requestHandler = nil
@@ -229,11 +214,16 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
 
         let client = APIClient(
             baseURLProvider: { URL(string: "https://example.com")! },
-            tokenProvider: MockTokenProvider(),
+            tokenProvider: EmptyTokenProvider(),
             session: session,
         )
 
-        let endpoint = Endpoint(path: "/api/v1/trainerlab/simulations/1/state/")
+        // requiresAuth: false avoids the need for real tokens in this decode-focused test
+        let endpoint = Endpoint(
+            path: "/api/v1/trainerlab/simulations/1/state/",
+            requiresAuth: false,
+            requiresAccountContext: false,
+        )
 
         do {
             _ = try await client.request(endpoint, as: TrainerRestViewModelDTO.self)
@@ -241,11 +231,16 @@ final class DecodingDiagnosticsIntegrationTests: XCTestCase {
         } catch let error as APIClientError {
             if case .decoding = error {
                 // Correct: a decode failure produces APIClientError.decoding.
-                // The diagnostic logger.error fires before this throw — observable
-                // via Console.app / log stream on real devices.
+                // The structured logger.error fires before this throw.
             } else {
                 XCTFail("Expected .decoding error case, got: \(error)")
             }
         }
     }
+}
+
+private final class EmptyTokenProvider: AuthTokenProvider, @unchecked Sendable {
+    func loadTokens() -> AuthTokens? { nil }
+    func saveTokens(_: AuthTokens) {}
+    func clearTokens() {}
 }
