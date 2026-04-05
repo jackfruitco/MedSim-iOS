@@ -244,8 +244,53 @@ final class ChatRealtimeClientTests: XCTestCase {
 
         try await waitUntil {
             let states = await stateBuffer.snapshot()
-            return states.contains(.connected) && states.contains(.resyncing)
+            return states.last == .resyncing && states.contains(.connected)
         }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let finalStates = await stateBuffer.snapshot()
+        XCTAssertEqual(finalStates.last, .resyncing)
+    }
+
+    func testTerminalErrorLeavesConnectionStateFailed() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
+        let stateTask = Task {
+            for await state in client.connectionStates {
+                await stateBuffer.append(state)
+            }
+        }
+        defer { stateTask.cancel() }
+        defer { client.disconnect() }
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-bootstrap")
+
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-error",
+            eventType: ChatRealtimeEventType.error,
+            payload: [
+                "code": .string("invalid_payload"),
+                "message": .string("Handshake payload invalid"),
+            ],
+        ))))
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.last == .failed(message: "Handshake payload invalid")
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let finalStates = await stateBuffer.snapshot()
+        XCTAssertEqual(finalStates.last, .failed(message: "Handshake payload invalid"))
     }
 
     func testUnexpectedDisconnectReconnectsWithResumeHandshake() async throws {

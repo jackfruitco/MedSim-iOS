@@ -185,9 +185,10 @@ private actor ChatRealtimeCoordinator {
     }
 
     private func runLoop() async {
+        var finalState: ChatRealtimeConnectionState = .idle
         defer {
             stopCurrentRun(closeCode: .normalClosure, reason: "run_loop_complete")
-            emitState(.idle)
+            emitState(finalState)
         }
 
         while isRunning, !Task.isCancelled {
@@ -207,10 +208,10 @@ private actor ChatRealtimeCoordinator {
                     "ChatLab socket ended unexpectedly; scheduling reconnect attempt=\(currentReconnectAttempt, privacy: .public) simulation_id=\(currentSimulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
                 )
             } catch ChatRealtimeCoordinatorError.resyncRequired {
-                emitState(.resyncing)
+                finalState = .resyncing
                 return
             } catch let ChatRealtimeCoordinatorError.terminal(message) {
-                emitState(.failed(message: message))
+                finalState = .failed(message: message)
                 return
             } catch {
                 if !isRunning || Task.isCancelled {
