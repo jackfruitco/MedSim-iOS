@@ -529,7 +529,7 @@ final class ChatRunStoreTests: XCTestCase {
         try await Task.sleep(nanoseconds: 75_000_000)
 
         XCTAssertEqual(store.messagesByConversation[patientConversation.id]?.count, 1)
-        XCTAssertEqual(realtime.replayAnchors.filter { $0 == durableEvent.eventID }.count, 1)
+        XCTAssertEqual(realtime.replayAnchors.count(where: { $0 == durableEvent.eventID }), 1)
     }
 
     func testReconnectUsesLatestCommittedLastEventID() async throws {

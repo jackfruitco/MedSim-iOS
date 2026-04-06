@@ -4,6 +4,18 @@ import Persistence
 import SharedModels
 
 private let logger = Logger(subsystem: "com.jackfruit.medsim", category: "Networking")
+private let accountContextHeaderField = "X-Account-UUID"
+
+private func applyAccountContextHeader(
+    to request: inout URLRequest,
+    accountUUID: String?,
+    requiresAccountContext: Bool,
+) {
+    guard requiresAccountContext, let accountUUID, !accountUUID.isEmpty else {
+        return
+    }
+    request.setValue(accountUUID, forHTTPHeaderField: accountContextHeaderField)
+}
 
 public protocol AccountContextProvider: Sendable {
     func selectedAccountUUID() async -> String?
@@ -135,9 +147,11 @@ public struct WebSocketRoute: Sendable, Equatable {
             request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
         }
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
-        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
-            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
-        }
+        applyAccountContextHeader(
+            to: &request,
+            accountUUID: accountUUID,
+            requiresAccountContext: requiresAccountContext,
+        )
         return request
     }
 }
@@ -1048,12 +1062,11 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
             request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         }
 
-        if endpoint.requiresAccountContext,
-           let accountUUID = await accountContextProvider.selectedAccountUUID(),
-           !accountUUID.isEmpty
-        {
-            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
-        }
+        applyAccountContextHeader(
+            to: &request,
+            accountUUID: await accountContextProvider.selectedAccountUUID(),
+            requiresAccountContext: endpoint.requiresAccountContext,
+        )
 
         for (key, value) in endpoint.headers {
             request.setValue(value, forHTTPHeaderField: key)
@@ -1077,12 +1090,11 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
         request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
 
-        if requiresAccountContext,
-           let accountUUID = await accountContextProvider.selectedAccountUUID(),
-           !accountUUID.isEmpty
-        {
-            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
-        }
+        applyAccountContextHeader(
+            to: &request,
+            accountUUID: await accountContextProvider.selectedAccountUUID(),
+            requiresAccountContext: requiresAccountContext,
+        )
 
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)

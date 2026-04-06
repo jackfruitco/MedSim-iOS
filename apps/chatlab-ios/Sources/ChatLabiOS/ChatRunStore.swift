@@ -510,8 +510,9 @@ public final class ChatRunStore: ObservableObject {
         let isDurable = isDurableEventType(event.eventType)
         if isDurable, appliedDurableEventIDs.contains(event.eventID) {
             let currentLastEventID = lastEventID ?? "nil"
+            let simulationID = simulation.id
             runStoreLogger.info(
-                "Ignoring duplicate durable ChatLab event simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+                "Ignoring duplicate durable ChatLab event simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
             return
         }
@@ -575,22 +576,23 @@ public final class ChatRunStore: ObservableObject {
 
     private func handleLifecycleEvent(_ event: ChatEventEnvelope) {
         let currentLastEventID = lastEventID ?? "nil"
+        let simulationID = simulation.id
         let sessionPayload = try? event.sessionPayload()
         switch event.eventType {
         case ChatRealtimeEventType.sessionReady:
             runStoreLogger.info(
-                "ChatLab session ready simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) replay_count=\(sessionPayload?.replayCount ?? 0, privacy: .public) replay_anchor=\(sessionPayload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+                "ChatLab session ready simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) replay_count=\(sessionPayload?.replayCount ?? 0, privacy: .public) replay_anchor=\(sessionPayload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
 
         case ChatRealtimeEventType.sessionResumed:
             runStoreLogger.info(
-                "ChatLab session resumed simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) replay_count=\(sessionPayload?.replayCount ?? 0, privacy: .public) replay_anchor=\(sessionPayload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+                "ChatLab session resumed simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) replay_count=\(sessionPayload?.replayCount ?? 0, privacy: .public) replay_anchor=\(sessionPayload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
 
         case ChatRealtimeEventType.sessionResyncRequired:
             let payload = try? event.resyncPayload()
             runStoreLogger.warning(
-                "ChatLab hard resync requested simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) reason=\(payload?.reason ?? "unknown", privacy: .public) replay_anchor=\(payload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+                "ChatLab hard resync requested simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) reason=\(payload?.reason ?? "unknown", privacy: .public) replay_anchor=\(payload?.lastEventID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
             )
             addLocalActivity(
                 eventType: "chat.realtime.resync_required",
@@ -607,7 +609,7 @@ public final class ChatRunStore: ObservableObject {
                 nil
             }
             runStoreLogger.error(
-                "ChatLab realtime error simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) code=\(payload?.code ?? "unknown", privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
+                "ChatLab realtime error simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) code=\(payload?.code ?? "unknown", privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public)",
             )
             presentableError = PresentableAppError(
                 title: "Realtime Error",
@@ -1333,8 +1335,9 @@ public final class ChatRunStore: ObservableObject {
         lastEventID = event.eventID
         let currentLastEventID = lastEventID ?? "nil"
         let action = appliedToLocalState ? "Applied" : "Acknowledged"
+        let simulationID = simulation.id
         runStoreLogger.info(
-            "\(action, privacy: .public) durable ChatLab event simulation_id=\(self.simulation.id, privacy: .public) event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
+            "\(action, privacy: .public) durable ChatLab event simulation_id=\(simulationID, privacy: .public) event_id=\(event.eventID, privacy: .public) event_type=\(event.eventType, privacy: .public) correlation_id=\(event.correlationID ?? "nil", privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
         )
         Task {
             await realtimeClient.updateReplayAnchor(event.eventID)
