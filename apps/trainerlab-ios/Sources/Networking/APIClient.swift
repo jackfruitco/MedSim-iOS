@@ -1062,9 +1062,10 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
             request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
         }
 
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
         applyAccountContextHeader(
             to: &request,
-            accountUUID: await accountContextProvider.selectedAccountUUID(),
+            accountUUID: accountUUID,
             requiresAccountContext: endpoint.requiresAccountContext,
         )
 
@@ -1090,9 +1091,10 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
         request.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
 
+        let accountUUID = await accountContextProvider.selectedAccountUUID()
         applyAccountContextHeader(
             to: &request,
-            accountUUID: await accountContextProvider.selectedAccountUUID(),
+            accountUUID: accountUUID,
             requiresAccountContext: requiresAccountContext,
         )
 
