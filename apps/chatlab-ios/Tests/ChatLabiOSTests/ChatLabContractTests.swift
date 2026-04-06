@@ -117,8 +117,49 @@ final class ChatLabContractTests: XCTestCase {
 
         XCTAssertEqual(event.eventID, "evt-1")
         XCTAssertEqual(event.eventType, SimulationEventType.messageItemCreated)
+        XCTAssertEqual(event.chatEventKind, .messageItemCreated)
         XCTAssertEqual(event.correlationID, "corr-1")
         XCTAssertEqual(event.payload["message_id"], .number(19))
+    }
+
+    func testCanonicalChatEventKindsDecodeFromBackendNames() {
+        let names: [String: ChatSimulationEventKind] = [
+            SimulationEventType.messageItemCreated: .messageItemCreated,
+            SimulationEventType.messageDeliveryUpdated: .messageDeliveryUpdated,
+            SimulationEventType.feedbackItemCreated: .feedbackItemCreated,
+            SimulationEventType.feedbackGenerationFailed: .feedbackGenerationFailed,
+            SimulationEventType.feedbackGenerationUpdated: .feedbackGenerationUpdated,
+            SimulationEventType.patientMetadataCreated: .patientMetadataCreated,
+            SimulationEventType.patientResultsUpdated: .patientResultsUpdated,
+            SimulationEventType.guardStateUpdated: .guardStateUpdated,
+            SimulationEventType.guardWarningUpdated: .guardWarningUpdated,
+        ]
+
+        for (rawValue, expectedType) in names {
+            let envelope = ChatEventEnvelope(
+                eventID: "evt-\(rawValue)",
+                eventType: rawValue,
+                createdAt: Date(),
+                correlationID: "corr-1",
+                payload: [:],
+            )
+            XCTAssertEqual(envelope.chatEventKind, expectedType, "Expected \(rawValue) to decode to \(expectedType)")
+        }
+    }
+
+    func testUnknownChatEventKindFallsBackSafely() {
+        let envelope = ChatEventEnvelope(
+            eventID: "evt-unknown",
+            eventType: "message.item.renamed",
+            createdAt: Date(),
+            correlationID: "corr-unknown",
+            payload: [:],
+        )
+
+        XCTAssertEqual(
+            envelope.chatEventKind,
+            .unknown(rawValue: "message.item.renamed"),
+        )
     }
 
     func testReplayResponseDecodesNextEventID() throws {

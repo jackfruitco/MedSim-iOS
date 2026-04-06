@@ -121,12 +121,8 @@ public struct WebSocketRoute: Sendable, Equatable {
             throw URLError(.badURL)
         }
         components.path = path
-        var queryItems = query
-        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
-            queryItems.append(URLQueryItem(name: "account_uuid", value: accountUUID))
-        }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
+        if !query.isEmpty {
+            components.queryItems = query
         }
         guard let url = components.url else {
             throw URLError(.badURL)
@@ -136,6 +132,9 @@ public struct WebSocketRoute: Sendable, Equatable {
         request.httpMethod = HTTPMethod.get.rawValue
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
+        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
+            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
+        }
         return request
     }
 }

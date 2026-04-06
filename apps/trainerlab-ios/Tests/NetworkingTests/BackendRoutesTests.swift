@@ -145,10 +145,11 @@ final class BackendRoutesTests: XCTestCase {
                 accountUUID: "acct-7",
             )
 
-        XCTAssertEqual(chatRequest.url?.absoluteString, "wss://example.com/ws/v1/chatlab/?account_uuid=acct-7")
+        XCTAssertEqual(chatRequest.url?.absoluteString, "wss://example.com/ws/v1/chatlab/")
         XCTAssertEqual(chatRequest.httpMethod, "GET")
         XCTAssertNil(chatRequest.value(forHTTPHeaderField: "Accept"))
         XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "Authorization"), "Bearer chat-token")
+        XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "X-Account-UUID"), "acct-7")
         XCTAssertNotNil(chatRequest.value(forHTTPHeaderField: "X-Correlation-ID"))
     }
 
