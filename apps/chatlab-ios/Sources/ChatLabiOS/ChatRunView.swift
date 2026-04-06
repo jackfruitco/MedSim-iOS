@@ -372,6 +372,8 @@ public struct ChatRunView: View {
 
     private var transportStatusTitle: String {
         switch store.transportState {
+        case .replaying:
+            return "Replaying History"
         case .connected:
             if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
                Date().timeIntervalSince(lastRealtimeSignalAt) > 12
@@ -396,6 +398,8 @@ public struct ChatRunView: View {
 
     private var transportStatusSymbol: String {
         switch store.transportState {
+        case .replaying:
+            "clock.arrow.trianglehead.counterclockwise.rotate.90"
         case .connected:
             "dot.radiowaves.left.and.right"
         case .reconnecting:
@@ -415,6 +419,8 @@ public struct ChatRunView: View {
 
     private var transportStatusTint: Color {
         switch store.transportState {
+        case .replaying:
+            return .orange
         case .connected:
             if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
                Date().timeIntervalSince(lastRealtimeSignalAt) > 12

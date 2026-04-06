@@ -244,12 +244,90 @@ final class ChatRealtimeClientTests: XCTestCase {
 
         try await waitUntil {
             let states = await stateBuffer.snapshot()
-            return states.last == .resyncing && states.contains(.connected)
+            return states.last == .resyncing && states.contains(.connected) && states.contains(.replaying)
         }
 
         try await Task.sleep(nanoseconds: 100_000_000)
         let finalStates = await stateBuffer.snapshot()
         XCTAssertEqual(finalStates.last, .resyncing)
+    }
+
+    func testConnectWithoutReplayAnchorStaysConnectingUntilReady() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
+        let stateTask = Task {
+            for await state in client.connectionStates {
+                await stateBuffer.append(state)
+            }
+        }
+        defer { stateTask.cancel() }
+
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.contains(.connecting)
+        }
+
+        let preReadyStates = await stateBuffer.snapshot()
+        XCTAssertFalse(preReadyStates.contains(.replaying))
+
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-ready",
+            eventType: ChatRealtimeEventType.sessionReady,
+            payload: ["simulation_id": .number(42)],
+        ))))
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.last == .connected
+        }
+    }
+
+    func testResumeEmitsReplayingUntilSessionResumed() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(baseURL: XCTUnwrap(URL(string: "https://example.com")))
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        let stateBuffer = AsyncBuffer<ChatRealtimeConnectionState>()
+        let stateTask = Task {
+            for await state in client.connectionStates {
+                await stateBuffer.append(state)
+            }
+        }
+        defer { stateTask.cancel() }
+
+        await client.reconnect(simulationID: 42, lastEventID: "evt-9")
+        defer { client.disconnect() }
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.contains(.replaying)
+        }
+
+        let preResumeStates = await stateBuffer.snapshot()
+        XCTAssertNotEqual(preResumeStates.last, .connected)
+
+        try task.enqueue(.success(.string(makeEnvelopeJSON(
+            eventID: "evt-resumed",
+            eventType: ChatRealtimeEventType.sessionResumed,
+            payload: [
+                "simulation_id": .number(42),
+                "last_event_id": .string("evt-9"),
+                "replay_count": .number(2),
+            ],
+        ))))
+
+        try await waitUntil {
+            let states = await stateBuffer.snapshot()
+            return states.last == .connected
+        }
     }
 
     func testTerminalErrorLeavesConnectionStateFailed() async throws {
@@ -342,6 +420,28 @@ final class ChatRealtimeClientTests: XCTestCase {
         XCTAssertEqual(outbound.eventType, ChatRealtimeEventType.sessionHello)
         XCTAssertEqual(outbound.payload["simulation_id"], .number(42))
         XCTAssertNil(outbound.payload["last_event_id"])
+    }
+
+    func testWebSocketRequestAddsAccountHeaderAndCorrelationID() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(
+            baseURL: XCTUnwrap(URL(string: "https://example.com")),
+            accessToken: "token-7",
+            accountUUID: "acct-7",
+        )
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: "evt-1")
+        defer { client.disconnect() }
+
+        try await waitUntil { connector.snapshotRequests().count == 1 }
+        let request = try XCTUnwrap(connector.snapshotRequests().first)
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-7")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Account-UUID"), "acct-7")
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Correlation-ID"))
+        XCTAssertEqual(request.url?.absoluteString, "wss://example.com/ws/v1/chatlab/")
     }
 
     func testSendUsesCanonicalOutboundEnvelope() async throws {

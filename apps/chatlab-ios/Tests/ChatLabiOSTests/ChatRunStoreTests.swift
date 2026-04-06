@@ -401,6 +401,36 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertTrue(store.activeMessages.isEmpty)
     }
 
+    func testLifecycleErrorRetainsCorrelationIDInDebugDetails() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(makeEvent(
+            id: "evt-error-corr",
+            type: ChatRealtimeEventType.error,
+            correlationID: "corr-rt-1",
+            payload: [
+                "code": .string("invalid_payload"),
+                "message": .string("Bad resume anchor"),
+                "details": .object(["field": .string("last_event_id")]),
+            ],
+        ))
+
+        try await waitUntil { store.presentableError?.correlationID == "corr-rt-1" }
+        XCTAssertTrue(store.presentableError?.debugDetailsText.contains("Correlation ID: corr-rt-1") == true)
+    }
+
     func testSessionResyncRequiredTriggersHardBootstrap() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap-a")
         let patientConversation = makeConversation()
@@ -433,6 +463,73 @@ final class ChatRunStoreTests: XCTestCase {
                 realtime.startCalls.last?.lastEventID == "evt-bootstrap-b" &&
                 store.lastEventID == "evt-bootstrap-b"
         }
+    }
+
+    func testHardResyncPreservesDurableDeduplicationState() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap-a")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        let durableEvent = makeEvent(
+            id: "evt-msg-resync-safe",
+            type: SimulationEventType.messageItemCreated,
+            payload: [
+                "id": .number(901),
+                "message_id": .number(901),
+                "conversation_id": .number(Double(patientConversation.id)),
+                "content": .string("safe replay"),
+                "is_from_ai": .bool(true),
+                "display_name": .string(patientConversation.displayName),
+                "timestamp": .string(isoTimestamp()),
+                "delivery_status": .string("sent"),
+            ],
+        )
+
+        realtime.pushEvent(durableEvent)
+        try await waitUntil {
+            (store.messagesByConversation[patientConversation.id] ?? []).count == 1 &&
+                store.lastEventID == durableEvent.eventID
+        }
+
+        service.simulations[simulation.id] = makeSimulation(
+            id: simulation.id,
+            status: .inProgress,
+            retryable: nil,
+            latestEventID: "evt-bootstrap-b",
+        )
+        service.messagesByConversation[patientConversation.id] = [
+            makeMessage(
+                id: 901,
+                conversationID: patientConversation.id,
+                isFromAI: true,
+                content: "safe replay",
+            ),
+        ]
+        realtime.pushEvent(makeEvent(
+            id: "evt-resync-keep-dedupe",
+            type: ChatRealtimeEventType.sessionResyncRequired,
+            payload: [
+                "reason": .string("replay_gap"),
+                "last_event_id": .string(durableEvent.eventID),
+            ],
+        ))
+
+        try await waitUntil { realtime.startCalls.count == 2 }
+        realtime.pushEvent(durableEvent)
+        try await Task.sleep(nanoseconds: 75_000_000)
+
+        XCTAssertEqual(store.messagesByConversation[patientConversation.id]?.count, 1)
+        XCTAssertEqual(realtime.replayAnchors.count(where: { $0 == durableEvent.eventID }), 1)
     }
 
     func testReconnectUsesLatestCommittedLastEventID() async throws {
@@ -538,6 +635,39 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil { !store.activeTypingUsers.contains("consultant@example.com") }
     }
 
+    func testTransportStateTracksConnectingReplayingConnectedResyncingAndFailure() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushState(.connecting)
+        try await waitUntil { store.transportState == .connecting && store.socketDisconnected }
+
+        realtime.pushState(.replaying)
+        try await waitUntil { store.transportState == .replaying && !store.socketDisconnected }
+
+        realtime.pushState(.connected)
+        try await waitUntil { store.transportState == .connected && !store.socketDisconnected }
+
+        realtime.pushState(.resyncing)
+        try await waitUntil { store.transportState == .resyncing && store.socketDisconnected }
+
+        realtime.pushState(.failed(message: "Socket failed"))
+        try await waitUntil {
+            store.transportState == .failed(message: "Socket failed") && store.socketDisconnected
+        }
+    }
+
     private func waitUntil(
         timeoutNanoseconds: UInt64 = 2_000_000_000,
         condition: @escaping @MainActor () -> Bool,
@@ -631,12 +761,17 @@ final class ChatRunStoreTests: XCTestCase {
         )
     }
 
-    private func makeEvent(id: String, type: String, payload: [String: JSONValue]) -> ChatEventEnvelope {
+    private func makeEvent(
+        id: String,
+        type: String,
+        correlationID: String? = nil,
+        payload: [String: JSONValue],
+    ) -> ChatEventEnvelope {
         ChatEventEnvelope(
             eventID: id,
             eventType: type,
             createdAt: Date(),
-            correlationID: nil,
+            correlationID: correlationID,
             payload: payload,
         )
     }

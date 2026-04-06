@@ -298,6 +298,9 @@ private actor ChatRealtimeCoordinator {
         realtimeLogger.info(
             "Sent ChatLab handshake event_type=\(eventType, privacy: .public) correlation_id=\(correlationID, privacy: .public) simulation_id=\(simulationID, privacy: .public) last_event_id=\(currentLastEventID, privacy: .public)",
         )
+        if lastEventID != nil {
+            emitState(.replaying)
+        }
     }
 
     private func receiveLoop(socketTask: ChatWebSocketTaskProtocol) async throws {

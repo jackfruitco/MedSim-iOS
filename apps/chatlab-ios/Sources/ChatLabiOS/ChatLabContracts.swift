@@ -410,6 +410,47 @@ public struct ChatTypingEvent: Codable, Sendable, Equatable {
     }
 }
 
+public enum ChatSimulationEventKind: Sendable, Equatable {
+    case messageItemCreated
+    case messageDeliveryUpdated
+    case patientMetadataCreated
+    case patientResultsUpdated
+    case feedbackItemCreated
+    case feedbackGenerationFailed
+    case feedbackGenerationUpdated
+    case simulationStatusUpdated
+    case guardStateUpdated
+    case guardWarningUpdated
+    case unknown(rawValue: String)
+
+    public init(rawEventType: String) {
+        switch SimulationEventRegistry.canonicalize(rawEventType) {
+        case SimulationEventType.messageItemCreated:
+            self = .messageItemCreated
+        case SimulationEventType.messageDeliveryUpdated:
+            self = .messageDeliveryUpdated
+        case SimulationEventType.patientMetadataCreated:
+            self = .patientMetadataCreated
+        case SimulationEventType.patientResultsUpdated:
+            self = .patientResultsUpdated
+        case SimulationEventType.feedbackItemCreated:
+            self = .feedbackItemCreated
+        case SimulationEventType.feedbackGenerationFailed:
+            self = .feedbackGenerationFailed
+        case SimulationEventType.feedbackGenerationUpdated:
+            self = .feedbackGenerationUpdated
+        case SimulationEventType.simulationStatusUpdated:
+            self = .simulationStatusUpdated
+        case SimulationEventType.guardStateUpdated:
+            self = .guardStateUpdated
+        case SimulationEventType.guardWarningUpdated:
+            self = .guardWarningUpdated
+        default:
+            self = .unknown(rawValue: SimulationEventRegistry.canonicalize(rawEventType))
+        }
+    }
+}
+
 public struct ChatEventEnvelope: Codable, Equatable, Identifiable, Sendable {
     public let eventID: String
     public let eventType: String
@@ -445,6 +486,10 @@ public struct ChatEventEnvelope: Codable, Equatable, Identifiable, Sendable {
 }
 
 public extension ChatEventEnvelope {
+    var chatEventKind: ChatSimulationEventKind {
+        ChatSimulationEventKind(rawEventType: eventType)
+    }
+
     func decodePayload<T: Decodable>(_ type: T.Type) throws -> T {
         try payload.decodedPayload(as: type)
     }
@@ -467,6 +512,7 @@ public enum ChatRealtimeConnectionState: Sendable, Equatable {
     case idle
     case bootstrapping
     case connecting
+    case replaying
     case connected
     case reconnecting(attempt: Int)
     case resyncing
