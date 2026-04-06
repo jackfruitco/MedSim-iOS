@@ -136,6 +136,12 @@ public enum AppErrorPresenter {
                 message: message,
                 debugMessage: debugMessage,
             )
+        case .missingAccountContext:
+            return PresentableAppError(
+                title: "Account Required",
+                message: message,
+                debugMessage: debugMessage,
+            )
         }
     }
 
