@@ -121,12 +121,8 @@ public struct WebSocketRoute: Sendable, Equatable {
             throw URLError(.badURL)
         }
         components.path = path
-        var queryItems = query
-        if requiresAccountContext, let accountUUID, !accountUUID.isEmpty {
-            queryItems.append(URLQueryItem(name: "account_uuid", value: accountUUID))
-        }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
+        if !query.isEmpty {
+            components.queryItems = query
         }
         guard let url = components.url else {
             throw URLError(.badURL)
@@ -135,6 +131,9 @@ public struct WebSocketRoute: Sendable, Equatable {
         var request = URLRequest(url: url)
         request.httpMethod = HTTPMethod.get.rawValue
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if let accountUUID, !accountUUID.isEmpty {
+            request.setValue(accountUUID, forHTTPHeaderField: "X-Account-UUID")
+        }
         request.setValue(UUID().uuidString.lowercased(), forHTTPHeaderField: "X-Correlation-ID")
         return request
     }
@@ -657,6 +656,7 @@ public enum APIClientError: Error, Equatable, LocalizedError {
     case http(statusCode: Int, detail: String, correlationID: String?)
     case decoding(String)
     case missingRefreshToken
+    case missingAccountContext
     case guardDenied(statusCode: Int, detail: String, correlationID: String?, signal: GuardSignal)
 
     public var statusCode: Int? {
@@ -717,6 +717,8 @@ public enum APIClientError: Error, Equatable, LocalizedError {
             return "Your session expired. Please sign in again."
         case .missingRefreshToken:
             return "Your session is incomplete. Please sign in again."
+        case .missingAccountContext:
+            return "No account selected. Please select an account and try again."
         case .decoding:
             return "The app couldn’t read the server response."
         case let .http(statusCode, detail, _):
@@ -894,6 +896,9 @@ public final class APIClient: APIClientProtocol, AuthorizedResourceLoading, @unc
             throw APIClientError.unauthorized
         }
         let accountUUID = await accountContextProvider.selectedAccountUUID()
+        if route.requiresAccountContext, accountUUID == nil || accountUUID?.isEmpty == true {
+            throw APIClientError.missingAccountContext
+        }
         return try await route.makeURLRequest(
             baseURL: baseURL(),
             accessToken: tokens.accessToken,
