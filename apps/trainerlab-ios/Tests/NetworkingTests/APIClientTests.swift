@@ -280,6 +280,44 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(recorded.count, 1)
         XCTAssertTrue(recorded.first?.isAuthorizationFailure == true)
     }
+
+    func testMakeWebSocketRequestThrowsMissingAccountContextWhenAccountUUIDIsNil() async throws {
+        let tokens = AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: tokens)
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            accountContextProvider: StaticAccountContextProvider(accountUUID: nil),
+        )
+
+        let route = ChatLabAPI.realtimeSocket()
+        do {
+            _ = try await client.makeWebSocketRequest(for: route)
+            XCTFail("Expected missingAccountContext error")
+        } catch APIClientError.missingAccountContext {
+            // expected
+        }
+    }
+
+    func testMakeWebSocketRequestThrowsMissingAccountContextWhenAccountUUIDIsEmpty() async throws {
+        let tokens = AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+        let tokenProvider = MockTokenProvider(tokens: tokens)
+
+        let client = APIClient(
+            baseURLProvider: { URL(string: "https://example.com")! },
+            tokenProvider: tokenProvider,
+            accountContextProvider: StaticAccountContextProvider(accountUUID: ""),
+        )
+
+        let route = ChatLabAPI.realtimeSocket()
+        do {
+            _ = try await client.makeWebSocketRequest(for: route)
+            XCTFail("Expected missingAccountContext error")
+        } catch APIClientError.missingAccountContext {
+            // expected
+        }
+    }
 }
 
 private func normalizedPath(_ path: String) -> String {

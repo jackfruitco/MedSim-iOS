@@ -145,11 +145,31 @@ final class BackendRoutesTests: XCTestCase {
                 accountUUID: "acct-7",
             )
 
-        XCTAssertEqual(chatRequest.url?.absoluteString, "wss://example.com/ws/v1/chatlab/?account_uuid=acct-7")
+        XCTAssertEqual(chatRequest.url?.absoluteString, "wss://example.com/ws/v1/chatlab/")
         XCTAssertEqual(chatRequest.httpMethod, "GET")
         XCTAssertNil(chatRequest.value(forHTTPHeaderField: "Accept"))
         XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "Authorization"), "Bearer chat-token")
+        XCTAssertEqual(chatRequest.value(forHTTPHeaderField: "X-Account-UUID"), "acct-7")
         XCTAssertNotNil(chatRequest.value(forHTTPHeaderField: "X-Correlation-ID"))
+    }
+
+    func testWebSocketURLContainsNoAuthQueryParams() throws {
+        let baseURL = try XCTUnwrap(URL(string: "https://example.com"))
+        let request = try ChatLabAPI
+            .realtimeSocket()
+            .makeURLRequest(baseURL: baseURL, accessToken: "tok", accountUUID: "acct-1")
+        let query = request.url?.query ?? ""
+        XCTAssertFalse(query.contains("token"), "WebSocket URL must not contain token query param")
+        XCTAssertFalse(query.contains("account_uuid"), "WebSocket URL must not contain account_uuid query param")
+    }
+
+    func testWebSocketRouteWithNilAccountUUIDOmitsHeader() throws {
+        let route = WebSocketRoute(path: "/ws/v1/chatlab/", requiresAccountContext: true)
+        let baseURL = try XCTUnwrap(URL(string: "https://example.com"))
+        let request = try route.makeURLRequest(baseURL: baseURL, accessToken: "tok", accountUUID: nil)
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Account-UUID"))
+        XCTAssertEqual(request.url?.absoluteString, "wss://example.com/ws/v1/chatlab/")
+        XCTAssertNil(request.url?.query)
     }
 
     private func queryPairs(_ endpoint: Endpoint) -> [String] {

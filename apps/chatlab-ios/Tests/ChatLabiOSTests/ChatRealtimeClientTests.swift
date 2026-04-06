@@ -379,6 +379,28 @@ final class ChatRealtimeClientTests: XCTestCase {
         }
     }
 
+    func testWebSocketRequestCarriesRequiredAuthHeaders() async throws {
+        let task = MockWebSocketTask()
+        let connector = MockWebSocketConnector(tasks: [task])
+        let loader = try ChatRealtimeAuthorizedResourceLoader(
+            baseURL: XCTUnwrap(URL(string: "https://example.com")),
+            accessToken: "token-1",
+            accountUUID: "acct-1",
+        )
+        let client = ChatRealtimeClient(authLoader: loader, session: .shared, connector: connector)
+
+        await client.start(simulationID: 42, initialLastEventID: nil)
+        defer { client.disconnect() }
+        try await waitUntil { connector.snapshotRequests().count == 1 }
+
+        let request = try XCTUnwrap(connector.snapshotRequests().first)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-1")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Account-UUID"), "acct-1")
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-Correlation-ID"))
+        XCTAssertNil(request.url?.query)
+        XCTAssertEqual(request.url?.absoluteString, "wss://example.com/ws/v1/chatlab/")
+    }
+
     private func makeEnvelopeJSON(
         eventID: String,
         eventType: String,
