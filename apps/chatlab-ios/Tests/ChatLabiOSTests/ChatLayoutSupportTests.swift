@@ -20,9 +20,12 @@ final class ChatLayoutSupportTests: XCTestCase {
     }
 
     func testToolSectionDefaultsMatchLayoutMode() {
+        // requestLabs is the only section expanded by default on compact phone
         XCTAssertTrue(ChatToolsSection.requestLabs.defaultExpanded(for: .compactMessenger))
         XCTAssertFalse(ChatToolsSection.patientHistory.defaultExpanded(for: .compactMessenger))
-        XCTAssertTrue(ChatToolsSection.activity.defaultExpanded(for: .widePhoneMessenger))
+        // Activity is intentionally never expanded by default (it's debug/staff info)
+        XCTAssertFalse(ChatToolsSection.activity.defaultExpanded(for: .widePhoneMessenger))
+        XCTAssertFalse(ChatToolsSection.activity.defaultExpanded(for: .padWorkspace))
         XCTAssertTrue(ChatToolsSection.patientResults.defaultExpanded(for: .widePhoneMessenger))
         XCTAssertTrue(ChatToolsSection.simulationMetadata.defaultExpanded(for: .padWorkspace))
     }
@@ -79,8 +82,16 @@ final class ChatLayoutSupportTests: XCTestCase {
         ])
 
         XCTAssertEqual(fields.first?.label, "Overall Feedback")
-        XCTAssertEqual(fields.first?.value, "Strong prioritization.")
+        if case .text(let value) = fields.first?.kind {
+            XCTAssertEqual(value, "Strong prioritization.")
+        } else {
+            XCTFail("Expected .text kind for overall feedback")
+        }
         XCTAssertEqual(fields.last?.label, "Areas for Improvement")
-        XCTAssertEqual(fields.last?.value, "Clarify handoff, Reassess sooner")
+        if case .text(let value) = fields.last?.kind {
+            XCTAssertEqual(value, "Clarify handoff, Reassess sooner")
+        } else {
+            XCTFail("Expected .text kind for areas for improvement")
+        }
     }
 }
