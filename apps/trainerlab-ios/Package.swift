@@ -52,6 +52,8 @@ let package = Package(
                 "AccountSessionStore.swift",
                 "AppleBillingService.swift",
                 "AuthService.swift",
+                "BuildInfoModels.swift",
+                "BuildInfoService.swift",
                 "DecodingDiagnostics.swift",
                 "EnvironmentStore.swift",
                 "MutableBaseURLProvider.swift",
