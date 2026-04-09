@@ -268,47 +268,56 @@ public struct ChatRunView: View {
 
     // MARK: - Connection state
 
-    /// True when the WebSocket connection is degraded or lost and the learner needs to know.
+    /// True when the connection is degraded or lost and the learner needs to know.
+    /// Uses the store's `isRealtimeStale` property so the staleness threshold stays
+    /// in one place (ChatRunStore.foregroundRecoveryGraceSeconds).
     private var isDisconnectedOrDegraded: Bool {
         switch store.transportState {
         case .failed, .reconnecting, .resyncing:
             return true
         case .connected:
-            guard let last = store.lastRealtimeSignalAt else { return false }
-            return Date().timeIntervalSince(last) > 12
+            return store.isRealtimeStale
         default:
             return false
         }
     }
 
+    private var isConnectionFailed: Bool {
+        if case .failed = store.transportState { return true }
+        return false
+    }
+
     @ViewBuilder
     private var disconnectedIndicator: some View {
         if isDisconnectedOrDegraded {
-            let isOffline = store.transportState == .failed
-            Label(isOffline ? "Offline" : "Reconnecting",
-                  systemImage: isOffline ? "wifi.slash" : "wifi.exclamationmark")
+            Label(isConnectionFailed ? "Offline" : "Reconnecting",
+                  systemImage: isConnectionFailed ? "wifi.slash" : "wifi.exclamationmark")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isOffline ? Color.red : Color.orange)
+                .foregroundStyle(isConnectionFailed ? Color.red : Color.orange)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background((isOffline ? Color.red : Color.orange).opacity(0.12))
+                .background((isConnectionFailed ? Color.red : Color.orange).opacity(0.12))
                 .clipShape(Capsule())
         }
     }
 
     // MARK: - Header
 
-    /// Compact overlay header used for phone layouts. Content scrolls behind this.
+    /// Compact overlay header for phone layouts. Contains only: back button, title,
+    /// and disconnected indicator (when needed). Action buttons live in the tools pane
+    /// and composer bar so the chat viewport is not crowded with chrome.
     private func overlayHeader(layoutMode: ChatRunLayoutMode) -> some View {
         VStack(spacing: 0) {
             ZStack {
                 patientIdentityHeader
-                    .padding(.horizontal, headerCenterPadding(for: layoutMode))
+                    // Asymmetric inset: reserve space for back button (≈44 pt) on left;
+                    // right side is unconstrained since there are no action buttons here.
+                    .padding(.leading, 52)
+                    .padding(.trailing, horizontalInset(for: layoutMode))
 
-                HStack(alignment: .center, spacing: 12) {
+                HStack {
                     backButton
-                    Spacer(minLength: 12)
-                    headerActions(layoutMode: layoutMode)
+                    Spacer(minLength: 0)
                 }
             }
             .padding(.horizontal, horizontalInset(for: layoutMode))
@@ -316,7 +325,7 @@ public struct ChatRunView: View {
             .padding(.bottom, isDisconnectedOrDegraded ? 4 : 8)
 
             if isDisconnectedOrDegraded {
-                HStack {
+                HStack(spacing: 8) {
                     disconnectedIndicator
                     if store.activeConversationLocked {
                         Label("Read Only", systemImage: "lock.fill")
@@ -345,7 +354,7 @@ public struct ChatRunView: View {
                 HStack(alignment: .center, spacing: 12) {
                     backButton
                     Spacer(minLength: 12)
-                    headerActions(layoutMode: layoutMode)
+                    padWorkspaceHeaderActions()
                 }
             }
 
@@ -408,23 +417,11 @@ public struct ChatRunView: View {
         }
     }
 
-    private func headerActions(layoutMode: ChatRunLayoutMode) -> some View {
+    /// Header actions rendered only in the iPad padWorkspace fixed header.
+    /// On phone layouts, "End Simulation" lives in the tools pane and the Tools
+    /// button lives in the composer bar — so the chat header stays minimal.
+    private func padWorkspaceHeaderActions() -> some View {
         HStack(spacing: 8) {
-            if layoutMode != .padWorkspace {
-                Button {
-                    showToolsSheet = true
-                }
-                label: {
-                    if layoutMode == .compactMessenger {
-                        Image(systemName: "slider.horizontal.3")
-                    } else {
-                        Text("Tools")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Tools")
-            }
-
             if store.simulation.status == .inProgress {
                 Button("End Simulation") {
                     store.endSimulation()
@@ -454,12 +451,9 @@ public struct ChatRunView: View {
     /// User-facing label for a conversation tab.
     /// Stitch conversations use "Stitch"; patient conversations use the display name.
     private func conversationTabLabel(for conversation: ChatConversation) -> String {
-        switch conversation.conversationType.lowercased() {
-        case "simulated_feedback":
-            return "Stitch"
-        default:
-            return conversation.displayName.isEmpty ? "Patient" : conversation.displayName
-        }
+        conversation.conversationType.lowercased() == "simulated_feedback"
+            ? "Stitch"
+            : (conversation.displayName.isEmpty ? "Patient" : conversation.displayName)
     }
 
     // MARK: - Conversation tabs
@@ -598,7 +592,19 @@ public struct ChatRunView: View {
     }
 
     private func composer(layoutMode: ChatRunLayoutMode) -> some View {
-        HStack {
+        HStack(spacing: 8) {
+            // Tools button lives in the composer bar for phone layouts (not the header),
+            // keeping the chat header minimal per design requirements.
+            if layoutMode != .padWorkspace {
+                Button {
+                    showToolsSheet = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Tools")
+            }
+
             HStack(spacing: 8) {
                 TextField(
                     store.activeConversationLocked ? "This conversation is read-only" : "Message",
@@ -724,8 +730,13 @@ public struct ChatRunView: View {
                 toolSection(.requestLabs, layoutMode: layoutMode) {
                     requestLabsSection(layoutMode: layoutMode)
                 }
-                // Activity log is debug/staff info — hidden by default.
+                // Activity log is debug/staff info — only compiled in for debug builds.
+                // Backend dependency: when staff/role info is available from the session,
+                // gate this on user.is_staff rather than build config so staff can
+                // access it in production without a debug build.
+                #if DEBUG
                 debugActivityDisclosure(layoutMode: layoutMode)
+                #endif
             }
             .padding(layoutMode == .padWorkspace ? 16 : 12)
         }
@@ -756,13 +767,31 @@ public struct ChatRunView: View {
     }
 
     private func toolsHeader(layoutMode: ChatRunLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            // End Simulation is a primary action for phone layouts — it lives here
+            // rather than in the overlay header to keep the chat header minimal.
+            // On iPad the button is in the padWorkspace fixed header instead.
+            if layoutMode != .padWorkspace, store.simulation.status == .inProgress {
+                Button("End Simulation") {
+                    store.endSimulation()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .frame(maxWidth: .infinity)
+            }
+
             if isInStitchConversation {
                 // Currently in the Stitch debrief — show a clear indicator instead of a button.
                 Label("Stitch Debrief", systemImage: "bubble.left.and.text.bubble.right.fill")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
             } else {
+                // Button is intentionally disabled while simulation is in progress.
+                // The Stitch debrief conversation only makes sense after the simulation ends
+                // and feedback has been generated.
+                //
+                // Backend dependency: see ChatRunStore.createStitchConversationIfNeeded for
+                // the integration point needed to seed the Stitch opener with simulation context.
                 let buttonLabel = hasStitchConversation ? "Open Stitch Debrief" : "Debrief with Stitch"
                 Button(buttonLabel) {
                     store.createStitchConversationIfNeeded()
@@ -1441,33 +1470,39 @@ private struct FeedbackFieldRow: View {
 
     var body: some View {
         switch field.kind {
+        // Boolish rows: icon (for visual scanning) + "Label: Yes/No/Partial" text.
+        // VoiceOver reads the combined label so it announces the full semantic meaning.
         case .boolTrue:
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "checkmark.square.fill")
                     .foregroundStyle(.green)
-                    .accessibilityLabel("Yes")
-                Text(field.label)
+                    .accessibilityHidden(true) // text below carries the full meaning
+                Text("\(field.label): Yes")
                     .font(.footnote)
                 Spacer(minLength: 0)
             }
+            .accessibilityLabel("\(field.label): Yes")
         case .boolFalse:
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "x.square.fill")
                     .foregroundStyle(.red)
-                    .accessibilityLabel("No")
-                Text(field.label)
+                    .accessibilityHidden(true)
+                Text("\(field.label): No")
                     .font(.footnote)
                 Spacer(minLength: 0)
             }
+            .accessibilityLabel("\(field.label): No")
         case .partial:
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: "exclamationmark.square.fill")
                     .foregroundStyle(.yellow)
-                    .accessibilityLabel("Partial")
-                Text(field.label)
+                    .accessibilityHidden(true)
+                Text("\(field.label): Partial")
                     .font(.footnote)
                 Spacer(minLength: 0)
             }
+            .accessibilityLabel("\(field.label): Partial")
+        // Text rows: compact two-line label/value, consistent with boolish scanability.
         case let .text(value):
             VStack(alignment: .leading, spacing: 2) {
                 Text(field.label)
@@ -1477,6 +1512,7 @@ private struct FeedbackFieldRow: View {
                     .font(.footnote)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("\(field.label): \(value)")
         }
     }
 }

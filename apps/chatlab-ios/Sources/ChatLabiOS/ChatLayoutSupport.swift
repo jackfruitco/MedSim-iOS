@@ -195,9 +195,9 @@ enum ChatToolValueFormatter {
 }
 
 enum ChatFeedbackKind: Equatable {
-    case boolTrue   // green checkmark.square.fill
-    case boolFalse  // red x.square.fill
-    case partial    // yellow exclamationmark.square.fill
+    case boolTrue // green checkmark.square.fill
+    case boolFalse // red x.square.fill
+    case partial // yellow exclamationmark.square.fill
     case text(String)
 }
 
@@ -257,20 +257,31 @@ enum ChatFeedbackPresentation {
             .joined(separator: " ")
     }
 
-    /// Classifies a JSONValue as a boolish kind or plain text.
-    /// Matches the actual backend contract: JSONValue.bool for native booleans,
-    /// and a set of well-known string synonyms for boolish rendering.
+    /// Classifies a JSONValue into a renderable kind.
+    ///
+    /// Boolish mapping is intentionally conservative:
+    /// - Native JSON booleans (`JSONValue.bool`) are always boolish — this is the primary
+    ///   mechanism the backend uses for true/false feedback fields.
+    /// - String "yes" / "no" are accepted as the most universal natural-language equivalents.
+    /// - String "partial" is accepted for partial-credit outcomes.
+    ///
+    /// Speculative synonyms ("correct", "pass", "incorrect", "fail") have been deliberately
+    /// excluded because they are not verified as values the backend actually sends in feedback
+    /// payloads. Any unknown string renders as plain text, which is safe and non-lossy.
+    ///
+    /// Backend dependency: verify whether additional string boolish values exist in the
+    /// SimWorks feedback schema and extend this list only when confirmed.
     static func detectKind(from value: JSONValue) -> ChatFeedbackKind? {
         switch value {
         case let .bool(flag):
             return flag ? .boolTrue : .boolFalse
         case let .string(text):
             switch text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
-            case "true", "yes", "correct", "pass":
+            case "yes":
                 return .boolTrue
-            case "false", "no", "incorrect", "fail":
+            case "no":
                 return .boolFalse
-            case "partial", "partial credit":
+            case "partial":
                 return .partial
             default:
                 return text.isEmpty ? nil : .text(text)
