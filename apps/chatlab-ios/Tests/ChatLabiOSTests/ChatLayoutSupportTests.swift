@@ -82,13 +82,13 @@ final class ChatLayoutSupportTests: XCTestCase {
         ])
 
         XCTAssertEqual(fields.first?.label, "Overall Feedback")
-        if case .text(let value) = fields.first?.kind {
+        if case let .text(value) = fields.first?.kind {
             XCTAssertEqual(value, "Strong prioritization.")
         } else {
             XCTFail("Expected .text kind for overall feedback")
         }
         XCTAssertEqual(fields.last?.label, "Areas for Improvement")
-        if case .text(let value) = fields.last?.kind {
+        if case let .text(value) = fields.last?.kind {
             XCTAssertEqual(value, "Clarify handoff, Reassess sooner")
         } else {
             XCTFail("Expected .text kind for areas for improvement")

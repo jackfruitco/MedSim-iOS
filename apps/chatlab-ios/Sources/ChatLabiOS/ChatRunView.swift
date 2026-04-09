@@ -274,11 +274,11 @@ public struct ChatRunView: View {
     private var isDisconnectedOrDegraded: Bool {
         switch store.transportState {
         case .failed, .reconnecting, .resyncing:
-            return true
+            true
         case .connected:
-            return store.isRealtimeStale
+            store.isRealtimeStale
         default:
-            return false
+            false
         }
     }
 
@@ -735,7 +735,7 @@ public struct ChatRunView: View {
                 // gate this on user.is_staff rather than build config so staff can
                 // access it in production without a debug build.
                 #if DEBUG
-                debugActivityDisclosure(layoutMode: layoutMode)
+                    debugActivityDisclosure(layoutMode: layoutMode)
                 #endif
             }
             .padding(layoutMode == .padWorkspace ? 16 : 12)
