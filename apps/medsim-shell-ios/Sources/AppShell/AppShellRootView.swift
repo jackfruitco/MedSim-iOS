@@ -80,12 +80,11 @@ public struct AppShellRootView: View {
                     appTitle: "MedSim",
                     appSubtitle: "TrainerLab + ChatLab",
                     environmentLabel: "Env: \(model.environmentStore.selection.rawValue) | \(model.environmentStore.baseURL.host() ?? "unknown")",
-                    onOpenEnvironmentSwitcher: {
-                        showEnvironment = true
+                    onOpenEnvironmentSwitcher: openEnvironmentSwitcher,
+                    footer: {
+                        AuthVersionInfoSection(store: model.buildInfoStore)
                     },
-                ) {
-                    AuthVersionInfoSection(store: model.buildInfoStore)
-                }
+                )
                 .task(id: model.environmentStore.baseURL.absoluteString) {
                     await model.buildInfoStore.loadIfNeeded()
                 }
@@ -114,6 +113,10 @@ public struct AppShellRootView: View {
                 showAccountBilling = false
             }
         }
+    }
+
+    private func openEnvironmentSwitcher() {
+        showEnvironment = true
     }
 }
 

@@ -43,6 +43,10 @@ private final class URLBox: @unchecked Sendable {
     }
 }
 
+private func makeURL(_ value: String, file: StaticString = #filePath, line: UInt = #line) throws -> URL {
+    try XCTUnwrap(URL(string: value), file: file, line: line)
+}
+
 final class AppBuildInfoTests: XCTestCase {
     func testInitFromInfoDictionaryResolvesValues() {
         let buildInfo = AppBuildInfo(
@@ -71,7 +75,8 @@ final class AppBuildInfoTests: XCTestCase {
 
 @MainActor
 final class BuildInfoStoreTests: XCTestCase {
-    func testLoadIfNeededPopulatesRemoteBuildInfoOnSuccess() async {
+    func testLoadIfNeededPopulatesRemoteBuildInfoOnSuccess() async throws {
+        let exampleURL = try makeURL("https://example.com")
         let service = MockBuildInfoService()
         service.results = [
             .success(
@@ -87,7 +92,7 @@ final class BuildInfoStoreTests: XCTestCase {
         ]
         let store = BuildInfoStore(
             buildInfoService: service,
-            baseURLProvider: { URL(string: "https://example.com")! },
+            baseURLProvider: { exampleURL },
             appBuildInfo: AppBuildInfo(version: "2.0.0", build: "88"),
         )
 
@@ -109,12 +114,13 @@ final class BuildInfoStoreTests: XCTestCase {
         XCTAssertEqual(service.fetchCount, 1)
     }
 
-    func testLoadIfNeededMarksFailureWithoutBlockingLocalRows() async {
+    func testLoadIfNeededMarksFailureWithoutBlockingLocalRows() async throws {
+        let exampleURL = try makeURL("https://example.com")
         let service = MockBuildInfoService()
         service.results = [.failure(MockBuildInfoError.failed)]
         let store = BuildInfoStore(
             buildInfoService: service,
-            baseURLProvider: { URL(string: "https://example.com")! },
+            baseURLProvider: { exampleURL },
             appBuildInfo: AppBuildInfo(version: "2.0.0", build: "88"),
         )
 
@@ -133,10 +139,11 @@ final class BuildInfoStoreTests: XCTestCase {
         ])
     }
 
-    func testDisclosureStateCanToggle() {
+    func testDisclosureStateCanToggle() throws {
+        let exampleURL = try makeURL("https://example.com")
         let store = BuildInfoStore(
             buildInfoService: MockBuildInfoService(),
-            baseURLProvider: { URL(string: "https://example.com")! },
+            baseURLProvider: { exampleURL },
             appBuildInfo: AppBuildInfo(version: "2.0.0", build: "88"),
         )
 
@@ -145,10 +152,11 @@ final class BuildInfoStoreTests: XCTestCase {
         XCTAssertTrue(store.isExpanded)
     }
 
-    func testDisplayRowsStayStableWhenBackendValuesAreMissing() {
+    func testDisplayRowsStayStableWhenBackendValuesAreMissing() throws {
+        let exampleURL = try makeURL("https://example.com")
         let store = BuildInfoStore(
             buildInfoService: MockBuildInfoService(),
-            baseURLProvider: { URL(string: "https://example.com")! },
+            baseURLProvider: { exampleURL },
             appBuildInfo: AppBuildInfo(version: "2.0.0", build: "88"),
         )
 
@@ -170,7 +178,7 @@ final class BuildInfoStoreTests: XCTestCase {
         ])
     }
 
-    func testChangingBaseURLClearsStaleRowsAndFetchesAgain() async {
+    func testChangingBaseURLClearsStaleRowsAndFetchesAgain() async throws {
         let service = MockBuildInfoService()
         service.results = [
             .success(
@@ -194,7 +202,8 @@ final class BuildInfoStoreTests: XCTestCase {
                 ),
             ),
         ]
-        let urlBox = URLBox(url: URL(string: "https://one.example.com")!)
+        let initialURL = try makeURL("https://one.example.com")
+        let urlBox = URLBox(url: initialURL)
         let store = BuildInfoStore(
             buildInfoService: service,
             baseURLProvider: { urlBox.url },
@@ -205,7 +214,8 @@ final class BuildInfoStoreTests: XCTestCase {
         XCTAssertEqual(store.displayRows[2].value, "0.14.2")
 
         service.suspendNextFetch = true
-        urlBox.url = URL(string: "https://two.example.com")!
+        let updatedURL = try makeURL("https://two.example.com")
+        urlBox.url = updatedURL
 
         let loadTask = Task {
             await store.loadIfNeeded()

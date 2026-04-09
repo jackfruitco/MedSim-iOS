@@ -1,6 +1,6 @@
 import Foundation
 
-struct AppBuildInfo: Equatable, Sendable {
+struct AppBuildInfo: Equatable {
     let version: String
     let build: String
 
