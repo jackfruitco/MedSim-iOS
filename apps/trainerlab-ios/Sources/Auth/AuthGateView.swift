@@ -1,7 +1,7 @@
 import DesignSystem
 import SwiftUI
 
-public struct AuthGateView: View {
+public struct AuthGateView<Footer: View>: View {
     private enum Field: Hashable {
         case email
         case password
@@ -12,6 +12,7 @@ public struct AuthGateView: View {
     private let appSubtitle: String
     private let environmentLabel: String
     private let onOpenEnvironmentSwitcher: () -> Void
+    private let footer: Footer
     @FocusState private var focusedField: Field?
 
     public init(
@@ -20,12 +21,14 @@ public struct AuthGateView: View {
         appSubtitle: String = "Instructor Console",
         environmentLabel: String,
         onOpenEnvironmentSwitcher: @escaping () -> Void,
+        @ViewBuilder footer: () -> Footer,
     ) {
         self.viewModel = viewModel
         self.appTitle = appTitle
         self.appSubtitle = appSubtitle
         self.environmentLabel = environmentLabel
         self.onOpenEnvironmentSwitcher = onOpenEnvironmentSwitcher
+        self.footer = footer()
     }
 
     public var body: some View {
@@ -92,6 +95,9 @@ public struct AuthGateView: View {
                 .trainerCardStyle(background: TrainerLabTheme.setupSurface)
                 .frame(maxWidth: 460)
 
+                footer
+                    .frame(maxWidth: 460)
+
                 Text(environmentLabel)
                     .font(.footnote.monospaced())
                     .foregroundStyle(.secondary)
@@ -150,6 +156,26 @@ public struct AuthGateView: View {
             focusedField = .email
         default:
             focusedField = .email
+        }
+    }
+}
+
+public extension AuthGateView where Footer == EmptyView {
+    init(
+        viewModel: AuthViewModel,
+        appTitle: String = "TrainerLab",
+        appSubtitle: String = "Instructor Console",
+        environmentLabel: String,
+        onOpenEnvironmentSwitcher: @escaping () -> Void,
+    ) {
+        self.init(
+            viewModel: viewModel,
+            appTitle: appTitle,
+            appSubtitle: appSubtitle,
+            environmentLabel: environmentLabel,
+            onOpenEnvironmentSwitcher: onOpenEnvironmentSwitcher,
+        ) {
+            EmptyView()
         }
     }
 }

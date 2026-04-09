@@ -80,10 +80,14 @@ public struct AppShellRootView: View {
                     appTitle: "MedSim",
                     appSubtitle: "TrainerLab + ChatLab",
                     environmentLabel: "Env: \(model.environmentStore.selection.rawValue) | \(model.environmentStore.baseURL.host() ?? "unknown")",
-                    onOpenEnvironmentSwitcher: {
-                        showEnvironment = true
+                    onOpenEnvironmentSwitcher: openEnvironmentSwitcher,
+                    footer: {
+                        AuthVersionInfoSection(store: model.buildInfoStore)
                     },
                 )
+                .task(id: model.environmentStore.baseURL.absoluteString) {
+                    await model.buildInfoStore.loadIfNeeded()
+                }
             }
         }
         .sheet(isPresented: $showEnvironment) {
@@ -109,6 +113,58 @@ public struct AppShellRootView: View {
                 showAccountBilling = false
             }
         }
+    }
+
+    private func openEnvironmentSwitcher() {
+        showEnvironment = true
+    }
+}
+
+private struct AuthVersionInfoSection: View {
+    @ObservedObject var store: BuildInfoStore
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $store.isExpanded) {
+            VStack(spacing: 8) {
+                ForEach(Array(store.displayRows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(row.title)
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 12)
+
+                        Text(row.value)
+                            .font(row.usesMonospacedValue ? .footnote.monospaced() : .footnote)
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.trailing)
+                            .textSelection(.enabled)
+                    }
+                    .font(.footnote)
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            HStack(spacing: 8) {
+                Text("Version Info")
+                    .font(.footnote.weight(.semibold))
+
+                Spacer()
+
+                if store.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(TrainerLabTheme.setupSurface.opacity(0.72))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1),
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

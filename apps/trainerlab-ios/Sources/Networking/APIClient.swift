@@ -220,6 +220,16 @@ public enum BillingAPI {
     }
 }
 
+public enum SystemAPI {
+    public static func buildInfo() -> Endpoint {
+        Endpoint(
+            path: "/api/v1/build-info/",
+            requiresAuth: false,
+            requiresAccountContext: false,
+        )
+    }
+}
+
 public enum TrainerLabAPI {
     public static func accessMe() -> Endpoint {
         Endpoint(path: "/api/v1/trainerlab/access/me/")

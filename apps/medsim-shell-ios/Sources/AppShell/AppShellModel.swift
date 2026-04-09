@@ -38,6 +38,7 @@ public final class AppShellModel: ObservableObject {
     public let authViewModel: AuthViewModel
     public let accountSessionStore: AccountSessionStore
     public let billingService: AppleBillingService
+    public let buildInfoStore: BuildInfoStore
     public let sessionHubViewModel: SessionHubViewModel
     public let presetsViewModel: PresetsViewModel
 
@@ -45,6 +46,7 @@ public final class AppShellModel: ObservableObject {
     private let mutableBaseURLProvider: MutableBaseURLProvider
     private let selectedAccountContext: SelectedAccountContext
     private let apiClient: APIClient
+    private let buildInfoService: BuildInfoService
     private let trainerService: TrainerLabService
     private let chatService: ChatLabService
     private let chatMediaLoader: AuthenticatedChatMediaLoader
@@ -92,6 +94,13 @@ public final class AppShellModel: ObservableObject {
         billingService = AppleBillingService(
             apiClient: apiClient,
             accountSessionStore: accountSessionStore,
+        )
+
+        let buildInfoService = BuildInfoService(apiClient: apiClient)
+        self.buildInfoService = buildInfoService
+        buildInfoStore = BuildInfoStore(
+            buildInfoService: buildInfoService,
+            baseURLProvider: { mutableBaseURLProvider.currentURL() },
         )
 
         let commandQueue: CommandQueueStoreProtocol
