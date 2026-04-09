@@ -72,6 +72,15 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var lastRealtimeSignalAt: Date?
     @Published public private(set) var lastEventID: String?
 
+    /// True when the transport reports `.connected` but no realtime signal has been received
+    /// within `foregroundRecoveryGraceSeconds`. The view uses this instead of re-implementing
+    /// the same threshold so magic numbers stay in one place.
+    public var isRealtimeStale: Bool {
+        guard case .connected = transportState else { return false }
+        guard let last = lastRealtimeSignalAt else { return true }
+        return Date().timeIntervalSince(last) > foregroundRecoveryGraceSeconds
+    }
+
     @Published public private(set) var simulationFailureText: String?
     @Published public private(set) var simulationRetryable = true
     @Published public private(set) var feedbackFailureText: String?
@@ -266,8 +275,20 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func createStitchConversationIfNeeded() {
+        // Fast path: if a Stitch conversation is already loaded locally, just switch to it.
+        // This avoids a redundant API call when the conversation already exists.
+        if let existing = conversations.first(where: {
+            $0.conversationType.lowercased() == "simulated_feedback"
+        }) {
+            switchConversation(existing.id)
+            return
+        }
         Task {
             do {
+                // Backend dependency: ChatCreateConversationRequest does not yet accept
+                // simulation context (feedback summary, run ID) to seed the Stitch opener.
+                // When the backend adds that field, pass it here so the opening message
+                // is grounded in the actual run rather than starting a generic thread.
                 let created = try await service.createConversation(
                     simulationID: simulation.id,
                     request: ChatCreateConversationRequest(conversationType: "simulated_feedback"),

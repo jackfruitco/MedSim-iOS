@@ -73,7 +73,7 @@ enum ChatToolsSection: String, CaseIterable {
         case .patientResults:
             "Patient Results"
         case .simulationFeedback:
-            "Simulation Feedback"
+            "Feedback"
         case .simulationMetadata:
             "Simulation Metadata"
         case .requestLabs:
@@ -84,9 +84,9 @@ enum ChatToolsSection: String, CaseIterable {
     func defaultExpanded(for mode: ChatRunLayoutMode) -> Bool {
         switch mode {
         case .padWorkspace:
-            true
+            self != .activity
         case .widePhoneMessenger:
-            self == .activity || self == .patientResults || self == .requestLabs
+            self == .patientResults || self == .requestLabs
         case .compactMessenger:
             self == .requestLabs
         }
@@ -194,9 +194,16 @@ enum ChatToolValueFormatter {
     }
 }
 
+enum ChatFeedbackKind: Equatable {
+    case boolTrue // green checkmark.square.fill
+    case boolFalse // red x.square.fill
+    case partial // yellow exclamationmark.square.fill
+    case text(String)
+}
+
 struct ChatFeedbackField: Equatable {
     let label: String
-    let value: String
+    let kind: ChatFeedbackKind
 }
 
 enum ChatFeedbackPresentation {
@@ -235,18 +242,72 @@ enum ChatFeedbackPresentation {
         "hotwash_next_steps",
     ]
 
+    /// Converts a raw feedback key to a human-readable label.
+    /// Checks the static label map first; falls back to stripping the `hotwash_`
+    /// prefix and converting snake_case to Title Case.
+    static func humanizedLabel(for key: String) -> String {
+        if let mapped = labelMap[key] { return mapped }
+        var normalized = key
+        if normalized.hasPrefix("hotwash_") {
+            normalized = String(normalized.dropFirst("hotwash_".count))
+        }
+        return normalized
+            .split(separator: "_")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+    }
+
+    /// Classifies a JSONValue into a renderable kind.
+    ///
+    /// Boolish mapping is intentionally conservative:
+    /// - Native JSON booleans (`JSONValue.bool`) are always boolish — this is the primary
+    ///   mechanism the backend uses for true/false feedback fields.
+    /// - String "yes" / "no" are accepted as the most universal natural-language equivalents.
+    /// - String "partial" is accepted for partial-credit outcomes.
+    ///
+    /// Speculative synonyms ("correct", "pass", "incorrect", "fail") have been deliberately
+    /// excluded because they are not verified as values the backend actually sends in feedback
+    /// payloads. Any unknown string renders as plain text, which is safe and non-lossy.
+    ///
+    /// Backend dependency: verify whether additional string boolish values exist in the
+    /// SimWorks feedback schema and extend this list only when confirmed.
+    static func detectKind(from value: JSONValue) -> ChatFeedbackKind? {
+        switch value {
+        case let .bool(flag):
+            return flag ? .boolTrue : .boolFalse
+        case let .string(text):
+            switch text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+            case "yes":
+                return .boolTrue
+            case "no":
+                return .boolFalse
+            case "partial":
+                return .partial
+            default:
+                return text.isEmpty ? nil : .text(text)
+            }
+        case let .number(n):
+            let rendered = ChatToolValueFormatter.render(.number(n))
+            return .text(rendered)
+        case let .array(arr):
+            let rendered = arr.map { ChatToolValueFormatter.render($0) }.joined(separator: ", ")
+            return rendered.isEmpty ? nil : .text(rendered)
+        case let .object(dict):
+            let rendered = ChatToolValueFormatter.render(.object(dict))
+            return rendered.isEmpty ? nil : .text(rendered)
+        case .null:
+            return nil
+        }
+    }
+
     static func fields(from row: [String: JSONValue]) -> [ChatFeedbackField] {
         orderedVisibleKeys(in: row)
             .filter { hiddenKeys.contains($0) == false }
             .compactMap { key in
-                let rendered = ChatToolValueFormatter.render(row[key] ?? .null)
-                guard rendered != "-", rendered.isEmpty == false else {
+                guard let value = row[key], let kind = detectKind(from: value) else {
                     return nil
                 }
-                return ChatFeedbackField(
-                    label: labelMap[key] ?? ChatToolValueFormatter.friendlyLabel(for: key),
-                    value: rendered,
-                )
+                return ChatFeedbackField(label: humanizedLabel(for: key), kind: kind)
             }
     }
 
