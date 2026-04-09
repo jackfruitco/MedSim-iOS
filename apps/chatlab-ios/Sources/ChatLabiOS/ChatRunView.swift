@@ -20,6 +20,7 @@ public struct ChatRunView: View {
     @State private var expandedToolSections = Set<ChatToolsSection>()
     @State private var lastToolLayoutMode: ChatRunLayoutMode?
     @State private var isKeyboardPresented = false
+    @State private var showActivityLog = false
     @FocusState private var composerIsFocused: Bool
 
     public init(
@@ -101,8 +102,11 @@ public struct ChatRunView: View {
                         if chromeMode == .standard {
                             regularFailureBanners
                         }
-                        conversationTabs(layoutMode: .padWorkspace)
-                        conversationDivider(horizontalPadding: 0)
+                        if store.conversations.count > 1 {
+                            conversationTabs(layoutMode: .padWorkspace)
+                        }
+                        Divider()
+                            .overlay(Color.secondary.opacity(0.18))
                         messageTimeline(layoutMode: .padWorkspace, chromeMode: chromeMode)
                         awaitingReplyWarning(horizontalPadding: 0)
                         typingIndicator(horizontalPadding: 0)
@@ -125,29 +129,36 @@ public struct ChatRunView: View {
                     .padding(.horizontal, horizontalInset(for: layoutMode))
                     .padding(.vertical, 24)
             } else {
-                VStack(spacing: 0) {
-                    runHeader(layoutMode: layoutMode)
-                    if chromeMode == .standard {
-                        compactFailureBanners
+                // Message timeline is the root view; header and composer are safe-area insets
+                // so content scrolls behind the translucent overlays (Messages-style).
+                messageTimeline(layoutMode: layoutMode, chromeMode: chromeMode)
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        VStack(spacing: 0) {
+                            overlayHeader(layoutMode: layoutMode)
+                            if chromeMode == .standard {
+                                compactFailureBanners
+                            }
+                            if store.conversations.count > 1 {
+                                conversationTabs(layoutMode: layoutMode)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 4)
+                            }
+                            Divider()
+                                .overlay(Color.secondary.opacity(0.18))
+                        }
+                        .background(.ultraThinMaterial)
                     }
-                    conversationTabs(layoutMode: layoutMode)
-                        .padding(.top, chromeMode == .keyboardCollapsed ? 0 : 4)
-                    conversationDivider(horizontalPadding: horizontalInset(for: layoutMode))
-                        .padding(.top, chromeMode == .keyboardCollapsed ? 1 : 3)
-                    messageTimeline(layoutMode: layoutMode, chromeMode: chromeMode)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .safeAreaInset(edge: .bottom) {
-                    VStack(spacing: 6) {
-                        awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
-                        typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                        composer(layoutMode: layoutMode)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        VStack(spacing: 6) {
+                            awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
+                            typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                            composer(layoutMode: layoutMode)
+                        }
+                        .padding(.horizontal, horizontalInset(for: layoutMode))
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+                        .background(.ultraThinMaterial)
                     }
-                    .padding(.horizontal, horizontalInset(for: layoutMode))
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-                    .background(.ultraThinMaterial)
-                }
             }
         }
     }
@@ -255,18 +266,78 @@ public struct ChatRunView: View {
         .padding(.top, 8)
     }
 
-    private func statusChip(_ text: String, systemImage: String, tint: Color) -> some View {
-        Label(text, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(tint.opacity(0.12))
-            .clipShape(Capsule())
+    // MARK: - Connection state
+
+    /// True when the WebSocket connection is degraded or lost and the learner needs to know.
+    private var isDisconnectedOrDegraded: Bool {
+        switch store.transportState {
+        case .failed, .reconnecting, .resyncing:
+            return true
+        case .connected:
+            guard let last = store.lastRealtimeSignalAt else { return false }
+            return Date().timeIntervalSince(last) > 12
+        default:
+            return false
+        }
     }
 
+    @ViewBuilder
+    private var disconnectedIndicator: some View {
+        if isDisconnectedOrDegraded {
+            let isOffline = store.transportState == .failed
+            Label(isOffline ? "Offline" : "Reconnecting",
+                  systemImage: isOffline ? "wifi.slash" : "wifi.exclamationmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isOffline ? Color.red : Color.orange)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background((isOffline ? Color.red : Color.orange).opacity(0.12))
+                .clipShape(Capsule())
+        }
+    }
+
+    // MARK: - Header
+
+    /// Compact overlay header used for phone layouts. Content scrolls behind this.
+    private func overlayHeader(layoutMode: ChatRunLayoutMode) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                patientIdentityHeader
+                    .padding(.horizontal, headerCenterPadding(for: layoutMode))
+
+                HStack(alignment: .center, spacing: 12) {
+                    backButton
+                    Spacer(minLength: 12)
+                    headerActions(layoutMode: layoutMode)
+                }
+            }
+            .padding(.horizontal, horizontalInset(for: layoutMode))
+            .padding(.top, 8)
+            .padding(.bottom, isDisconnectedOrDegraded ? 4 : 8)
+
+            if isDisconnectedOrDegraded {
+                HStack {
+                    disconnectedIndicator
+                    if store.activeConversationLocked {
+                        Label("Read Only", systemImage: "lock.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, horizontalInset(for: layoutMode))
+                .padding(.bottom, 6)
+            }
+        }
+    }
+
+    /// Fixed header for iPad padWorkspace layout (sits above the message area, not overlaid).
     private func runHeader(layoutMode: ChatRunLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             ZStack {
                 patientIdentityHeader
                     .padding(.horizontal, headerCenterPadding(for: layoutMode))
@@ -278,18 +349,20 @@ public struct ChatRunView: View {
                 }
             }
 
-            HStack(spacing: 8) {
-                statusChip(
-                    transportStatusTitle,
-                    systemImage: transportStatusSymbol,
-                    tint: transportStatusTint,
-                )
-
-                if store.activeConversationLocked {
-                    statusChip("Read Only", systemImage: "lock.fill", tint: .secondary)
+            if isDisconnectedOrDegraded || store.activeConversationLocked {
+                HStack(spacing: 8) {
+                    disconnectedIndicator
+                    if store.activeConversationLocked {
+                        Label("Read Only", systemImage: "lock.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
                 }
-
-                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, horizontalInset(for: layoutMode))
@@ -317,15 +390,9 @@ public struct ChatRunView: View {
             }
             .frame(width: 34, height: 34)
 
-            VStack(spacing: 2) {
-                Text(store.simulation.patientDisplayName)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(1)
-                Text("Chat Simulation")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            Text(store.simulation.patientDisplayName)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
     }
@@ -370,81 +437,32 @@ public struct ChatRunView: View {
         }
     }
 
-    private var transportStatusTitle: String {
-        switch store.transportState {
-        case .replaying:
-            return "Replaying History"
-        case .connected:
-            if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
-               Date().timeIntervalSince(lastRealtimeSignalAt) > 12
-            {
-                return "Checking"
-            }
-            return "Live"
-        case .reconnecting:
-            return "Recovering"
-        case .resyncing:
-            return "Resyncing"
-        case .connecting:
-            return "Connecting"
-        case .bootstrapping:
-            return "Syncing"
-        case .failed:
-            return "Offline"
-        case .idle:
-            return "Offline"
+    // MARK: - Stitch / conversation helpers
+
+    private var activeConversation: ChatConversation? {
+        store.conversations.first { $0.id == store.activeConversationID }
+    }
+
+    private var isInStitchConversation: Bool {
+        activeConversation?.conversationType.lowercased() == "simulated_feedback"
+    }
+
+    private var hasStitchConversation: Bool {
+        store.conversations.contains { $0.conversationType.lowercased() == "simulated_feedback" }
+    }
+
+    /// User-facing label for a conversation tab.
+    /// Stitch conversations use "Stitch"; patient conversations use the display name.
+    private func conversationTabLabel(for conversation: ChatConversation) -> String {
+        switch conversation.conversationType.lowercased() {
+        case "simulated_feedback":
+            return "Stitch"
+        default:
+            return conversation.displayName.isEmpty ? "Patient" : conversation.displayName
         }
     }
 
-    private var transportStatusSymbol: String {
-        switch store.transportState {
-        case .replaying:
-            "clock.arrow.trianglehead.counterclockwise.rotate.90"
-        case .connected:
-            "dot.radiowaves.left.and.right"
-        case .reconnecting:
-            "bolt.horizontal.circle"
-        case .resyncing:
-            "arrow.clockwise.icloud"
-        case .connecting:
-            "hourglass"
-        case .bootstrapping:
-            "arrow.triangle.2.circlepath"
-        case .failed:
-            "exclamationmark.triangle"
-        case .idle:
-            "wifi.slash"
-        }
-    }
-
-    private var transportStatusTint: Color {
-        switch store.transportState {
-        case .replaying:
-            return .orange
-        case .connected:
-            if let lastRealtimeSignalAt = store.lastRealtimeSignalAt,
-               Date().timeIntervalSince(lastRealtimeSignalAt) > 12
-            {
-                return .orange
-            }
-            return .green
-        case .reconnecting, .connecting, .bootstrapping:
-            return .orange
-        case .resyncing:
-            return .orange
-        case .failed:
-            return .red
-        case .idle:
-            return .secondary
-        }
-    }
-
-    private func conversationDivider(horizontalPadding: CGFloat) -> some View {
-        Rectangle()
-            .fill(Color.secondary.opacity(0.18))
-            .frame(height: 1)
-            .padding(.horizontal, horizontalPadding)
-    }
+    // MARK: - Conversation tabs
 
     private func conversationTabs(layoutMode: ChatRunLayoutMode) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -454,7 +472,7 @@ public struct ChatRunView: View {
                         store.switchConversation(conversation.id)
                     } label: {
                         HStack(spacing: 6) {
-                            Text(conversation.displayName)
+                            Text(conversationTabLabel(for: conversation))
                             if let unread = store.unreadByConversation[conversation.id], unread > 0 {
                                 Text("\(unread)")
                                     .font(.caption2.bold())
@@ -484,24 +502,29 @@ public struct ChatRunView: View {
     }
 
     private func messageTimeline(layoutMode: ChatRunLayoutMode, chromeMode: ChatRunChromeMode) -> some View {
-        VStack(spacing: 8) {
-            if store.hasMoreByConversation[store.activeConversationID ?? -1] == true {
-                Button {
-                    Task { await store.loadOlderMessages() }
-                } label: {
-                    if store.isOlderLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Load Older Messages")
-                            .frame(maxWidth: .infinity)
+        // ScrollViewReader is the root — this enables .safeAreaInset on the caller side to
+        // correctly push scroll content insets so messages start below the overlay header.
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 8) {
+                    // Load Older button lives inside the scroll so it appears at the
+                    // top of the content rather than outside the scrollable area.
+                    if store.hasMoreByConversation[store.activeConversationID ?? -1] == true {
+                        Button {
+                            Task { await store.loadOlderMessages() }
+                        } label: {
+                            if store.isOlderLoading {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                            } else {
+                                Text("Load Older Messages")
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
                     }
-                }
-                .buttonStyle(.bordered)
-            }
 
-            ScrollViewReader { proxy in
-                ScrollView {
                     HStack {
                         Spacer(minLength: 0)
                         LazyVStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 12 : 8) {
@@ -517,12 +540,12 @@ public struct ChatRunView: View {
                         Spacer(minLength: 0)
                     }
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: store.activeMessages.count) { _, _ in
-                    if let last = store.activeMessages.last?.id {
-                        withAnimation {
-                            proxy.scrollTo(last, anchor: .bottom)
-                        }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: store.activeMessages.count) { _, _ in
+                if let last = store.activeMessages.last?.id {
+                    withAnimation {
+                        proxy.scrollTo(last, anchor: .bottom)
                     }
                 }
             }
@@ -684,9 +707,6 @@ public struct ChatRunView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 14 : 12) {
                 toolsHeader(layoutMode: layoutMode)
-                toolSection(.activity, layoutMode: layoutMode) {
-                    ChatActivityRows(items: store.activityItems)
-                }
                 toolSection(.patientHistory, layoutMode: layoutMode) {
                     PatientHistoryRows(rows: toolsStore.toolData("patient_history"))
                 }
@@ -704,6 +724,8 @@ public struct ChatRunView: View {
                 toolSection(.requestLabs, layoutMode: layoutMode) {
                     requestLabsSection(layoutMode: layoutMode)
                 }
+                // Activity log is debug/staff info — hidden by default.
+                debugActivityDisclosure(layoutMode: layoutMode)
             }
             .padding(layoutMode == .padWorkspace ? 16 : 12)
         }
@@ -713,18 +735,40 @@ public struct ChatRunView: View {
         .background(Color.secondary.opacity(0.04))
     }
 
-    private func toolsHeader(layoutMode: ChatRunLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button("Continue with Stitch") {
-                store.createStitchConversationIfNeeded()
+    private func debugActivityDisclosure(layoutMode: ChatRunLayoutMode) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { showActivityLog.toggle() }
+            } label: {
+                Text(showActivityLog ? "Hide Activity Log" : "Show Activity Log")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.simulation.status == .inProgress)
+            .buttonStyle(.plain)
 
-            if layoutMode == .padWorkspace {
-                Text("Orders, patient context, and feedback stay pinned here while the chat remains readable in the detail pane.")
-                    .font(.footnote)
+            if showActivityLog {
+                toolSection(.activity, layoutMode: layoutMode) {
+                    ChatActivityRows(items: store.activityItems)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func toolsHeader(layoutMode: ChatRunLayoutMode) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isInStitchConversation {
+                // Currently in the Stitch debrief — show a clear indicator instead of a button.
+                Label("Stitch Debrief", systemImage: "bubble.left.and.text.bubble.right.fill")
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
+            } else {
+                let buttonLabel = hasStitchConversation ? "Open Stitch Debrief" : "Debrief with Stitch"
+                Button(buttonLabel) {
+                    store.createStitchConversationIfNeeded()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.simulation.status == .inProgress)
             }
         }
     }
@@ -1377,15 +1421,9 @@ private struct SimulationFeedbackRows: View {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     let fields = ChatFeedbackPresentation.fields(from: row)
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(field.label)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(field.value)
-                                    .font(.footnote)
-                            }
+                            FeedbackFieldRow(field: field)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1394,6 +1432,51 @@ private struct SimulationFeedbackRows: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
+        }
+    }
+}
+
+private struct FeedbackFieldRow: View {
+    let field: ChatFeedbackField
+
+    var body: some View {
+        switch field.kind {
+        case .boolTrue:
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "checkmark.square.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("Yes")
+                Text(field.label)
+                    .font(.footnote)
+                Spacer(minLength: 0)
+            }
+        case .boolFalse:
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "x.square.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("No")
+                Text(field.label)
+                    .font(.footnote)
+                Spacer(minLength: 0)
+            }
+        case .partial:
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "exclamationmark.square.fill")
+                    .foregroundStyle(.yellow)
+                    .accessibilityLabel("Partial")
+                Text(field.label)
+                    .font(.footnote)
+                Spacer(minLength: 0)
+            }
+        case let .text(value):
+            VStack(alignment: .leading, spacing: 2) {
+                Text(field.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.footnote)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

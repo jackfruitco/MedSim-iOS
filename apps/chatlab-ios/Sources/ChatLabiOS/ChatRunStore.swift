@@ -266,8 +266,18 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func createStitchConversationIfNeeded() {
+        // Fast path: if a Stitch conversation is already loaded locally, just switch to it.
+        // This avoids a redundant API call when the conversation already exists.
+        if let existing = conversations.first(where: {
+            $0.conversationType.lowercased() == "simulated_feedback"
+        }) {
+            switchConversation(existing.id)
+            return
+        }
         Task {
             do {
+                // TODO: backend — pass simulation context in ChatCreateConversationRequest
+                // to seed the Stitch opener with grounded feedback/summary data.
                 let created = try await service.createConversation(
                     simulationID: simulation.id,
                     request: ChatCreateConversationRequest(conversationType: "simulated_feedback"),

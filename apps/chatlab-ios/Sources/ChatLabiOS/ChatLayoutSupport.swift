@@ -73,7 +73,7 @@ enum ChatToolsSection: String, CaseIterable {
         case .patientResults:
             "Patient Results"
         case .simulationFeedback:
-            "Simulation Feedback"
+            "Feedback"
         case .simulationMetadata:
             "Simulation Metadata"
         case .requestLabs:
@@ -84,9 +84,9 @@ enum ChatToolsSection: String, CaseIterable {
     func defaultExpanded(for mode: ChatRunLayoutMode) -> Bool {
         switch mode {
         case .padWorkspace:
-            true
+            self != .activity
         case .widePhoneMessenger:
-            self == .activity || self == .patientResults || self == .requestLabs
+            self == .patientResults || self == .requestLabs
         case .compactMessenger:
             self == .requestLabs
         }
@@ -194,9 +194,16 @@ enum ChatToolValueFormatter {
     }
 }
 
+enum ChatFeedbackKind: Equatable {
+    case boolTrue   // green checkmark.square.fill
+    case boolFalse  // red x.square.fill
+    case partial    // yellow exclamationmark.square.fill
+    case text(String)
+}
+
 struct ChatFeedbackField: Equatable {
     let label: String
-    let value: String
+    let kind: ChatFeedbackKind
 }
 
 enum ChatFeedbackPresentation {
@@ -235,18 +242,61 @@ enum ChatFeedbackPresentation {
         "hotwash_next_steps",
     ]
 
+    /// Converts a raw feedback key to a human-readable label.
+    /// Checks the static label map first; falls back to stripping the `hotwash_`
+    /// prefix and converting snake_case to Title Case.
+    static func humanizedLabel(for key: String) -> String {
+        if let mapped = labelMap[key] { return mapped }
+        var normalized = key
+        if normalized.hasPrefix("hotwash_") {
+            normalized = String(normalized.dropFirst("hotwash_".count))
+        }
+        return normalized
+            .split(separator: "_")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: " ")
+    }
+
+    /// Classifies a JSONValue as a boolish kind or plain text.
+    /// Matches the actual backend contract: JSONValue.bool for native booleans,
+    /// and a set of well-known string synonyms for boolish rendering.
+    static func detectKind(from value: JSONValue) -> ChatFeedbackKind? {
+        switch value {
+        case let .bool(flag):
+            return flag ? .boolTrue : .boolFalse
+        case let .string(text):
+            switch text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+            case "true", "yes", "correct", "pass":
+                return .boolTrue
+            case "false", "no", "incorrect", "fail":
+                return .boolFalse
+            case "partial", "partial credit":
+                return .partial
+            default:
+                return text.isEmpty ? nil : .text(text)
+            }
+        case let .number(n):
+            let rendered = ChatToolValueFormatter.render(.number(n))
+            return .text(rendered)
+        case let .array(arr):
+            let rendered = arr.map { ChatToolValueFormatter.render($0) }.joined(separator: ", ")
+            return rendered.isEmpty ? nil : .text(rendered)
+        case let .object(dict):
+            let rendered = ChatToolValueFormatter.render(.object(dict))
+            return rendered.isEmpty ? nil : .text(rendered)
+        case .null:
+            return nil
+        }
+    }
+
     static func fields(from row: [String: JSONValue]) -> [ChatFeedbackField] {
         orderedVisibleKeys(in: row)
             .filter { hiddenKeys.contains($0) == false }
             .compactMap { key in
-                let rendered = ChatToolValueFormatter.render(row[key] ?? .null)
-                guard rendered != "-", rendered.isEmpty == false else {
+                guard let value = row[key], let kind = detectKind(from: value) else {
                     return nil
                 }
-                return ChatFeedbackField(
-                    label: labelMap[key] ?? ChatToolValueFormatter.friendlyLabel(for: key),
-                    value: rendered,
-                )
+                return ChatFeedbackField(label: humanizedLabel(for: key), kind: kind)
             }
     }
 
