@@ -1,33 +1,33 @@
 import Foundation
 import SharedModels
 
-struct ChatPatientResult: Codable, Equatable, Sendable {
-    let rawRow: [String: JSONValue]
+public struct ChatPatientResult: Codable, Equatable, Sendable {
+    public let rawRow: [String: JSONValue]
 
     init(rawRow: [String: JSONValue]) {
         self.rawRow = rawRow
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         rawRow = try container.decode([String: JSONValue].self)
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawRow)
     }
 
-    var id: JSONValue? { rawRow["id"] }
-    var resultName: String? { rawRow.stringValue(forKey: "result_name") }
-    var panelName: String? { rawRow.nonEmptyString(forKey: "panel_name") }
-    var value: JSONValue? { rawRow["value"] }
-    var unit: String? { rawRow.nonEmptyString(forKey: "unit") }
-    var referenceRangeLow: JSONValue? { rawRow["reference_range_low"] }
-    var referenceRangeHigh: JSONValue? { rawRow["reference_range_high"] }
-    var flag: String? { rawRow.nonEmptyString(forKey: "flag") }
-    var attribute: String? { rawRow.nonEmptyString(forKey: "attribute") }
-    var type: String? { rawRow.nonEmptyString(forKey: "type") }
+    public var id: JSONValue? { rawRow["id"] }
+    public var resultName: String? { rawRow.stringValue(forKey: "result_name") }
+    public var panelName: String? { rawRow.nonEmptyString(forKey: "panel_name") }
+    public var value: JSONValue? { rawRow["value"] }
+    public var unit: String? { rawRow.nonEmptyString(forKey: "unit") }
+    public var referenceRangeLow: JSONValue? { rawRow["reference_range_low"] }
+    public var referenceRangeHigh: JSONValue? { rawRow["reference_range_high"] }
+    public var flag: String? { rawRow.nonEmptyString(forKey: "flag") }
+    public var attribute: String? { rawRow.nonEmptyString(forKey: "attribute") }
+    public var type: String? { rawRow.nonEmptyString(forKey: "type") }
 
     var displayName: String {
         let trimmed = resultName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
