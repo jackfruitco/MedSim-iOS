@@ -1,4 +1,5 @@
 @testable import ChatLabiOS
+import SharedModels
 import SwiftUI
 import XCTest
 
@@ -93,5 +94,54 @@ final class ChatLayoutSupportTests: XCTestCase {
         } else {
             XCTFail("Expected .text kind for areas for improvement")
         }
+    }
+
+    func testPatientHistoryLabelPrettificationUsesOverridesAndDropsNoisySuffixes() {
+        XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "symptom_onset"), "Symptom onset")
+        XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "urinary_frequency_now"), "Urinary frequency")
+        XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "pain_location"), "Pain location")
+    }
+
+    func testPatientHistoryItemRemovesHistoryPrefixAndAvoidsDuplicatedTiming() {
+        let item = ChatPatientHistoryPresentation.item(from: [
+            "summary": .string("History of symptom_onset (ongoing, since morning)"),
+            "value": .string(" since around breakfast (same day) "),
+        ])
+
+        XCTAssertEqual(item?.displayLabel, "Symptom onset")
+        XCTAssertNil(item?.displayQualifier)
+        XCTAssertEqual(item?.displayText, "since around breakfast")
+        XCTAssertFalse(item?.titleText?.contains("History of") ?? false)
+    }
+
+    func testPatientHistoryMetadataNormalizationAvoidsMachineishTimingText() {
+        let item = ChatPatientHistoryPresentation.item(from: [
+            "summary": .string("History of urinary_frequency_now (on going, for since morning)"),
+        ])
+
+        XCTAssertEqual(item?.displayLabel, "Urinary frequency")
+        XCTAssertNil(item?.displayQualifier)
+        XCTAssertEqual(item?.displayText, "ongoing since this morning")
+        XCTAssertFalse(item?.displayText.contains("for since") ?? false)
+        XCTAssertFalse(item?.displayText.contains("on going") ?? false)
+    }
+
+    func testPatientHistoryRendersLabelAndNarrativeWhenOnlyStructuredFieldsExist() {
+        let item = ChatPatientHistoryPresentation.item(from: [
+            "key": .string("pain_location"),
+            "value": .string("lower abdomen"),
+        ])
+
+        XCTAssertEqual(item?.displayLabel, "Pain location")
+        XCTAssertEqual(item?.displayText, "lower abdomen")
+    }
+
+    func testPatientHistoryFallsBackGracefullyWhenLabelIsMissing() {
+        let item = ChatPatientHistoryPresentation.item(from: [
+            "value": .string("needing to pee more often with lower belly discomfort"),
+        ])
+
+        XCTAssertNil(item?.displayLabel)
+        XCTAssertEqual(item?.displayText, "needing to pee more often with lower belly discomfort")
     }
 }

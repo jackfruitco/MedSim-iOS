@@ -1385,20 +1385,23 @@ private struct PatientHistoryRows: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let summary = row["summary"] {
-                            Text(ChatToolValueFormatter.render(summary))
-                                .font(.subheadline.weight(.semibold))
+                    if let item = ChatPatientHistoryPresentation.item(from: row) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let title = item.titleText {
+                                Text(title)
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            if !item.displayText.isEmpty {
+                                Text(item.displayText)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        if let value = row["value"] {
-                            Text(ChatToolValueFormatter.render(value))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    .padding(10)
-                    .background(Color.secondary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
         }
