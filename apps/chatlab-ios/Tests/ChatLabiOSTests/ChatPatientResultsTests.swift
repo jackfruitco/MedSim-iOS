@@ -281,9 +281,9 @@ final class ChatPatientResultsTests: XCTestCase {
     private func hasNestedValue(_ result: ChatPatientResult) -> Bool {
         switch result.value {
         case .object, .array:
-            return true
+            true
         case .string, .number, .bool, .null, nil:
-            return false
+            false
         }
     }
 }

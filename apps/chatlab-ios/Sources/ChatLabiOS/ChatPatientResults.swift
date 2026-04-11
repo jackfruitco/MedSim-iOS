@@ -18,16 +18,45 @@ public struct ChatPatientResult: Codable, Equatable, Sendable {
         try container.encode(rawRow)
     }
 
-    public var id: JSONValue? { rawRow["id"] }
-    public var resultName: String? { rawRow.stringValue(forKey: "result_name") }
-    public var panelName: String? { rawRow.nonEmptyString(forKey: "panel_name") }
-    public var value: JSONValue? { rawRow["value"] }
-    public var unit: String? { rawRow.nonEmptyString(forKey: "unit") }
-    public var referenceRangeLow: JSONValue? { rawRow["reference_range_low"] }
-    public var referenceRangeHigh: JSONValue? { rawRow["reference_range_high"] }
-    public var flag: String? { rawRow.nonEmptyString(forKey: "flag") }
-    public var attribute: String? { rawRow.nonEmptyString(forKey: "attribute") }
-    public var type: String? { rawRow.nonEmptyString(forKey: "type") }
+    public var id: JSONValue? {
+        rawRow["id"]
+    }
+
+    public var resultName: String? {
+        rawRow.stringValue(forKey: "result_name")
+    }
+
+    public var panelName: String? {
+        rawRow.nonEmptyString(forKey: "panel_name")
+    }
+
+    public var value: JSONValue? {
+        rawRow["value"]
+    }
+
+    public var unit: String? {
+        rawRow.nonEmptyString(forKey: "unit")
+    }
+
+    public var referenceRangeLow: JSONValue? {
+        rawRow["reference_range_low"]
+    }
+
+    public var referenceRangeHigh: JSONValue? {
+        rawRow["reference_range_high"]
+    }
+
+    public var flag: String? {
+        rawRow.nonEmptyString(forKey: "flag")
+    }
+
+    public var attribute: String? {
+        rawRow.nonEmptyString(forKey: "attribute")
+    }
+
+    public var type: String? {
+        rawRow.nonEmptyString(forKey: "type")
+    }
 
     var displayName: String {
         let trimmed = resultName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -44,7 +73,7 @@ public struct ChatPatientResult: Codable, Equatable, Sendable {
     }
 }
 
-struct ChatPatientResultSection: Equatable, Sendable {
+struct ChatPatientResultSection: Equatable {
     let panelName: String?
     var rows: [ChatPatientResult]
 }
@@ -77,7 +106,7 @@ extension ChatToolState {
     }
 }
 
-private extension Dictionary where Key == String, Value == JSONValue {
+private extension [String: JSONValue] {
     func stringValue(forKey key: String) -> String? {
         guard case let .string(text) = self[key] else {
             return nil
