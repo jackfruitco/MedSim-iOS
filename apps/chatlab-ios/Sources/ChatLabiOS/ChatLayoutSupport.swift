@@ -202,27 +202,19 @@ struct ChatPatientHistoryItem: Equatable {
     var titleText: String? {
         switch (displayLabel, displayQualifier) {
         case let (label?, qualifier?) where !qualifier.isEmpty:
-            return "\(label) — \(qualifier)"
+            "\(label) — \(qualifier)"
         case let (label?, _):
-            return label
+            label
         default:
-            return nil
+            nil
         }
     }
 }
 
 enum ChatPatientHistoryPresentation {
-    private static let labelOverrides: [String: String] = [
-        "symptom_onset": "Symptom onset",
-        "urinary_frequency_now": "Urinary frequency",
-        "pain_location": "Pain location",
-        "pain_severity": "Pain severity",
-        "associated_symptoms": "Associated symptoms",
-    ]
-
-    private static let noisyKeySuffixes = [
-        "_now",
-        "_current",
+    private static let noisyTrailingLabelTokens: Set<String> = [
+        "now",
+        "current",
     ]
 
     static func item(from row: [String: JSONValue]) -> ChatPatientHistoryItem? {
@@ -244,13 +236,12 @@ enum ChatPatientHistoryPresentation {
         )
 
         let displayQualifier = shouldDisplayQualifier(qualifierInfo, alongside: narrative) ? qualifierInfo.text : nil
-        let displayText: String
-        if let narrative, !narrative.isEmpty {
-            displayText = narrative
+        let displayText = if let narrative, !narrative.isEmpty {
+            narrative
         } else if let qualifier = qualifierInfo.text, !qualifier.isEmpty {
-            displayText = qualifier
+            qualifier
         } else {
-            displayText = ""
+            ""
         }
 
         guard label != nil || !displayText.isEmpty else {
@@ -272,15 +263,7 @@ enum ChatPatientHistoryPresentation {
             return nil
         }
 
-        if let override = labelOverrides[cleanedKey] {
-            return override
-        }
-
         let normalizedKey = stripNoisySuffixes(from: cleanedKey)
-        if let override = labelOverrides[normalizedKey] {
-            return override
-        }
-
         let tokens = normalizedKey
             .split(separator: "_")
             .map(String.init)
@@ -525,12 +508,16 @@ enum ChatPatientHistoryPresentation {
     }
 
     private static func stripNoisySuffixes(from key: String) -> String {
-        var normalizedKey = key
-        for suffix in noisyKeySuffixes where normalizedKey.hasSuffix(suffix) {
-            normalizedKey.removeLast(suffix.count)
-            break
+        var tokens = key
+            .split(separator: "_")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        while let lastToken = tokens.last, noisyTrailingLabelTokens.contains(lastToken) {
+            tokens.removeLast()
         }
-        return normalizedKey.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+
+        return tokens.joined(separator: "_")
     }
 
     private static func formattedHistoryLabelToken(_ token: String, isFirst: Bool) -> String {

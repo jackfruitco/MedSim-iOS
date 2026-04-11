@@ -96,10 +96,11 @@ final class ChatLayoutSupportTests: XCTestCase {
         }
     }
 
-    func testPatientHistoryLabelPrettificationUsesOverridesAndDropsNoisySuffixes() {
+    func testPatientHistoryLabelPrettificationUsesGenericNormalization() {
         XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "symptom_onset"), "Symptom onset")
         XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "urinary_frequency_now"), "Urinary frequency")
         XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "pain_location"), "Pain location")
+        XCTAssertEqual(ChatPatientHistoryPresentation.displayLabel(for: "chief_complaint_current"), "Chief complaint")
     }
 
     func testPatientHistoryItemRemovesHistoryPrefixAndAvoidsDuplicatedTiming() {
