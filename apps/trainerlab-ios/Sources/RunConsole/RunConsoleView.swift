@@ -230,12 +230,12 @@ public struct RunConsoleView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            } else if layoutMode == .regular {
-                HStack(alignment: .top, spacing: regularVitalsMetrics.vitalsRowSpacing) {
-                    ForEach(orderedVitals) { vital in
-                        regularVitalCell(vital, metrics: regularVitalsMetrics)
-                    }
+
+                if layoutMode == .regular {
+                    regularAVPUInlineControl(metrics: regularVitalsMetrics)
                 }
+            } else if layoutMode == .regular {
+                regularVitalsContent(metrics: regularVitalsMetrics)
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
@@ -249,10 +249,10 @@ public struct RunConsoleView: View {
 
             if layoutMode == .compact {
                 Divider()
-                    .overlay(TrainerLabTheme.tacticalBorder.opacity(0.85))
-            }
+                    .overlay(TrainerLabTheme.tacticalBorder.opacity(0.3))
 
-            avpuControlSection(layoutMode: layoutMode, compactMetrics: compactMetrics)
+                avpuControlSection(layoutMode: layoutMode, compactMetrics: compactMetrics)
+            }
         }
         .modifier(
             RunConsoleCardModifier(
@@ -260,6 +260,7 @@ public struct RunConsoleView: View {
                 padding: layoutMode == .compact ? compactMetrics.cardPadding : regularVitalsMetrics.cardPadding,
             ),
         )
+        .frame(maxHeight: layoutMode == .regular ? regularVitalsMetrics.maxHeight : nil, alignment: .top)
         .fixedSize(horizontal: false, vertical: layoutMode == .regular)
     }
 
@@ -2322,19 +2323,34 @@ public struct RunConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func regularAVPUInlineControl(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+    private func regularVitalsContent(metrics: RunConsoleRegularVitalsMetrics) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: metrics.avpuSpacing) {
-                avpuInlineLabel
-                Spacer(minLength: 0)
-                regularAVPUChipRow(metrics: metrics)
+            HStack(alignment: .center, spacing: metrics.inlineGroupSpacing) {
+                regularVitalsRow(metrics: metrics)
+                regularAVPUInlineControl(metrics: metrics)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                avpuInlineLabel
-                regularAVPUChipRow(metrics: metrics)
+            VStack(alignment: .leading, spacing: metrics.fallbackRowSpacing) {
+                regularVitalsRow(metrics: metrics)
+                regularAVPUInlineControl(metrics: metrics)
             }
         }
+    }
+
+    private func regularVitalsRow(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        HStack(alignment: .top, spacing: metrics.vitalsRowSpacing) {
+            ForEach(orderedVitals) { vital in
+                regularVitalCell(vital, metrics: metrics)
+            }
+        }
+    }
+
+    private func regularAVPUInlineControl(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        HStack(alignment: .center, spacing: metrics.avpuSpacing) {
+            avpuInlineLabel
+            regularAVPUChipRow(metrics: metrics)
+        }
+        .fixedSize(horizontal: true, vertical: true)
     }
 
     private var avpuInlineLabel: some View {
@@ -2360,10 +2376,10 @@ public struct RunConsoleView: View {
             selectedAVPU = option.state
             store.adjustAVPU(option.state)
         } label: {
-            Text(option.shortLabel)
+            Text(option.fullLabel)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(minWidth: 28)
+                .lineLimit(1)
                 .padding(.horizontal, metrics.avpuChipHorizontalPadding)
                 .frame(minHeight: metrics.avpuChipMinHeight)
                 .background(avpuColor(option.state))
@@ -2387,10 +2403,10 @@ public struct RunConsoleView: View {
                 .font(.caption.weight(.semibold))
 
             LazyVGrid(columns: compactAVPUColumns(for: compactMetrics), spacing: compactMetrics.gridSpacing) {
-                avpuButton(.alert, label: "Alert", compact: true, compactMetrics: compactMetrics)
-                avpuButton(.verbal, label: "Verbal", compact: true, compactMetrics: compactMetrics)
-                avpuButton(.pain, label: "Pain", compact: true, compactMetrics: compactMetrics)
-                avpuButton(.unalert, label: "Unalert", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.alert, label: "A", accessibilityLabel: "Alert", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.verbal, label: "V", accessibilityLabel: "Verbal", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.pain, label: "P", accessibilityLabel: "Pain", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.unalert, label: "U", accessibilityLabel: "Unalert", compact: true, compactMetrics: compactMetrics)
             }
         }
     }

@@ -328,6 +328,8 @@ struct RunConsoleCompactMetrics {
 struct RunConsoleRegularVitalsMetrics {
     let sectionSpacing: CGFloat
     let cardPadding: CGFloat
+    let inlineGroupSpacing: CGFloat
+    let fallbackRowSpacing: CGFloat
     let vitalsRowSpacing: CGFloat
     let vitalCellSpacing: CGFloat
     let vitalValueFont: Font
@@ -336,18 +338,22 @@ struct RunConsoleRegularVitalsMetrics {
     let avpuChipSpacing: CGFloat
     let avpuChipHorizontalPadding: CGFloat
     let avpuChipMinHeight: CGFloat
+    let maxHeight: CGFloat
 
     static let standard = Self(
-        sectionSpacing: 6,
-        cardPadding: 6,
-        vitalsRowSpacing: 6,
-        vitalCellSpacing: 4,
+        sectionSpacing: 5,
+        cardPadding: 5,
+        inlineGroupSpacing: 10,
+        fallbackRowSpacing: 5,
+        vitalsRowSpacing: 5,
+        vitalCellSpacing: 3,
         vitalValueFont: .footnote.monospacedDigit(),
-        vitalValueVerticalPadding: 4,
-        avpuSpacing: 8,
-        avpuChipSpacing: 6,
-        avpuChipHorizontalPadding: 10,
-        avpuChipMinHeight: 30,
+        vitalValueVerticalPadding: 3,
+        avpuSpacing: 6,
+        avpuChipSpacing: 5,
+        avpuChipHorizontalPadding: 8,
+        avpuChipMinHeight: 28,
+        maxHeight: 118,
     )
 }
 
