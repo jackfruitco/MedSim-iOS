@@ -474,12 +474,6 @@ private struct PatientPaneAccordionState: Equatable {
         }
     }
 
-    mutating func open(_ section: PatientPaneSection, availableSections: [PatientPaneSection]) {
-        normalize(availableSections: availableSections)
-        guard availableSections.contains(section) else { return }
-        primaryOpenSection = section
-    }
-
     mutating func toggle(_ section: PatientPaneSection, availableSections: [PatientPaneSection]) {
         normalize(availableSections: availableSections)
         guard availableSections.contains(section) else { return }

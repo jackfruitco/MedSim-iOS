@@ -159,7 +159,7 @@ public struct RunConsoleView: View {
 
             HStack(alignment: .top, spacing: 10) {
                 leftPatientPane(layoutMode: .regular, compactMetrics: .standard)
-                    .frame(minWidth: 420, idealWidth: 440, maxWidth: 520)
+                    .frame(minWidth: 420, idealWidth: 440, maxWidth: 520, maxHeight: .infinity, alignment: .top)
 
                 ScrollView {
                     VStack(spacing: 10) {
@@ -452,12 +452,14 @@ public struct RunConsoleView: View {
                             .padding(.trailing, 2)
                     }
                     .scrollIndicators(.hidden)
+                    .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
                 }
             }
         }
         .trainerCardStyle()
+        .frame(maxHeight: layoutMode == .regular ? .infinity : nil, alignment: .top)
     }
 
     private func patientPaneContent(
@@ -2088,32 +2090,6 @@ public struct RunConsoleView: View {
         }
     }
 
-    private var groupedRecommendations: [(priority: String, items: [RecommendedInterventionItem])] {
-        let grouped = Dictionary(grouping: store.state.recommendedInterventions) { recommendation in
-            recommendation.priority?.capitalized ?? "Unprioritized"
-        }
-        return grouped
-            .map { (priority: $0.key, items: $0.value.sorted { $0.title < $1.title }) }
-            .sorted { lhs, rhs in
-                recommendationPriorityRank(lhs.priority) < recommendationPriorityRank(rhs.priority)
-            }
-    }
-
-    private func recommendationPriorityRank(_ priority: String) -> Int {
-        switch priority.lowercased() {
-        case "critical": 0
-        case "high": 1
-        case "medium", "moderate": 2
-        case "low": 3
-        default: 4
-        }
-    }
-
-    private func linkedProblemLabel(for recommendation: RecommendedInterventionItem) -> String? {
-        guard let problemID = recommendation.targetProblemID else { return nil }
-        return store.state.problemAnnotations.first(where: { $0.problemID == problemID })?.label
-    }
-
     private var operationalItems: [EventEnvelope] {
         var seen = Set<String>()
         var result: [EventEnvelope] = []
@@ -2183,10 +2159,6 @@ public struct RunConsoleView: View {
 
     private func compactAVPUColumns(for compactMetrics: RunConsoleCompactMetrics) -> [GridItem] {
         [GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing), GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing)]
-    }
-
-    private var compactActionColumns: [GridItem] {
-        [GridItem(.flexible(minimum: 120), spacing: 8), GridItem(.flexible(minimum: 120), spacing: 8)]
     }
 
     // MARK: - Button helpers
