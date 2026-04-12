@@ -610,7 +610,7 @@ struct PatientDiagramPanel: View {
                     trailingContent: {
                         countBadge(!allCauses.isEmpty ? allCauses.count : injuries.count)
                     },
-                ) {
+                    content: {
                     VStack(spacing: rowSpacing) {
                         if !allCauses.isEmpty {
                             ForEach(Array(allCauses.enumerated()), id: \.offset) { _, cause in
@@ -622,7 +622,7 @@ struct PatientDiagramPanel: View {
                             }
                         }
                     }
-                }
+                })
             }
 
             if availableSections.contains(.problems) {
@@ -641,13 +641,13 @@ struct PatientDiagramPanel: View {
                             }
                         }
                     },
-                ) {
+                    content: {
                     VStack(spacing: rowSpacing) {
                         ForEach(problems) { problem in
                             problemRow(problem)
                         }
                     }
-                }
+                })
             }
 
             if availableSections.contains(.pulses) {
@@ -658,13 +658,13 @@ struct PatientDiagramPanel: View {
                     trailingContent: {
                         countBadge("\(pulses.filter(\.present).count)/\(pulses.count)")
                     },
-                ) {
+                    content: {
                     VStack(spacing: rowSpacing) {
                         ForEach(pulses) { pulse in
                             pulseRow(pulse)
                         }
                     }
-                }
+                })
             }
 
             if availableSections.contains(.recommendations) {
@@ -675,9 +675,9 @@ struct PatientDiagramPanel: View {
                     trailingContent: {
                         countBadge(recommendations.count)
                     },
-                ) {
+                    content: {
                     recommendationsSectionContent
-                }
+                })
             }
         }
     }
