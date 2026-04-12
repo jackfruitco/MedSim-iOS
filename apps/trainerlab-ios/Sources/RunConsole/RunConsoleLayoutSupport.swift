@@ -1327,7 +1327,7 @@ struct PatientDiagramPanel: View {
 
     private var groupedRecommendations: [(priority: String, items: [RecommendedInterventionItem])] {
         let grouped = Dictionary(grouping: recommendations) { recommendation in
-            recommendation.priority?.capitalized ?? "Unprioritized"
+            recommendation.priority.map(String.init) ?? "Unprioritized"
         }
         return grouped
             .map { (priority: $0.key, items: $0.value.sorted { $0.title < $1.title }) }
@@ -1337,13 +1337,7 @@ struct PatientDiagramPanel: View {
     }
 
     private func recommendationPriorityRank(_ priority: String) -> Int {
-        switch priority.lowercased() {
-        case "critical": 0
-        case "high": 1
-        case "medium", "moderate": 2
-        case "low": 3
-        default: 4
-        }
+        Int(priority) ?? .max
     }
 
     private func linkedProblemLabel(for recommendation: RecommendedInterventionItem) -> String? {

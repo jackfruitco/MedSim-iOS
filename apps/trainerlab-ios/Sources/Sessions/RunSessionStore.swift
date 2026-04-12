@@ -32,6 +32,9 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
+    /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
+    /// Exposed for debug surfaces and diagnostic tooling.
+    @Published public private(set) var lastSnapshotRefreshError: Error?
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
@@ -42,6 +45,9 @@ public final class RunSessionStore: ObservableObject {
     private var runtimeRefreshTask: Task<Void, Never>?
     private var lastAppliedLifecycleRevision: Int?
     private var pendingRuntimeRefresh = false
+    /// Highest `stateRevision` successfully applied from a snapshot.
+    /// Used to reject stale snapshots that arrive out of order.
+    private var appliedSnapshotRevision: Int = -1
 
     private let runtimeRefreshDebounceNanoseconds: UInt64 = 150_000_000
     private let maxStoredTimelineEvents = 400
@@ -78,6 +84,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     public func bind(session: TrainerSessionDTO) {
+        if state.session?.simulationID != session.simulationID {
+            resetSnapshotState()
+        }
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
         conflictError = nil
         seedHydrationFromSessionRuntimeState(session)
@@ -105,6 +114,9 @@ public final class RunSessionStore: ObservableObject {
                 let outcome = await handleIncomingEvent(event)
                 if outcome.shouldRehydrateSeededSession {
                     await refreshSession()
+                    // Always reload the authoritative snapshot when seeding completes so
+                    // all panels hydrate immediately, not after the debounced refresh window.
+                    await loadRuntimeState(reason: "seeded")
                     await loadAnnotations()
                 }
                 if outcome.shouldRefreshRuntimeState {
@@ -175,6 +187,37 @@ public final class RunSessionStore: ObservableObject {
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
         realtimeClient.disconnect()
+        resetSnapshotState()
+    }
+
+    /// Clears all snapshot-authoritative panel state and resets revision guards.
+    ///
+    /// Call this before binding to a different simulation or after stopping the console
+    /// so that state from one simulation cannot bleed into another, and so that the
+    /// stale-revision guard does not reject valid lower revisions for a new simulation.
+    private func resetSnapshotState() {
+        runtimeState = nil
+        scenarioBrief = nil
+        controlPlaneDebug = nil
+        hydratedCauses = []
+        hydratedProblems = []
+        assessmentFindings = []
+        diagnosticResults = []
+        resources = []
+        disposition = nil
+        patientStatus = .init()
+        aiInstructorIntent = nil
+        aiInstructorNotes = []
+        lastSnapshotRefreshError = nil
+        debriefAnnotations = []
+        state.causeAnnotations = []
+        state.problemAnnotations = []
+        state.recommendedInterventions = []
+        state.interventionAnnotations = []
+        state.pulseAnnotations = []
+        state.vitals = []
+        appliedSnapshotRevision = -1
+        lastAppliedLifecycleRevision = nil
     }
 
     /// Fire-and-forget: loads the intervention and injury dictionaries from the API.
@@ -211,12 +254,14 @@ public final class RunSessionStore: ObservableObject {
             logger.info(
                 "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.runtimeSnapshot.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
             )
+            lastSnapshotRefreshError = nil
             applyRuntimeState(rs, source: reason)
             return rs
         } catch {
             logger.error(
-                "Runtime state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error.localizedDescription, privacy: .public)",
+                "Runtime state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error, privacy: .public)",
             )
+            lastSnapshotRefreshError = error
             return nil
         }
     }
@@ -273,7 +318,10 @@ public final class RunSessionStore: ObservableObject {
         let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
         applyHistoricalEvents(historicalEvents)
 
-        let eventCursor = state.eventCursor
+        // Prefer the timeline cursor (last historical event) to avoid duplicate delivery.
+        // Fall back to the snapshot's latestEventCursor when no historical events exist,
+        // so we don't restart the stream from the very beginning unnecessarily.
+        let eventCursor = state.eventCursor ?? runtimeState?.runtimeSnapshot.latestEventCursor
         logger.info(
             "Connecting realtime stream for simulation \(session.simulationID, privacy: .public) from cursor \(eventCursor ?? "nil", privacy: .public)",
         )
@@ -1477,43 +1525,23 @@ public final class RunSessionStore: ObservableObject {
         )
     }
 
+    // MARK: - Live event projection (guard-only; canonical panel state comes from snapshot)
+
+    /// Panel state (scenarioBrief, vitals, annotations, assessmentFindings, etc.) is driven
+    /// exclusively by applyRuntimeState() / the authoritative /state/ snapshot.
+    /// Events that arrive via SSE or polling trigger a debounced snapshot refresh via
+    /// scheduleRuntimeRefresh(), and the seeded lifecycle path forces an immediate refresh.
+    ///
+    /// The capture helpers below (captureVitalRange, captureInjuryAnnotation, …) are
+    /// retained as overlay helpers for future optimistic-UI work but are NOT called from
+    /// the main event-handling path.
     private func applyLiveEventProjection(from event: EventEnvelope) {
         switch event.eventType {
         case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
             Task { await refreshGuardState() }
-
-        case SimulationEventType.simulationBriefCreated, SimulationEventType.simulationBriefUpdated:
-            if let decoded = try? event.payload.decodedPayload(as: ScenarioBriefOut.self) {
-                scenarioBrief = decoded
-            }
-
-        case SimulationEventType.patientAssessmentFindingCreated, SimulationEventType.patientAssessmentFindingUpdated:
-            upsertAssessmentFinding(from: event)
-
-        case SimulationEventType.patientAssessmentFindingRemoved:
-            removeAssessmentFinding(from: event)
-
-        case SimulationEventType.patientDiagnosticResultCreated, SimulationEventType.patientDiagnosticResultUpdated:
-            upsertDiagnosticResult(from: event)
-
-        case SimulationEventType.patientResourceUpdated:
-            upsertResourceState(from: event)
-
-        case SimulationEventType.patientDispositionUpdated:
-            if let decoded = try? event.payload.decodedPayload(as: RuntimeDispositionState.self) {
-                disposition = decoded
-            }
-
         default:
             break
         }
-
-        captureVitalRange(from: event)
-        captureInjuryAnnotation(from: event)
-        captureProblemAnnotation(from: event)
-        captureRecommendedIntervention(from: event)
-        captureInterventionAnnotation(from: event)
-        capturePulseAnnotation(from: event)
     }
 
     private func upsertAssessmentFinding(from event: EventEnvelope) {
@@ -2047,7 +2075,7 @@ public final class RunSessionStore: ObservableObject {
             normalizedKind: jsonString(event.payload["normalized_kind"]),
             normalizedCode: jsonString(event.payload["normalized_code"]),
             rationale: jsonString(event.payload["rationale"]),
-            priority: jsonString(event.payload["priority"]),
+            priority: jsonInt(event.payload["priority"]),
             siteCode: jsonString(event.payload["site_code"]),
             siteLabel: jsonString(event.payload["site_label"]),
             warnings: jsonStringArray(event.payload["warnings"]),
@@ -2265,9 +2293,19 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func applyRuntimeState(_ runtimeState: TrainerRestViewModelDTO, source: String) {
+        let newRevision = runtimeState.runtimeSnapshot.stateRevision
+        let currentRevision = appliedSnapshotRevision
+        guard newRevision >= currentRevision else {
+            logger.info(
+                "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(currentRevision, privacy: .public), source=\(source, privacy: .public))",
+            )
+            return
+        }
+        appliedSnapshotRevision = newRevision
+
         let snapshot = runtimeState.scenarioSnapshot
         logger.info(
-            "Applying runtime state for simulation \(runtimeState.simulationID, privacy: .public) from \(source, privacy: .public): revision=\(runtimeState.runtimeSnapshot.stateRevision, privacy: .public)",
+            "Applying runtime state for simulation \(runtimeState.simulationID, privacy: .public) from \(source, privacy: .public): revision=\(newRevision, privacy: .public)",
         )
 
         self.runtimeState = runtimeState
@@ -2326,6 +2364,12 @@ public final class RunSessionStore: ObservableObject {
             }
         }
     }
+
+    // MARK: - Derived mapping from snapshot
+
+    // These are pure functions that convert authoritative DTO types into UI-facing annotation
+    // and state types. They are called exclusively from applyRuntimeState() and are the single
+    // place where snapshot data is translated into rendered panel state.
 
     private func makeCauseAnnotation(
         from cause: RuntimeCauseState,

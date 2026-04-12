@@ -191,6 +191,11 @@ jobs:
             -scheme "$XCODE_SCHEME" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR"
 
+      - name: Prepare simulator
+        run: |
+          xcrun simctl list devices | grep -q "iPhone 17 Pro" || \
+            xcrun simctl create "iPhone 17 Pro" "iPhone 17 Pro"
+
       - name: Build for testing
         run: |
           set -euo pipefail
@@ -234,6 +239,11 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR"
+
+      - name: Prepare simulator
+        run: |
+          xcrun simctl list devices | grep -q "iPhone 17 Pro" || \
+            xcrun simctl create "iPhone 17 Pro" "iPhone 17 Pro"
 
       - name: Run unit tests with coverage
         run: |
@@ -280,6 +290,11 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR"
+
+      - name: Prepare simulator
+        run: |
+          xcrun simctl list devices | grep -q "iPhone 17 Pro" || \
+            xcrun simctl create "iPhone 17 Pro" "iPhone 17 Pro"
 
       - name: Run UI smoke test
         run: |

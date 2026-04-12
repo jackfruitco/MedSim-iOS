@@ -972,6 +972,81 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(event.payload["recommendation_id"], .number(91))
     }
 
+    func testRecommendedInterventionNumericPriorityDecodesFromSnapshot() throws {
+        // Backend contract: RecommendedInterventionStateOut.priority: int | None = None
+        // Previously decoded as String? causing typeMismatch that crashed the entire
+        // /state/ decode — leaving all panels empty even though the backend payload was valid.
+        let json = """
+        {
+          "simulation_id": 420,
+          "session_id": 420,
+          "status": "running",
+          "scenario_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [
+              {
+                "recommendation_id": 42,
+                "title": "Apply tourniquet",
+                "kind": "tourniquet",
+                "priority": 2,
+                "target_problem_id": 10,
+                "target_cause_id": 11,
+                "warnings": [],
+                "contraindications": []
+              },
+              {
+                "recommendation_id": 43,
+                "title": "Needle decompression",
+                "kind": "needle_decompression",
+                "priority": null,
+                "warnings": [],
+                "contraindications": []
+              }
+            ],
+            "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": null,
+            "vitals": [],
+            "pulses": [],
+            "patient_status": {}
+          },
+          "runtime_snapshot": {
+            "status": "running",
+            "state_revision": 1,
+            "active_elapsed_seconds": 0
+          },
+          "event_timeline": { "events": [], "total_events": 0 },
+          "metadata": {
+            "builder_version": "trainerlab-rest-v1",
+            "schema_version": "trainerlab-state-v2",
+            "snapshot_cache": {
+              "status": "disabled",
+              "authoritative": false,
+              "source": "disabled",
+              "state_revision": null
+            },
+            "event_timeline_count": 0
+          }
+        }
+        """
+
+        let state = try makeContractDecoder().decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
+        let recommendations = state.scenarioSnapshot.recommendedInterventions
+
+        XCTAssertEqual(recommendations.count, 2)
+
+        let first = try XCTUnwrap(recommendations.first { $0.recommendationID == 42 })
+        XCTAssertEqual(first.priority, 2)
+        XCTAssertEqual(first.targetProblemID, 10)
+        XCTAssertEqual(first.targetCauseID, 11)
+
+        let second = try XCTUnwrap(recommendations.first { $0.recommendationID == 43 })
+        XCTAssertNil(second.priority)
+    }
+
     func testControlPlaneDebugDecodesCurrentBackendShape() throws {
         let json = """
         {
