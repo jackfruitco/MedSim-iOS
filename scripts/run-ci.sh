@@ -53,6 +53,10 @@ echo "== SPM: MedSimShelliOS =="
   swift build
 )
 
+echo "== Prepare simulator =="
+xcrun simctl list devices | grep -q "iPhone 17 Pro" || \
+  xcrun simctl create "iPhone 17 Pro" "iPhone 17 Pro"
+
 echo "== Xcode package resolve =="
 mkdir -p "$CLONED_SOURCE_PACKAGES_DIR"
 xcodebuild -resolvePackageDependencies \
