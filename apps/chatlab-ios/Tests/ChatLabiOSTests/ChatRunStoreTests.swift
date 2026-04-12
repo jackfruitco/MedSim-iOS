@@ -635,6 +635,31 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil { !store.activeTypingUsers.contains("consultant@example.com") }
     }
 
+    func testPatientResultsUpdatedEventAdvancesToolRefreshToken() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        let initialToken = store.toolRefreshToken
+
+        realtime.pushEvent(makeEvent(
+            id: "evt-results-1",
+            type: SimulationEventType.patientResultsUpdated,
+            payload: ["result_count": .number(2)],
+        ))
+
+        try await waitUntil { store.toolRefreshToken != initialToken }
+    }
+
     func testTransportStateTracksConnectingReplayingConnectedResyncingAndFailure() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()

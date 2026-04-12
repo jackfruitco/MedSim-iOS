@@ -717,7 +717,7 @@ public struct ChatRunView: View {
                     PatientHistoryRows(rows: toolsStore.toolData("patient_history"))
                 }
                 toolSection(.patientResults, layoutMode: layoutMode) {
-                    ToolDataRows(rows: toolsStore.toolData("patient_results"))
+                    PatientResultsRows(results: toolsStore.patientResults)
                 }
                 if simulationHasEnded {
                     toolSection(.simulationFeedback, layoutMode: layoutMode) {
@@ -1370,6 +1370,106 @@ private struct ToolDataRows: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
+        }
+    }
+}
+
+private struct PatientResultsRows: View {
+    let results: [ChatPatientResult]
+
+    private var sections: [ChatPatientResultSection] {
+        ChatPatientResultsPresentation.sections(from: results)
+    }
+
+    var body: some View {
+        if results.isEmpty {
+            Text("No data yet")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let panelName = section.panelName {
+                            Text(panelName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(Array(section.rows.enumerated()), id: \.offset) { _, result in
+                            PatientResultRow(result: result)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct PatientResultRow: View {
+    let result: ChatPatientResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(result.displayName)
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 12)
+                Text(valueText)
+                    .font(.headline.monospacedDigit())
+                    .multilineTextAlignment(.trailing)
+            }
+
+            if !metadataLine.isEmpty {
+                Text(metadataLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let referenceRangeText {
+                Text("Reference: \(referenceRangeText)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var valueText: String {
+        let renderedValue = result.value.map(ChatToolValueFormatter.render) ?? "-"
+        if let unit = result.unit, renderedValue != "-" {
+            return "\(renderedValue) \(unit)"
+        }
+        return renderedValue
+    }
+
+    private var metadataLine: String {
+        [result.attribute, result.flag, result.type]
+            .compactMap { value in
+                guard let value, !value.isEmpty else {
+                    return nil
+                }
+                return value
+            }
+            .joined(separator: " • ")
+    }
+
+    private var referenceRangeText: String? {
+        let low = result.referenceRangeLow.map(ChatToolValueFormatter.render)
+        let high = result.referenceRangeHigh.map(ChatToolValueFormatter.render)
+
+        switch (low, high) {
+        case let (.some(low), .some(high)):
+            return "\(low) - \(high)"
+        case let (.some(low), nil):
+            return ">= \(low)"
+        case let (nil, .some(high)):
+            return "<= \(high)"
+        case (nil, nil):
+            return nil
         }
     }
 }
