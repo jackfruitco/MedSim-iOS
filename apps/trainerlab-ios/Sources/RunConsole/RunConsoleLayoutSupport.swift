@@ -451,54 +451,77 @@ enum PatientDiagramSelection: Equatable {
 }
 
 private struct PatientPaneAccordionState: Equatable {
-    var pinnedSection: PatientPaneSection?
-    var primaryOpenSection: PatientPaneSection = .diagram
+    var pinnedDiagram = false
+    var openSection: PatientPaneSection = .diagram
 
-    func isOpen(_ section: PatientPaneSection) -> Bool {
-        section == primaryOpenSection || (pinnedSection == .diagram && section == .diagram)
+    func isExpanded(_ section: PatientPaneSection) -> Bool {
+        if pinnedDiagram {
+            return section == .diagram || section == openSection
+        }
+        return section == openSection
     }
 
     mutating func normalize(availableSections: [PatientPaneSection]) {
-        guard let fallbackSection = availableSections.first else {
-            primaryOpenSection = .diagram
-            pinnedSection = nil
+        guard !availableSections.isEmpty else {
+            pinnedDiagram = false
+            openSection = .diagram
             return
         }
 
-        if !availableSections.contains(primaryOpenSection) {
-            primaryOpenSection = fallbackSection
+        if pinnedDiagram {
+            if let fallback = fallbackSecondarySection(availableSections: availableSections) {
+                if openSection == .diagram || !availableSections.contains(openSection) {
+                    openSection = fallback
+                }
+            } else {
+                openSection = .diagram
+            }
+            return
         }
 
-        if pinnedSection == .diagram, !availableSections.contains(.diagram) {
-            pinnedSection = nil
+        if !availableSections.contains(openSection) {
+            openSection = availableSections.first ?? .diagram
         }
     }
 
-    mutating func toggle(_ section: PatientPaneSection, availableSections: [PatientPaneSection]) {
+    mutating func toggleSection(_ section: PatientPaneSection, availableSections: [PatientPaneSection]) {
         normalize(availableSections: availableSections)
         guard availableSections.contains(section) else { return }
 
-        if section == .diagram, pinnedSection == .diagram, primaryOpenSection != .diagram {
-            primaryOpenSection = .diagram
+        if pinnedDiagram {
+            guard section != .diagram else { return }
+            if openSection != section {
+                openSection = section
+            }
             return
         }
 
-        if primaryOpenSection == section {
-            return
+        if openSection != section {
+            openSection = section
         }
-
-        primaryOpenSection = section
     }
 
     mutating func toggleDiagramPin(availableSections: [PatientPaneSection]) {
         normalize(availableSections: availableSections)
         guard availableSections.contains(.diagram) else { return }
 
-        if pinnedSection == .diagram {
-            pinnedSection = nil
-        } else {
-            pinnedSection = .diagram
+        if pinnedDiagram {
+            pinnedDiagram = false
+            normalize(availableSections: availableSections)
+            return
         }
+
+        pinnedDiagram = true
+        if let fallback = fallbackSecondarySection(availableSections: availableSections) {
+            openSection = fallback
+        } else {
+            openSection = .diagram
+        }
+    }
+
+    func fallbackSecondarySection(availableSections: [PatientPaneSection]) -> PatientPaneSection? {
+        let preferredOrder: [PatientPaneSection] = [.causes, .problems, .pulses, .recommendations]
+        return preferredOrder.first(where: availableSections.contains)
     }
 }
 
@@ -521,10 +544,6 @@ struct PatientDiagramPanel: View {
     var body: some View {
         VStack(spacing: containerSpacing) {
             accordionSections
-
-            if !systemicProblems.isEmpty {
-                systemicProblemsBanner(systemicProblems)
-            }
 
             if let selected {
                 selectedDetailCard(selected)
@@ -553,10 +572,6 @@ struct PatientDiagramPanel: View {
             sections.append(.recommendations)
         }
         return sections
-    }
-
-    private var systemicProblems: [ProblemAnnotation] {
-        problems.filter { !$0.isAnatomic }
     }
 
     private var containerSpacing: CGFloat {
@@ -611,18 +626,19 @@ struct PatientDiagramPanel: View {
                         countBadge(!allCauses.isEmpty ? allCauses.count : injuries.count)
                     },
                     content: {
-                    VStack(spacing: rowSpacing) {
-                        if !allCauses.isEmpty {
-                            ForEach(Array(allCauses.enumerated()), id: \.offset) { _, cause in
-                                causeRow(cause)
-                            }
-                        } else {
-                            ForEach(injuries) { injury in
-                                injuryRow(injury)
+                        VStack(spacing: rowSpacing) {
+                            if !allCauses.isEmpty {
+                                ForEach(Array(allCauses.enumerated()), id: \.offset) { _, cause in
+                                    causeRow(cause)
+                                }
+                            } else {
+                                ForEach(injuries) { injury in
+                                    injuryRow(injury)
+                                }
                             }
                         }
-                    }
-                })
+                    },
+                )
             }
 
             if availableSections.contains(.problems) {
@@ -642,12 +658,13 @@ struct PatientDiagramPanel: View {
                         }
                     },
                     content: {
-                    VStack(spacing: rowSpacing) {
-                        ForEach(problems) { problem in
-                            problemRow(problem)
+                        VStack(spacing: rowSpacing) {
+                            ForEach(problems) { problem in
+                                problemRow(problem)
+                            }
                         }
-                    }
-                })
+                    },
+                )
             }
 
             if availableSections.contains(.pulses) {
@@ -659,12 +676,13 @@ struct PatientDiagramPanel: View {
                         countBadge("\(pulses.filter(\.present).count)/\(pulses.count)")
                     },
                     content: {
-                    VStack(spacing: rowSpacing) {
-                        ForEach(pulses) { pulse in
-                            pulseRow(pulse)
+                        VStack(spacing: rowSpacing) {
+                            ForEach(pulses) { pulse in
+                                pulseRow(pulse)
+                            }
                         }
-                    }
-                })
+                    },
+                )
             }
 
             if availableSections.contains(.recommendations) {
@@ -676,8 +694,9 @@ struct PatientDiagramPanel: View {
                         countBadge(recommendations.count)
                     },
                     content: {
-                    recommendationsSectionContent
-                })
+                        recommendationsSectionContent
+                    },
+                )
             }
         }
     }
@@ -691,12 +710,12 @@ struct PatientDiagramPanel: View {
         @ViewBuilder trailingContent: () -> some View,
         @ViewBuilder content: () -> some View,
     ) -> some View {
-        let isOpen = accordionState.isOpen(section)
+        let isOpen = accordionState.isExpanded(section)
 
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button {
-                    accordionState.toggle(section, availableSections: availableSections)
+                    accordionState.toggleSection(section, availableSections: availableSections)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: systemImage)
@@ -725,15 +744,15 @@ struct PatientDiagramPanel: View {
                     Button {
                         accordionState.toggleDiagramPin(availableSections: availableSections)
                     } label: {
-                        Image(systemName: accordionState.pinnedSection == .diagram ? "pin.fill" : "pin")
+                        Image(systemName: accordionState.pinnedDiagram ? "pin.fill" : "pin")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(accordionState.pinnedSection == .diagram ? TrainerLabTheme.accentBlue : .secondary)
+                            .foregroundStyle(accordionState.pinnedDiagram ? TrainerLabTheme.accentBlue : .secondary)
                             .frame(width: 28, height: 28)
                             .background(Color.white.opacity(0.04))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(accordionState.pinnedSection == .diagram ? "Unpin patient diagram" : "Pin patient diagram")
+                    .accessibilityLabel(accordionState.pinnedDiagram ? "Unpin patient diagram" : "Pin patient diagram")
                 }
             }
             .padding(headerPadding)
@@ -1025,39 +1044,6 @@ struct PatientDiagramPanel: View {
     private func standaloneProblems(from problems: [ProblemAnnotation], injuries: [InjuryAnnotation]) -> [ProblemAnnotation] {
         problems.filter { problem in
             !injuries.contains { injury in isColocated(problem, with: injury) }
-        }
-    }
-
-    // MARK: - Systemic Problems Banner
-
-    private func systemicProblemsBanner(_ systemicProblems: [ProblemAnnotation]) -> some View {
-        VStack(spacing: rowSpacing) {
-            ForEach(systemicProblems) { problem in
-                HStack(spacing: 6) {
-                    Image(systemName: "circle.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
-                        .modifier(PulsingModifier(active: problem.isUncontrolled))
-                    if problem.isUncontrolled {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
-                    }
-                    Text(problem.label)
-                        .font(.caption.bold())
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : .primary)
-                    Spacer()
-                    Text(problem.controlState.uppercased())
-                        .font(.caption2.bold())
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08)),
-                )
-            }
         }
     }
 
