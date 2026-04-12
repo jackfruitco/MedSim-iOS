@@ -84,6 +84,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     public func bind(session: TrainerSessionDTO) {
+        if state.session?.simulationID != session.simulationID {
+            resetSnapshotState()
+        }
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
         conflictError = nil
         seedHydrationFromSessionRuntimeState(session)
@@ -184,6 +187,37 @@ public final class RunSessionStore: ObservableObject {
         runtimeRefreshTask?.cancel()
         pendingRuntimeRefresh = false
         realtimeClient.disconnect()
+        resetSnapshotState()
+    }
+
+    /// Clears all snapshot-authoritative panel state and resets revision guards.
+    ///
+    /// Call this before binding to a different simulation or after stopping the console
+    /// so that state from one simulation cannot bleed into another, and so that the
+    /// stale-revision guard does not reject valid lower revisions for a new simulation.
+    private func resetSnapshotState() {
+        runtimeState = nil
+        scenarioBrief = nil
+        controlPlaneDebug = nil
+        hydratedCauses = []
+        hydratedProblems = []
+        assessmentFindings = []
+        diagnosticResults = []
+        resources = []
+        disposition = nil
+        patientStatus = .init()
+        aiInstructorIntent = nil
+        aiInstructorNotes = []
+        lastSnapshotRefreshError = nil
+        debriefAnnotations = []
+        state.causeAnnotations = []
+        state.problemAnnotations = []
+        state.recommendedInterventions = []
+        state.interventionAnnotations = []
+        state.pulseAnnotations = []
+        state.vitals = []
+        appliedSnapshotRevision = -1
+        lastAppliedLifecycleRevision = nil
     }
 
     /// Fire-and-forget: loads the intervention and injury dictionaries from the API.
