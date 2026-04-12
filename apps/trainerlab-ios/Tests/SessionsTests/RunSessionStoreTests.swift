@@ -1628,8 +1628,65 @@ final class RunSessionStoreTests: XCTestCase {
     }
 
     func testLivePatientEventsHydrateClinicalStateAcrossFamilies() async throws {
+        // Under the snapshot-authority architecture, live events trigger a debounced /state/
+        // refresh rather than directly mutating panel state. The second mock response contains
+        // the clinical state accumulated by all the events on the backend.
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running", stateRevision: 1)),
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 2,
+                causes: [[
+                    "id": 501,
+                    "domain_event_id": 501,
+                    "kind": "injury",
+                    "title": "Gunshot wound",
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+                problems: [[
+                    "problem_id": 601,
+                    "title": "External hemorrhage",
+                    "status": "active",
+                    "cause_id": 501,
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+                pulses: [[
+                    "location": "radial_left",
+                    "present": false,
+                    "quality": "weak",
+                ]],
+                interventions: [[
+                    "intervention_id": 801,
+                    "kind": "tourniquet",
+                    "title": "Tourniquet",
+                    "site_code": "LEFT_ARM",
+                    "target_problem_id": 601,
+                    "status": "applied",
+                ]],
+                assessmentFindings: [[
+                    "finding_id": 1001,
+                    "title": "Absent breath sounds",
+                    "status": "present",
+                ]],
+                diagnosticResults: [[
+                    "diagnostic_id": 1101,
+                    "title": "Ultrasound pending",
+                    "status": "queued",
+                ]],
+                resources: [[
+                    "resource_id": 1201,
+                    "title": "Whole blood available",
+                    "status": "ready",
+                ]],
+                disposition: [
+                    "disposition_id": 1301,
+                    "status": "requested",
+                    "destination": "Role 2",
+                    "transport_mode": "ground",
+                ],
+            )),
+        ]
 
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
@@ -1645,6 +1702,8 @@ final class RunSessionStoreTests: XCTestCase {
             service.getRuntimeStateCalls.count == 1
         }
 
+        // Emit live events — each is a runtime-refresh trigger that coalesces into a single
+        // debounced /state/ fetch returning the second mock state above.
         realtime.emit(event: EventEnvelope(
             eventID: "injury-1",
             eventType: SimulationEventType.patientInjuryCreated,
@@ -1767,10 +1826,12 @@ final class RunSessionStoreTests: XCTestCase {
             ],
         ))
 
+        // Wait for the debounced /state/ refresh to fire (events coalesced) and apply the snapshot.
         await waitUntil(timeout: 2.0) {
-            store.disposition?.dispositionID == 1301
+            service.getRuntimeStateCalls.count == 2 && store.disposition?.dispositionID == 1301
         }
 
+        // Panel state is driven by the authoritative snapshot (second mock response).
         XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 501)
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
         XCTAssertEqual(store.state.interventionAnnotations.first?.interventionID, 801)
@@ -1779,7 +1840,10 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.diagnosticResults.first?.resultID, 1101)
         XCTAssertEqual(store.resources.first?.resourceID, 1201)
         XCTAssertEqual(store.disposition?.dispositionID, 1301)
+        // Recommendation absent from second snapshot → cleared.
         XCTAssertTrue(store.state.recommendedInterventions.isEmpty)
+        // Timeline is populated from events (independent of snapshot).
+        XCTAssertFalse(store.state.timeline.isEmpty)
     }
 
     func testUnknownEventsNormalizeSafelyWithoutTriggeringRefresh() async throws {
@@ -1876,6 +1940,289 @@ final class RunSessionStoreTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(store.state.session?.status, .seeded)
         XCTAssertEqual(store.state.session?.scenarioSpec, existingScenarioSpec)
+    }
+
+    // MARK: - Snapshot-authority regression tests
+
+    func testSeededTransitionForcesImmediateSnapshotRefreshAndPopulatesPanels() async throws {
+        // When the seeded lifecycle event arrives the store must immediately call
+        // loadRuntimeState() (not just schedule a debounced refresh) so that
+        // scenario brief, vitals and annotations are populated right away.
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(status: .seeded))
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "seeding", stateRevision: 1)), // bootstrap — seeding in progress
+            .success(makeRuntimeState( // seeded path
+                status: "seeded",
+                stateRevision: 2,
+                scenarioBrief: [
+                    "read_aloud_brief": "Blast injury patient.",
+                    "environment": "Night operation",
+                ],
+                vitals: [[
+                    "vital_type": "heart_rate",
+                    "min_value": 110,
+                    "max_value": 130,
+                ]],
+            )),
+        ]
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .seeding))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: makeStatusUpdatedEvent(status: "seeded", stateRevision: 2))
+
+        // The immediate loadRuntimeState in the seeded path must populate panels.
+        await waitUntil(timeout: 2.0) {
+            store.scenarioBrief?.readAloudBrief == "Blast injury patient."
+                && store.state.vitals.first?.key == "heart_rate"
+                && store.state.session?.status == .seeded
+        }
+
+        // At least 2 calls: bootstrap + seeded-path immediate refresh.
+        // A 3rd debounced refresh may also fire from shouldRefreshRuntimeState.
+        XCTAssertGreaterThanOrEqual(service.getRuntimeStateCalls.count, 2)
+        XCTAssertEqual(store.runtimeState?.runtimeSnapshot.stateRevision, 2)
+    }
+
+    func testHistoricalEventsPopulateTimelineButNotPanelState() async throws {
+        // Historical events are applied to the timeline only.
+        // Panel state (brief, vitals, annotations) must come from the /state/ snapshot.
+        let service = MockTrainerLabService()
+
+        // Bootstrap /state/ returns an incomplete snapshot (no brief, no vitals).
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 1))
+
+        // Historical events contain a brief.created and a vital.created.
+        service.listEventsResult = .success(PaginatedResponse(
+            items: [
+                EventEnvelope(
+                    eventID: "brief-hist-1",
+                    eventType: SimulationEventType.simulationBriefCreated,
+                    createdAt: Date(timeIntervalSince1970: 5),
+                    correlationID: nil,
+                    payload: [
+                        "read_aloud_brief": .string("Historical brief content"),
+                        "environment": .string("Day"),
+                    ],
+                ),
+                EventEnvelope(
+                    eventID: "vital-hist-1",
+                    eventType: SimulationEventType.patientVitalCreated,
+                    createdAt: Date(timeIntervalSince1970: 6),
+                    correlationID: nil,
+                    payload: [
+                        "vital_type": .string("heart_rate"),
+                        "min_value": .number(80),
+                        "max_value": .number(100),
+                    ],
+                ),
+            ],
+            nextCursor: nil,
+            hasMore: false,
+        ))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date()))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        // Wait for bootstrap to finish (runtime state fetched, historical events applied).
+        await waitUntil(timeout: 2.0) {
+            store.state.timeline.count == 2
+        }
+
+        // Timeline contains entries from historical events.
+        XCTAssertEqual(store.state.timeline.map(\.eventID).sorted(), ["brief-hist-1", "vital-hist-1"])
+        // Panel state is NOT hydrated from historical events — only from snapshot.
+        // The bootstrap snapshot had no brief or vitals so panels remain empty.
+        XCTAssertNil(store.scenarioBrief, "Historical events must not project into scenarioBrief")
+        XCTAssertTrue(store.state.vitals.isEmpty, "Historical events must not project into vitals")
+    }
+
+    func testStaleSnapshotRevisionIsIgnoredWhenNewerAlreadyApplied() async throws {
+        // If a /state/ response arrives with an older stateRevision than the one already
+        // applied, it must be silently ignored to prevent the UI from regressing.
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState( // bootstrap — revision 5, has brief "A"
+                status: "running",
+                stateRevision: 5,
+                scenarioBrief: ["read_aloud_brief": "Brief A", "environment": "Night"],
+            )),
+            .success(makeRuntimeState( // debounced refresh — revision 3 (stale)
+                status: "running",
+                stateRevision: 3,
+                scenarioBrief: ["read_aloud_brief": "Brief B", "environment": "Day"],
+            )),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.scenarioBrief?.readAloudBrief == "Brief A"
+        }
+
+        // Trigger a refresh — the mock returns the stale revision 3 snapshot.
+        realtime.emit(event: EventEnvelope(
+            eventID: "snap-1",
+            eventType: SimulationEventType.simulationSnapshotUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+        }
+
+        // The stale snapshot (Brief B, revision 3) must not have overwritten Brief A.
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Brief A")
+        XCTAssertNil(store.lastSnapshotRefreshError)
+    }
+
+    func testSnapshotFetchFailureExposesErrorAndPreservesPreviousState() async throws {
+        // A failed /state/ fetch must surface the error via lastSnapshotRefreshError
+        // and must NOT clear any previously applied panel state.
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                scenarioBrief: ["read_aloud_brief": "Original brief", "environment": "Night"],
+            )),
+            .failure(MockServiceError.unused), // next fetch fails
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.scenarioBrief?.readAloudBrief == "Original brief"
+        }
+        XCTAssertNil(store.lastSnapshotRefreshError, "No error before the failing refresh")
+
+        // Trigger the failing refresh.
+        realtime.emit(event: EventEnvelope(
+            eventID: "snap-fail-1",
+            eventType: SimulationEventType.simulationSnapshotUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            store.lastSnapshotRefreshError != nil
+        }
+
+        // Error is exposed.
+        XCTAssertNotNil(store.lastSnapshotRefreshError)
+        // Previous panel state is preserved — the brief must still show.
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Original brief")
+    }
+
+    func testBootstrapUsesSnapshotCursorWhenTimelineIsEmpty() async throws {
+        // When no historical events exist, the SSE stream should start from the
+        // latestEventCursor embedded in the /state/ snapshot rather than nil.
+        // This prevents re-replaying events that the server has already committed.
+        let service = MockTrainerLabService()
+
+        // Build a runtime state with a non-nil latestEventCursor.
+        let payload: [String: Any] = [
+            "simulation_id": 420,
+            "session_id": 420,
+            "status": "running",
+            "scenario_snapshot": [
+                "causes": [],
+                "problems": [],
+                "recommended_interventions": [],
+                "interventions": [],
+                "assessment_findings": [],
+                "diagnostic_results": [],
+                "resources": [],
+                "disposition": NSNull(),
+                "vitals": [],
+                "pulses": [],
+                "patient_status": [:],
+                "scenario_brief": NSNull(),
+            ],
+            "runtime_snapshot": [
+                "status": "running",
+                "state_revision": 1,
+                "active_elapsed_seconds": 0,
+                "tick_interval_seconds": 15,
+                "next_tick_at": NSNull(),
+                "ai_plan": NSNull(),
+                "ai_rationale_notes": [],
+                "pending_runtime_reasons": [],
+                "currently_processing_reasons": [],
+                "last_runtime_error": "",
+                "last_ai_tick_at": NSNull(),
+                "control_plane_debug": [:],
+                "request_metadata": [:],
+                "latest_event_cursor": "snap-cursor-99",
+            ],
+            "event_timeline": [
+                "events": [],
+                "total_events": 0,
+            ],
+            "metadata": makeRuntimeMetadataPayload(stateRevision: 1),
+        ]
+        service.getRuntimeStateResult = try .success(decodeRuntimeStatePayload(payload))
+        // No historical events — empty page, so state.eventCursor will be nil.
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 2.0) {
+            !realtime.connectCalls.isEmpty
+        }
+
+        // Bootstrap should have fallen back to the snapshot cursor because listEvents
+        // returned an empty page (state.eventCursor == nil).
+        XCTAssertEqual(realtime.connectCalls.count, 1)
+        XCTAssertEqual(realtime.connectCalls.first?.cursor, "snap-cursor-99")
     }
 
     private func makeSession(

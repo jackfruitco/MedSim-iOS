@@ -1132,7 +1132,7 @@ public struct RuntimeRecommendedInterventionState: Codable, Sendable {
     public let normalizedKind: String?
     public let normalizedCode: String?
     public let rationale: String?
-    public let priority: String?
+    public let priority: Int?
     public let siteCode: String?
     public let siteLabel: String?
     public let warnings: [String]
@@ -1178,7 +1178,7 @@ public struct RuntimeRecommendedInterventionState: Codable, Sendable {
         normalizedKind = try container.decodeIfPresent(String.self, forKey: .normalizedKind)
         normalizedCode = try container.decodeIfPresent(String.self, forKey: .normalizedCode)
         rationale = try container.decodeIfPresent(String.self, forKey: .rationale)
-        priority = try container.decodeIfPresent(String.self, forKey: .priority)
+        priority = try container.decodeIfPresent(Int.self, forKey: .priority)
         siteCode = try container.decodeIfPresent(String.self, forKey: .siteCode)
         siteLabel = try container.decodeIfPresent(String.self, forKey: .siteLabel)
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
