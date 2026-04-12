@@ -285,7 +285,7 @@ public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
     public let normalizedKind: String?
     public let normalizedCode: String?
     public let rationale: String?
-    public let priority: String?
+    public let priority: Int?
     public let siteCode: String?
     public let siteLabel: String?
     public let warnings: [String]
@@ -308,7 +308,7 @@ public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
         normalizedKind: String? = nil,
         normalizedCode: String? = nil,
         rationale: String? = nil,
-        priority: String? = nil,
+        priority: Int? = nil,
         siteCode: String? = nil,
         siteLabel: String? = nil,
         warnings: [String] = [],
