@@ -5,6 +5,7 @@ import SharedModels
 @MainActor
 public final class ChatToolsStore: ObservableObject {
     @Published public private(set) var toolsByName: [String: ChatToolState] = [:]
+    @Published public private(set) var patientResults: [ChatPatientResult] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var isSubmittingOrders = false
     @Published public private(set) var presentableError: PresentableAppError?
@@ -28,7 +29,7 @@ public final class ChatToolsStore: ObservableObject {
         defer { isLoading = false }
         do {
             let response = try await service.listTools(simulationID: simulationID, names: nil)
-            toolsByName = Dictionary(uniqueKeysWithValues: response.items.map { ($0.name, $0) })
+            apply(response.items)
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
@@ -37,7 +38,7 @@ public final class ChatToolsStore: ObservableObject {
     public func refreshTools() async {
         do {
             let response = try await service.listTools(simulationID: simulationID, names: nil)
-            toolsByName = Dictionary(uniqueKeysWithValues: response.items.map { ($0.name, $0) })
+            apply(response.items)
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
@@ -76,5 +77,11 @@ public final class ChatToolsStore: ObservableObject {
 
     public func toolData(_ name: String) -> [[String: JSONValue]] {
         toolsByName[name]?.data ?? []
+    }
+
+    private func apply(_ tools: [ChatToolState]) {
+        let normalized = Dictionary(uniqueKeysWithValues: tools.map { ($0.name, $0) })
+        toolsByName = normalized
+        patientResults = normalized["patient_results"]?.patientResults ?? []
     }
 }
