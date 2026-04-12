@@ -435,11 +435,95 @@ struct TransportChip: View {
 
 // MARK: - PatientDiagramPanel
 
+enum PatientPaneSection: Hashable {
+    case diagram
+    case causes
+    case problems
+    case pulses
+    case recommendations
+}
+
 enum PatientDiagramSelection: Equatable {
     case injury(InjuryAnnotation)
     case intervention(InterventionAnnotation)
     case problem(ProblemAnnotation)
     case pulse(PulseAnnotation)
+}
+
+private struct PatientPaneAccordionState: Equatable {
+    var pinnedDiagram = false
+    var openSection: PatientPaneSection = .diagram
+
+    private static let preferredSecondaryOrder: [PatientPaneSection] = [.causes, .problems, .pulses, .recommendations]
+
+    func isExpanded(_ section: PatientPaneSection) -> Bool {
+        if pinnedDiagram {
+            return section == .diagram || section == openSection
+        }
+        return section == openSection
+    }
+
+    mutating func normalize(availableSections: [PatientPaneSection]) {
+        guard !availableSections.isEmpty else {
+            pinnedDiagram = false
+            openSection = .diagram
+            return
+        }
+
+        let availableSecondarySections = secondarySections(from: availableSections)
+        let preferredSecondarySection = fallbackSecondarySection(availableSections: availableSections)
+
+        if pinnedDiagram {
+            if let preferredSecondarySection {
+                // Pinned mode is diagram + exactly one non-diagram section whenever one exists.
+                if openSection == .diagram || !availableSecondarySections.contains(openSection) {
+                    openSection = preferredSecondarySection
+                }
+            } else {
+                // Edge case: if no secondary sections exist, pinned mode can only show the diagram.
+                openSection = .diagram
+            }
+            return
+        }
+
+        if !availableSections.contains(openSection) {
+            openSection = availableSections.first ?? .diagram
+        }
+    }
+
+    mutating func toggleSection(_ section: PatientPaneSection, availableSections: [PatientPaneSection]) {
+        normalize(availableSections: availableSections)
+        guard availableSections.contains(section) else { return }
+
+        if pinnedDiagram {
+            // The diagram header stays inert while pinned; only the pin button changes pin state.
+            guard section != .diagram else { return }
+            if openSection != section {
+                openSection = section
+            }
+            return
+        }
+
+        if openSection != section {
+            openSection = section
+        }
+    }
+
+    mutating func toggleDiagramPin(availableSections: [PatientPaneSection]) {
+        normalize(availableSections: availableSections)
+        guard availableSections.contains(.diagram) else { return }
+
+        pinnedDiagram.toggle()
+        normalize(availableSections: availableSections)
+    }
+
+    func fallbackSecondarySection(availableSections: [PatientPaneSection]) -> PatientPaneSection? {
+        Self.preferredSecondaryOrder.first(where: availableSections.contains)
+    }
+
+    func secondarySections(from availableSections: [PatientPaneSection]) -> [PatientPaneSection] {
+        availableSections.filter { $0 != .diagram }
+    }
 }
 
 struct PatientDiagramPanel: View {
@@ -450,20 +534,335 @@ struct PatientDiagramPanel: View {
     let recommendations: [RecommendedInterventionItem]
     let pulses: [PulseAnnotation]
     let canMutate: Bool
+    let layoutMode: RunConsoleLayoutMode
+    let compactMetrics: RunConsoleCompactMetrics
     var onSelectInjury: ((InjuryAnnotation) -> Void)?
     var onUpdateProblemStatus: ((ProblemAnnotation, ProblemLifecycleState) -> Void)?
 
     @State private var selected: PatientDiagramSelection?
-    @State private var injuriesExpanded = true
-    @State private var problemsExpanded = true
-    @State private var interventionsExpanded = true
-    @State private var pulsesExpanded = false
+    @State private var accordionState = PatientPaneAccordionState()
 
     var body: some View {
-        VStack(spacing: 12) {
-            diagramArea
-            detailPanels
+        VStack(spacing: containerSpacing) {
+            accordionSections
+
+            if let selected {
+                selectedDetailCard(selected)
+            }
         }
+        .onAppear {
+            accordionState.normalize(availableSections: availableSections)
+        }
+        .onChange(of: availableSections) { _, newSections in
+            accordionState.normalize(availableSections: newSections)
+        }
+    }
+
+    private var availableSections: [PatientPaneSection] {
+        var sections: [PatientPaneSection] = [.diagram]
+        if !allCauses.isEmpty || !injuries.isEmpty {
+            sections.append(.causes)
+        }
+        if !problems.isEmpty {
+            sections.append(.problems)
+        }
+        if !pulses.isEmpty {
+            sections.append(.pulses)
+        }
+        if !recommendations.isEmpty {
+            sections.append(.recommendations)
+        }
+        return sections
+    }
+
+    private var containerSpacing: CGFloat {
+        layoutMode == .compact ? compactMetrics.sectionSpacing : 10
+    }
+
+    private var accordionSpacing: CGFloat {
+        layoutMode == .compact ? 8 : 10
+    }
+
+    private var sectionCornerRadius: CGFloat {
+        layoutMode == .compact ? 10 : 12
+    }
+
+    private var headerPadding: CGFloat {
+        layoutMode == .compact ? compactMetrics.cardPadding : 10
+    }
+
+    private var sectionContentPadding: CGFloat {
+        layoutMode == .compact ? compactMetrics.cardPadding : 10
+    }
+
+    private var rowSpacing: CGFloat {
+        layoutMode == .compact ? 6 : 8
+    }
+
+    private var diagramHeight: CGFloat {
+        if layoutMode == .compact {
+            return compactMetrics.cardPadding <= 8 ? 220 : 240
+        }
+        return 310
+    }
+
+    private var accordionSections: some View {
+        VStack(spacing: accordionSpacing) {
+            accordionSection(
+                .diagram,
+                title: "Patient Diagram",
+                systemImage: "figure.stand",
+                pinEnabled: true,
+            ) {
+                diagramArea
+                    .frame(height: diagramHeight)
+            }
+
+            if availableSections.contains(.causes) {
+                accordionSection(
+                    .causes,
+                    title: "Causes",
+                    systemImage: "x.circle",
+                    trailingContent: {
+                        countBadge(!allCauses.isEmpty ? allCauses.count : injuries.count)
+                    },
+                    content: {
+                        VStack(spacing: rowSpacing) {
+                            if !allCauses.isEmpty {
+                                ForEach(Array(allCauses.enumerated()), id: \.offset) { _, cause in
+                                    causeRow(cause)
+                                }
+                            } else {
+                                ForEach(injuries) { injury in
+                                    injuryRow(injury)
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+
+            if availableSections.contains(.problems) {
+                accordionSection(
+                    .problems,
+                    title: "Problems",
+                    systemImage: "circle.circle",
+                    trailingContent: {
+                        let uncontrolledCount = problems.filter(\.isUncontrolled).count
+                        HStack(spacing: 6) {
+                            countBadge(problems.count)
+                            if uncontrolledCount > 0 {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.yellow)
+                            }
+                        }
+                    },
+                    content: {
+                        VStack(spacing: rowSpacing) {
+                            ForEach(problems) { problem in
+                                problemRow(problem)
+                            }
+                        }
+                    },
+                )
+            }
+
+            if availableSections.contains(.pulses) {
+                accordionSection(
+                    .pulses,
+                    title: "Pulses",
+                    systemImage: "circle.dotted.circle",
+                    trailingContent: {
+                        countBadge("\(pulses.filter(\.present).count)/\(pulses.count)")
+                    },
+                    content: {
+                        VStack(spacing: rowSpacing) {
+                            ForEach(pulses) { pulse in
+                                pulseRow(pulse)
+                            }
+                        }
+                    },
+                )
+            }
+
+            if availableSections.contains(.recommendations) {
+                accordionSection(
+                    .recommendations,
+                    title: "Recommended Interventions",
+                    systemImage: "cross.case",
+                    trailingContent: {
+                        countBadge(recommendations.count)
+                    },
+                    content: {
+                        recommendationsSectionContent
+                    },
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func accordionSection(
+        _ section: PatientPaneSection,
+        title: String,
+        systemImage: String,
+        pinEnabled: Bool = false,
+        @ViewBuilder trailingContent: () -> some View,
+        @ViewBuilder content: () -> some View,
+    ) -> some View {
+        let isOpen = accordionState.isExpanded(section)
+
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    handleSectionTap(section)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: systemImage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(TrainerLabTheme.accentBlue)
+
+                        Text(title)
+                            .font(layoutMode == .compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+
+                        Spacer(minLength: 8)
+
+                        trailingContent()
+
+                        Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if pinEnabled {
+                    Button {
+                        accordionState.toggleDiagramPin(availableSections: availableSections)
+                    } label: {
+                        Image(systemName: accordionState.pinnedDiagram ? "pin.fill" : "pin")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(accordionState.pinnedDiagram ? TrainerLabTheme.accentBlue : .secondary)
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(accordionState.pinnedDiagram ? "Unpin patient diagram" : "Pin patient diagram")
+                }
+            }
+            .padding(headerPadding)
+
+            if isOpen {
+                Divider()
+                    .overlay(TrainerLabTheme.tacticalBorder.opacity(0.85))
+
+                content()
+                    .padding(sectionContentPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: sectionCornerRadius, style: .continuous)
+                .fill(TrainerLabTheme.tacticalSurfaceElevated),
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: sectionCornerRadius, style: .continuous)
+                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+        )
+    }
+
+    private func handleSectionTap(_ section: PatientPaneSection) {
+        // Keep the diagram header inert while pinned so the pin affordance is the only diagram-state control.
+        guard !(accordionState.pinnedDiagram && section == .diagram) else { return }
+        accordionState.toggleSection(section, availableSections: availableSections)
+    }
+
+    private func accordionSection(
+        _ section: PatientPaneSection,
+        title: String,
+        systemImage: String,
+        pinEnabled: Bool = false,
+        @ViewBuilder content: () -> some View,
+    ) -> some View {
+        accordionSection(
+            section,
+            title: title,
+            systemImage: systemImage,
+            pinEnabled: pinEnabled,
+            trailingContent: { EmptyView() },
+            content: content,
+        )
+    }
+
+    private func countBadge(_ count: Int) -> some View {
+        countBadge(String(count))
+    }
+
+    private func countBadge(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2.bold())
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.06))
+            .clipShape(Capsule())
+    }
+
+    private var recommendationsSectionContent: some View {
+        VStack(alignment: .leading, spacing: rowSpacing + 2) {
+            ForEach(groupedRecommendations, id: \.priority) { group in
+                VStack(alignment: .leading, spacing: rowSpacing) {
+                    Text(group.priority)
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+
+                    ForEach(group.items) { recommendation in
+                        recommendationCard(recommendation)
+                    }
+                }
+            }
+        }
+    }
+
+    private func recommendationCard(_ recommendation: RecommendedInterventionItem) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(recommendation.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if let targetProblem = linkedProblemLabel(for: recommendation) {
+                    Text(targetProblem)
+                        .font(.caption2.bold())
+                        .foregroundStyle(TrainerLabTheme.accentBlue)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+
+            if let rationale = recommendation.rationale, !rationale.isEmpty {
+                Text(rationale)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let validationStatus = recommendation.validationStatus, !validationStatus.isEmpty {
+                Text(validationStatus.replacingOccurrences(of: "_", with: " ").capitalized)
+                    .font(.caption2.bold())
+                    .foregroundStyle(TrainerLabTheme.warning)
+            }
+        }
+        .padding(layoutMode == .compact ? 8 : 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: - Body Diagram
@@ -653,146 +1052,6 @@ struct PatientDiagramPanel: View {
         problems.filter { problem in
             !injuries.contains { injury in isColocated(problem, with: injury) }
         }
-    }
-
-    // MARK: - Detail Panels
-
-    private var detailPanels: some View {
-        VStack(spacing: 6) {
-            // Systemic problems floating badges (non-anatomic)
-            let systemicProblems = problems.filter { !$0.isAnatomic }
-            if !systemicProblems.isEmpty {
-                systemicProblemsBanner(systemicProblems)
-            }
-
-            if !allCauses.isEmpty || !injuries.isEmpty {
-                causesDisclosure
-            }
-            if !problems.isEmpty {
-                problemsDisclosure
-            }
-            if !interventions.isEmpty {
-                interventionsDisclosure
-            }
-            if !pulses.isEmpty {
-                pulsesDisclosure
-            }
-
-            // Selected detail overlay
-            if let selected {
-                selectedDetailCard(selected)
-            }
-        }
-    }
-
-    // MARK: - Systemic Problems Banner
-
-    private func systemicProblemsBanner(_ systemicProblems: [ProblemAnnotation]) -> some View {
-        VStack(spacing: 4) {
-            ForEach(systemicProblems) { problem in
-                HStack(spacing: 6) {
-                    Image(systemName: "circle.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
-                        .modifier(PulsingModifier(active: problem.isUncontrolled))
-                    if problem.isUncontrolled {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
-                    }
-                    Text(problem.label)
-                        .font(.caption.bold())
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : .primary)
-                    Spacer()
-                    Text(problem.controlState.uppercased())
-                        .font(.caption2.bold())
-                        .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.12) : TrainerLabTheme.success.opacity(0.08)),
-                )
-            }
-        }
-    }
-
-    // MARK: - Disclosure Groups
-
-    private var causesDisclosure: some View {
-        DisclosureGroup(isExpanded: $injuriesExpanded) {
-            VStack(spacing: 4) {
-                if !allCauses.isEmpty {
-                    ForEach(Array(allCauses.enumerated()), id: \.offset) { _, cause in
-                        causeRow(cause)
-                    }
-                } else {
-                    ForEach(injuries) { injury in
-                        injuryRow(injury)
-                    }
-                }
-            }
-        } label: {
-            Label("Causes (\(!allCauses.isEmpty ? allCauses.count : injuries.count))", systemImage: "x.circle")
-                .font(.caption.bold())
-                .foregroundStyle(.primary)
-        }
-        .tint(.secondary)
-    }
-
-    private var problemsDisclosure: some View {
-        DisclosureGroup(isExpanded: $problemsExpanded) {
-            VStack(spacing: 4) {
-                ForEach(problems) { problem in
-                    problemRow(problem)
-                }
-            }
-        } label: {
-            let uncontrolledCount = problems.filter(\.isUncontrolled).count
-            HStack(spacing: 4) {
-                Label("Problems (\(problems.count))", systemImage: "circle.circle")
-                    .font(.caption.bold())
-                    .foregroundStyle(.primary)
-                if uncontrolledCount > 0 {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.yellow)
-                }
-            }
-        }
-        .tint(.secondary)
-    }
-
-    private var interventionsDisclosure: some View {
-        DisclosureGroup(isExpanded: $interventionsExpanded) {
-            VStack(spacing: 4) {
-                ForEach(interventions) { intervention in
-                    interventionRow(intervention)
-                }
-            }
-        } label: {
-            Label("Interventions (\(interventions.count))", systemImage: "plus.circle")
-                .font(.caption.bold())
-                .foregroundStyle(.primary)
-        }
-        .tint(.secondary)
-    }
-
-    private var pulsesDisclosure: some View {
-        let presentCount = pulses.filter(\.present).count
-        return DisclosureGroup(isExpanded: $pulsesExpanded) {
-            VStack(spacing: 4) {
-                ForEach(pulses) { pulse in
-                    pulseRow(pulse)
-                }
-            }
-        } label: {
-            Label("Pulses (\(presentCount)/\(pulses.count))", systemImage: "circle.dotted.circle")
-                .font(.caption.bold())
-                .foregroundStyle(.primary)
-        }
-        .tint(.secondary)
     }
 
     // MARK: - Row Views
@@ -1055,6 +1314,26 @@ struct PatientDiagramPanel: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
         )
+    }
+
+    private var groupedRecommendations: [(priority: String, items: [RecommendedInterventionItem])] {
+        let grouped = Dictionary(grouping: recommendations) { recommendation in
+            recommendation.priority.map(String.init) ?? "Unprioritized"
+        }
+        return grouped
+            .map { (priority: $0.key, items: $0.value.sorted { $0.title < $1.title }) }
+            .sorted { lhs, rhs in
+                recommendationPriorityRank(lhs.priority) < recommendationPriorityRank(rhs.priority)
+            }
+    }
+
+    private func recommendationPriorityRank(_ priority: String) -> Int {
+        Int(priority) ?? .max
+    }
+
+    private func linkedProblemLabel(for recommendation: RecommendedInterventionItem) -> String? {
+        guard let problemID = recommendation.targetProblemID else { return nil }
+        return problems.first(where: { $0.problemID == problemID })?.label
     }
 
     private func recommendations(for problem: ProblemAnnotation) -> [RecommendedInterventionItem] {
