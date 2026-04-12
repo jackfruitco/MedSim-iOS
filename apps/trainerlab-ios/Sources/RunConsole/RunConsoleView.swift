@@ -158,7 +158,7 @@ public struct RunConsoleView: View {
             guardWarningBanner
 
             HStack(alignment: .top, spacing: 10) {
-                leftPatientPane(layoutMode: .regular)
+                leftPatientPane(layoutMode: .regular, compactMetrics: .standard)
                     .frame(minWidth: 420, idealWidth: 440, maxWidth: 520)
 
                 ScrollView {
@@ -192,7 +192,7 @@ public struct RunConsoleView: View {
                     conflictBanner
                 }
                 guardWarningBanner
-                leftPatientPane(layoutMode: .compact)
+                leftPatientPane(layoutMode: .compact, compactMetrics: compactMetrics)
                 combinedInfoPanel
                 centerTimelinePane(layoutMode: .compact)
                 bottomLogPane(layoutMode: .compact)
@@ -208,7 +208,7 @@ public struct RunConsoleView: View {
         layoutMode: RunConsoleLayoutMode,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
-        VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 4) {
+        VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : 8) {
             Text("Patient Vitals")
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
@@ -243,6 +243,11 @@ public struct RunConsoleView: View {
                     }
                 }
             }
+
+            Divider()
+                .overlay(TrainerLabTheme.tacticalBorder.opacity(0.85))
+
+            avpuControlSection(layoutMode: layoutMode, compactMetrics: compactMetrics)
         }
         .modifier(
             RunConsoleCardModifier(
@@ -430,97 +435,78 @@ public struct RunConsoleView: View {
         }
     }
 
-    // MARK: - Patient pane (body diagram + detail panels + AVPU)
+    // MARK: - Patient pane
 
-    private func leftPatientPane(layoutMode: RunConsoleLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func leftPatientPane(
+        layoutMode: RunConsoleLayoutMode,
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : 12) {
             Text("Patient State")
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
-            PatientDiagramPanel(
-                injuries: store.state.injuryAnnotations,
-                allCauses: store.hydratedCauses,
-                interventions: store.state.interventionAnnotations,
-                problems: store.state.problemAnnotations,
-                recommendations: store.state.recommendedInterventions,
-                pulses: store.state.pulseAnnotations,
-                canMutate: canMutate,
-                onSelectInjury: { injury in
-                    guard canIntervene else { return }
-                    quickActionInjury = injury
-                },
-                onUpdateProblemStatus: { problem, status in
-                    if let problemID = problem.problemID {
-                        store.updateProblemStatus(problemID: problemID, status: status)
+            Group {
+                if layoutMode == .regular {
+                    ScrollView {
+                        patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
+                            .padding(.trailing, 2)
                     }
-                },
-            )
-            .frame(minHeight: 380, maxHeight: .infinity)
-
-            if !store.state.recommendedInterventions.isEmpty {
-                recommendedInterventionsPanel
-            }
-
-            Text("AVPU")
-                .font(.subheadline.bold())
-
-            if layoutMode == .regular {
-                HStack(spacing: 8) {
-                    avpuButton(.alert, label: "Alert")
-                    avpuButton(.verbal, label: "Verbal")
-                    avpuButton(.pain, label: "Pain")
-                    avpuButton(.unalert, label: "Unalert")
-                }
-            } else {
-                LazyVGrid(columns: compactActionColumns, spacing: 8) {
-                    avpuButton(.alert, label: "Alert")
-                    avpuButton(.verbal, label: "Verbal")
-                    avpuButton(.pain, label: "Pain")
-                    avpuButton(.unalert, label: "Unalert")
+                    .scrollIndicators(.hidden)
+                } else {
+                    patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
                 }
             }
         }
         .trainerCardStyle()
     }
 
-    private var recommendedInterventionsPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended Interventions")
-                .font(.subheadline.bold())
+    private func patientPaneContent(
+        layoutMode: RunConsoleLayoutMode,
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
+        PatientDiagramPanel(
+            injuries: store.state.injuryAnnotations,
+            allCauses: store.hydratedCauses,
+            interventions: store.state.interventionAnnotations,
+            problems: store.state.problemAnnotations,
+            recommendations: store.state.recommendedInterventions,
+            pulses: store.state.pulseAnnotations,
+            canMutate: canMutate,
+            layoutMode: layoutMode,
+            compactMetrics: compactMetrics,
+            onSelectInjury: { injury in
+                guard canIntervene else { return }
+                quickActionInjury = injury
+            },
+            onUpdateProblemStatus: { problem, status in
+                if let problemID = problem.problemID {
+                    store.updateProblemStatus(problemID: problemID, status: status)
+                }
+            },
+        )
+    }
 
-            ForEach(groupedRecommendations, id: \.priority) { group in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(group.priority)
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    ForEach(group.items) { recommendation in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(recommendation.title)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if let targetProblem = linkedProblemLabel(for: recommendation) {
-                                    Text(targetProblem)
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(TrainerLabTheme.accentBlue)
-                                }
-                            }
-                            if let rationale = recommendation.rationale, !rationale.isEmpty {
-                                Text(rationale)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let validationStatus = recommendation.validationStatus, !validationStatus.isEmpty {
-                                Text(validationStatus.replacingOccurrences(of: "_", with: " ").capitalized)
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(TrainerLabTheme.warning)
-                            }
-                        }
-                        .padding(8)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
+    private func avpuControlSection(
+        layoutMode: RunConsoleLayoutMode,
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 8) {
+            Text("AVPU")
+                .font(layoutMode == .compact ? .caption.weight(.semibold) : .subheadline.bold())
+
+            if layoutMode == .regular {
+                HStack(spacing: 8) {
+                    avpuButton(.alert, label: "Alert", compact: false, compactMetrics: compactMetrics)
+                    avpuButton(.verbal, label: "Verbal", compact: false, compactMetrics: compactMetrics)
+                    avpuButton(.pain, label: "Pain", compact: false, compactMetrics: compactMetrics)
+                    avpuButton(.unalert, label: "Unalert", compact: false, compactMetrics: compactMetrics)
+                }
+            } else {
+                LazyVGrid(columns: compactAVPUColumns(for: compactMetrics), spacing: compactMetrics.gridSpacing) {
+                    avpuButton(.alert, label: "Alert", compact: true, compactMetrics: compactMetrics)
+                    avpuButton(.verbal, label: "Verbal", compact: true, compactMetrics: compactMetrics)
+                    avpuButton(.pain, label: "Pain", compact: true, compactMetrics: compactMetrics)
+                    avpuButton(.unalert, label: "Unalert", compact: true, compactMetrics: compactMetrics)
                 }
             }
         }
@@ -2020,16 +2006,22 @@ public struct RunConsoleView: View {
         }
     }
 
-    private func avpuButton(_ stateValue: AVPUState, label: String) -> some View {
+    private func avpuButton(
+        _ stateValue: AVPUState,
+        label: String,
+        compact: Bool,
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
         Button {
             selectedAVPU = stateValue
             store.adjustAVPU(stateValue)
         } label: {
             Text(label)
-                .font(.caption.bold())
+                .font(compact ? compactMetrics.buttonFont : .caption.bold())
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .frame(minHeight: compact ? compactMetrics.buttonMinHeight : 0)
+                .padding(.vertical, compact ? 0 : 8)
                 .background(avpuColor(stateValue))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
@@ -2187,6 +2179,10 @@ public struct RunConsoleView: View {
 
     private func compactVitalsColumns(for compactMetrics: RunConsoleCompactMetrics) -> [GridItem] {
         Array(repeating: GridItem(.flexible(minimum: compactMetrics.vitalsColumnMinimum), spacing: compactMetrics.gridSpacing), count: compactMetrics.compactVitalsColumnCount)
+    }
+
+    private func compactAVPUColumns(for compactMetrics: RunConsoleCompactMetrics) -> [GridItem] {
+        [GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing), GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing)]
     }
 
     private var compactActionColumns: [GridItem] {
