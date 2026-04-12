@@ -2075,7 +2075,7 @@ public final class RunSessionStore: ObservableObject {
             normalizedKind: jsonString(event.payload["normalized_kind"]),
             normalizedCode: jsonString(event.payload["normalized_code"]),
             rationale: jsonString(event.payload["rationale"]),
-            priority: jsonString(event.payload["priority"]),
+            priority: jsonInt(event.payload["priority"]),
             siteCode: jsonString(event.payload["site_code"]),
             siteLabel: jsonString(event.payload["site_label"]),
             warnings: jsonStringArray(event.payload["warnings"]),
