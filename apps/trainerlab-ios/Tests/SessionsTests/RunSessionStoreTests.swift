@@ -1651,6 +1651,11 @@ final class RunSessionStoreTests: XCTestCase {
                     "cause_id": 501,
                     "anatomical_location": "LEFT_ARM",
                 ]],
+                pulses: [[
+                    "location": "radial_left",
+                    "present": false,
+                    "quality": "weak",
+                ]],
                 interventions: [[
                     "intervention_id": 801,
                     "kind": "tourniquet",
@@ -1658,11 +1663,6 @@ final class RunSessionStoreTests: XCTestCase {
                     "site_code": "LEFT_ARM",
                     "target_problem_id": 601,
                     "status": "applied",
-                ]],
-                pulses: [[
-                    "location": "radial_left",
-                    "present": false,
-                    "quality": "weak",
                 ]],
                 assessmentFindings: [[
                     "finding_id": 1001,
