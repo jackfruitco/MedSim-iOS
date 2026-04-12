@@ -683,13 +683,13 @@ struct PatientDiagramPanel: View {
     }
 
     @ViewBuilder
-    private func accordionSection<TrailingContent: View, SectionContent: View>(
+    private func accordionSection(
         _ section: PatientPaneSection,
         title: String,
         systemImage: String,
         pinEnabled: Bool = false,
-        @ViewBuilder trailingContent: () -> TrailingContent,
-        @ViewBuilder content: () -> SectionContent,
+        @ViewBuilder trailingContent: () -> some View,
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         let isOpen = accordionState.isOpen(section)
 
@@ -757,12 +757,12 @@ struct PatientDiagramPanel: View {
         )
     }
 
-    private func accordionSection<SectionContent: View>(
+    private func accordionSection(
         _ section: PatientPaneSection,
         title: String,
         systemImage: String,
         pinEnabled: Bool = false,
-        @ViewBuilder content: () -> SectionContent,
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         accordionSection(
             section,
@@ -774,12 +774,10 @@ struct PatientDiagramPanel: View {
         )
     }
 
-    @ViewBuilder
     private func countBadge(_ count: Int) -> some View {
         countBadge(String(count))
     }
 
-    @ViewBuilder
     private func countBadge(_ label: String) -> some View {
         Text(label)
             .font(.caption2.bold())
