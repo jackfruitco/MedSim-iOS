@@ -449,6 +449,7 @@ struct PatientDiagramPanel: View {
     let problems: [ProblemAnnotation]
     let recommendations: [RecommendedInterventionItem]
     let pulses: [PulseAnnotation]
+    let pendingInterventionProblemIDs: Set<Int>
     let canMutate: Bool
     var onSelectInjury: ((InjuryAnnotation) -> Void)?
     var onUpdateProblemStatus: ((ProblemAnnotation, ProblemLifecycleState) -> Void)?
@@ -866,6 +867,10 @@ struct PatientDiagramPanel: View {
                 }
             }
             Spacer()
+            if let problemID = problem.problemID, pendingInterventionProblemIDs.contains(problemID) {
+                ProgressView()
+                    .controlSize(.mini)
+            }
             Text(problem.status.rawValue.uppercased())
                 .font(.caption2.bold())
                 .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
@@ -879,15 +884,19 @@ struct PatientDiagramPanel: View {
     }
 
     private func interventionRow(_ intervention: InterventionAnnotation) -> some View {
-        HStack(spacing: 6) {
+        let siteSummary = InterventionDisplayText.siteLabel(
+            siteCode: intervention.siteCode,
+            siteLabel: intervention.siteLabel
+        ) ?? intervention.siteCode
+        return HStack(spacing: 6) {
             Image(systemName: "plus.circle.fill")
                 .font(.caption)
                 .foregroundStyle(TrainerLabTheme.accentBlue)
             VStack(alignment: .leading, spacing: 1) {
-                Text(intervention.interventionType.replacingOccurrences(of: "_", with: " ").capitalized)
+                Text(SimulationEventRegistry.humanizedLabel(intervention.interventionType))
                     .font(.caption2.bold())
                     .lineLimit(1)
-                Text("\(intervention.siteCode.replacingOccurrences(of: "_", with: " ").capitalized) — \(intervention.effectiveness.capitalized)")
+                Text("\(siteSummary) — \(SimulationEventRegistry.humanizedLabel(intervention.effectiveness))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -958,12 +967,16 @@ struct PatientDiagramPanel: View {
                 }
             case let .intervention(intervention):
                 VStack(alignment: .leading, spacing: 4) {
+                    let siteSummary = InterventionDisplayText.siteLabel(
+                        siteCode: intervention.siteCode,
+                        siteLabel: intervention.siteLabel
+                    ) ?? intervention.siteCode
                     Text(intervention.title)
                         .font(.caption.bold())
-                    Text("Site: \(intervention.siteCode.replacingOccurrences(of: "_", with: " ").capitalized) · \(intervention.side.rawValue.capitalized)")
+                    Text("Site: \(siteSummary) · \(intervention.side.rawValue.capitalized)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text("Effectiveness: \(intervention.effectiveness.capitalized) — \(intervention.status.capitalized)")
+                    Text("Effectiveness: \(SimulationEventRegistry.humanizedLabel(intervention.effectiveness)) — \(intervention.status.capitalized)")
                         .font(.caption2)
                     if let validationStatus = intervention.validationStatus {
                         Text("Validation: \(validationStatus.replacingOccurrences(of: "_", with: " ").capitalized)")
@@ -980,6 +993,15 @@ struct PatientDiagramPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(problem.label)
                         .font(.caption.bold())
+                    if let problemID = problem.problemID, pendingInterventionProblemIDs.contains(problemID) {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Intervention pending")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                     Text("Status: \(problem.status.rawValue.capitalized)")
                         .font(.caption2)
                         .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)

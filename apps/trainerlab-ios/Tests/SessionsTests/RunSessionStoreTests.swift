@@ -1390,6 +1390,10 @@ final class RunSessionStoreTests: XCTestCase {
             notes: "Applied prophylactically",
         )
 
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingInterventions
+        }
+
         await waitUntil(timeout: 1.5) {
             service.injectInterventionCalls.count == 1
         }
@@ -1397,6 +1401,9 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertNil(service.injectInterventionCalls.first?.targetProblemID)
         XCTAssertNil(store.state.conflictBanner)
         XCTAssertEqual(store.state.clinicalTimelineEntries.first?.kind, .intervention)
+        XCTAssertTrue(store.hasPendingInterventions)
+        XCTAssertTrue(store.state.problemAnnotations.isEmpty)
+        XCTAssertTrue(store.state.interventionAnnotations.isEmpty)
     }
 
     func testReplayPendingCommandsOnlyReplaysRowsForBoundSimulation() async throws {
@@ -1628,9 +1635,9 @@ final class RunSessionStoreTests: XCTestCase {
     }
 
     func testLivePatientEventsHydrateClinicalStateAcrossFamilies() async throws {
-        // Under the snapshot-authority architecture, live events trigger a debounced /state/
-        // refresh rather than directly mutating panel state. The second mock response contains
-        // the clinical state accumulated by all the events on the backend.
+        // Under the snapshot-authority architecture, live events still trigger a debounced /state/
+        // refresh. Problem/intervention/recommendation payloads also apply a thin temporary
+        // overlay so the UI reflects backend-confirmed deltas before the snapshot lands.
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
             .success(makeRuntimeState(status: "running", stateRevision: 1)),
@@ -1826,6 +1833,15 @@ final class RunSessionStoreTests: XCTestCase {
             ],
         ))
 
+        await waitUntil(timeout: 1.0) {
+            store.state.problemAnnotations.first?.problemID == 601
+                && store.state.interventionAnnotations.first?.interventionID == 801
+        }
+
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
+        XCTAssertEqual(store.state.interventionAnnotations.first?.interventionID, 801)
+        XCTAssertEqual(service.getRuntimeStateCalls.count, 1)
+
         // Wait for the debounced /state/ refresh to fire (events coalesced) and apply the snapshot.
         await waitUntil(timeout: 2.0) {
             service.getRuntimeStateCalls.count == 2 && store.disposition?.dispositionID == 1301
@@ -1844,6 +1860,66 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertTrue(store.state.recommendedInterventions.isEmpty)
         // Timeline is populated from events (independent of snapshot).
         XCTAssertFalse(store.state.timeline.isEmpty)
+    }
+
+    func testRecommendationOverlayAppliesImmediatelyAndClearsOnSnapshotRefresh() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(status: "running", stateRevision: 1)),
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 2,
+                recommendedInterventions: [],
+            )),
+        ]
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "recommendation-created",
+            eventType: SimulationEventType.patientRecommendedInterventionCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "recommendation_id": .number(912),
+                "title": .string("Give blood"),
+                "kind": .string("blood_transfusion"),
+                "target_problem_id": .number(55),
+                "priority": .number(1),
+            ],
+        ))
+
+        await waitUntil(timeout: 1.0) {
+            store.state.recommendedInterventions.contains(where: { $0.recommendationID == 912 })
+        }
+
+        XCTAssertEqual(service.getRuntimeStateCalls.count, 1)
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "snapshot-refresh",
+            eventType: SimulationEventType.simulationSnapshotUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2 && store.state.recommendedInterventions.isEmpty
+        }
     }
 
     func testUnknownEventsNormalizeSafelyWithoutTriggeringRefresh() async throws {

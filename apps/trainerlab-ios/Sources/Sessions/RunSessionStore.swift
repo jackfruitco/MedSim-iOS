@@ -32,6 +32,8 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
+    @Published public private(set) var pendingInterventionProblemIDs: Set<Int> = []
+    @Published public private(set) var pendingGeneralInterventionCount = 0
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
     /// Exposed for debug surfaces and diagnostic tooling.
     @Published public private(set) var lastSnapshotRefreshError: Error?
@@ -48,6 +50,10 @@ public final class RunSessionStore: ObservableObject {
     /// Highest `stateRevision` successfully applied from a snapshot.
     /// Used to reject stale snapshots that arrive out of order.
     private var appliedSnapshotRevision: Int = -1
+    private var snapshotProblemAnnotations: [ProblemAnnotation] = []
+    private var snapshotInterventionAnnotations: [InterventionAnnotation] = []
+    private var snapshotRecommendedInterventions: [RecommendedInterventionItem] = []
+    private var runtimeOverlayState = TrainerRuntimeOverlayState()
 
     private let runtimeRefreshDebounceNanoseconds: UInt64 = 150_000_000
     private let maxStoredTimelineEvents = 400
@@ -71,6 +77,30 @@ public final class RunSessionStore: ObservableObject {
         let canonicalEventType: String
     }
 
+    private struct PendingInterventionState: Equatable, Sendable {
+        let idempotencyKey: String
+        let interventionType: String
+        let siteCode: String
+        let targetProblemID: Int?
+        let createdAt: Date
+    }
+
+    private struct TrainerRuntimeOverlayState: Sendable {
+        var pendingInterventions: [PendingInterventionState] = []
+        var confirmedProblemOverlays: [String: ProblemAnnotation] = [:]
+        var confirmedInterventionOverlays: [String: InterventionAnnotation] = [:]
+        var confirmedRecommendationOverlays: [Int: RecommendedInterventionItem] = [:]
+        var removedRecommendationIDs: Set<Int> = []
+
+        mutating func clear() {
+            pendingInterventions = []
+            confirmedProblemOverlays = [:]
+            confirmedInterventionOverlays = [:]
+            confirmedRecommendationOverlays = [:]
+            removedRecommendationIDs = []
+        }
+    }
+
     public init(
         service: TrainerLabServiceProtocol,
         realtimeClient: RealtimeClientProtocol,
@@ -92,6 +122,17 @@ public final class RunSessionStore: ObservableObject {
         seedHydrationFromSessionRuntimeState(session)
         syncStopwatchState()
         syncTransportPresentation(for: state.transportState)
+    }
+
+    public var hasPendingInterventions: Bool {
+        pendingGeneralInterventionCount > 0 || !pendingInterventionProblemIDs.isEmpty
+    }
+
+    public func hasPendingIntervention(for problemID: Int?) -> Bool {
+        guard let problemID else {
+            return pendingGeneralInterventionCount > 0
+        }
+        return pendingInterventionProblemIDs.contains(problemID)
     }
 
     public func startConsole() {
@@ -216,6 +257,11 @@ public final class RunSessionStore: ObservableObject {
         state.interventionAnnotations = []
         state.pulseAnnotations = []
         state.vitals = []
+        snapshotProblemAnnotations = []
+        snapshotInterventionAnnotations = []
+        snapshotRecommendedInterventions = []
+        runtimeOverlayState.clear()
+        syncPendingInterventionPublishedState()
         appliedSnapshotRevision = -1
         lastAppliedLifecycleRevision = nil
     }
@@ -573,13 +619,16 @@ public final class RunSessionStore: ObservableObject {
             let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
 
             // Optimistic local timeline entry
-            let typeLabel = interventionDictionary
-                .first(where: { $0.interventionType == interventionType })?.label
-                ?? interventionType.replacingOccurrences(of: "_", with: " ").capitalized
-            let siteLabel = interventionDictionary
-                .first(where: { $0.interventionType == interventionType })?
-                .sites.first(where: { $0.code == siteCode })?.label
-                ?? siteCode.replacingOccurrences(of: "_", with: " ").capitalized
+            let typeLabel = InterventionDisplayText.interventionTypeLabel(
+                interventionType,
+                dictionary: interventionDictionary,
+            )
+            let siteLabel = InterventionDisplayText.siteLabel(
+                siteCode: siteCode,
+                siteLabel: nil,
+                interventionType: interventionType,
+                dictionary: interventionDictionary,
+            ) ?? siteCode
             let message = siteCode.isEmpty ? typeLabel : "\(typeLabel) — \(siteLabel)"
             addClinicalTimelineEntry(
                 dedupeKey: "opt:\(envelope.idempotencyKey)",
@@ -593,6 +642,12 @@ public final class RunSessionStore: ObservableObject {
                     "effectiveness": effectiveness.rawValue,
                     "intervention_status": status.rawValue,
                 ],
+            )
+            addPendingIntervention(
+                idempotencyKey: envelope.idempotencyKey,
+                interventionType: interventionType,
+                siteCode: siteCode,
+                targetProblemID: targetProblemID,
             )
 
             await executeQueuedAckCommand(envelope: envelope) {
@@ -905,6 +960,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func handleCommandError(_ error: Error, envelope: PendingCommandEnvelope) async {
+        discardPendingIntervention(idempotencyKey: envelope.idempotencyKey)
         if let apiError = error as? APIClientError, case let .http(statusCode, detail, _) = apiError, statusCode == 409 {
             state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
             conflictError = AppErrorPresenter.present(apiError)
@@ -1356,12 +1412,16 @@ public final class RunSessionStore: ObservableObject {
                 ?? jsonString(event.payload["superseded_by"])
 
             // Build human label from dictionary if available
-            let typeLabel = interventionDictionary.first(where: { $0.interventionType == interventionType })?.label
-                ?? interventionType.replacingOccurrences(of: "_", with: " ").capitalized
-            let siteLabel = interventionDictionary
-                .first(where: { $0.interventionType == interventionType })?
-                .sites.first(where: { $0.code == siteCode })?.label
-                ?? siteCode.replacingOccurrences(of: "_", with: " ").capitalized
+            let typeLabel = InterventionDisplayText.interventionTypeLabel(
+                interventionType,
+                dictionary: interventionDictionary,
+            )
+            let siteLabel = InterventionDisplayText.siteLabel(
+                siteCode: siteCode,
+                siteLabel: jsonString(event.payload["site_label"]),
+                interventionType: interventionType,
+                dictionary: interventionDictionary,
+            ) ?? siteCode
 
             let message = siteCode.isEmpty ? typeLabel : "\(typeLabel) — \(siteLabel)"
 
@@ -1537,6 +1597,14 @@ public final class RunSessionStore: ObservableObject {
     /// the main event-handling path.
     private func applyLiveEventProjection(from event: EventEnvelope) {
         switch event.eventType {
+        case SimulationEventType.patientInterventionCreated:
+            captureInterventionAnnotation(from: event)
+        case SimulationEventType.patientProblemUpdated:
+            captureProblemAnnotation(from: event)
+        case SimulationEventType.patientRecommendedInterventionCreated,
+             SimulationEventType.patientRecommendedInterventionUpdated,
+             SimulationEventType.patientRecommendedInterventionRemoved:
+            captureRecommendedIntervention(from: event)
         case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
             Task { await refreshGuardState() }
         default:
@@ -1955,6 +2023,13 @@ public final class RunSessionStore: ObservableObject {
         let siteCode = (jsonString(event.payload["site_code"]) ?? "").uppercased()
         let effectiveness = jsonString(event.payload["effectiveness"]) ?? "unknown"
         let status = jsonString(event.payload["status"]) ?? "applied"
+        let targetProblemID = jsonInt(event.payload["target_problem_id"])
+
+        reconcilePendingIntervention(
+            interventionType: interventionType,
+            siteCode: siteCode,
+            targetProblemID: targetProblemID,
+        )
 
         guard let zone = interventionZone(for: siteCode) else { return }
 
@@ -1970,7 +2045,7 @@ public final class RunSessionStore: ObservableObject {
             title: eventPrimaryLabel(from: event.payload) ?? interventionType,
             siteCode: siteCode,
             siteLabel: jsonString(event.payload["site_label"]),
-            targetProblemID: jsonInt(event.payload["target_problem_id"]),
+            targetProblemID: targetProblemID,
             targetCauseID: jsonInt(event.payload["target_cause_id"]),
             targetCauseKind: jsonString(event.payload["target_cause_kind"]),
             validationStatus: jsonString(event.payload["validation_status"]),
@@ -1984,12 +2059,8 @@ public final class RunSessionStore: ObservableObject {
             status: status,
             updatedAt: event.createdAt,
         )
-
-        if let idx = state.interventionAnnotations.firstIndex(where: { $0.id == annotation.id }) {
-            state.interventionAnnotations[idx] = annotation
-        } else {
-            state.interventionAnnotations.append(annotation)
-        }
+        runtimeOverlayState.confirmedInterventionOverlays[annotation.id] = annotation
+        rebuildRenderedRuntimeProjection()
     }
 
     private func interventionZone(for siteCode: String) -> (side: InjuryZoneSide, x: Double, y: Double)? {
@@ -2044,12 +2115,8 @@ public final class RunSessionStore: ObservableObject {
             adjudicationReason: jsonString(event.payload["adjudication_reason"]),
             updatedAt: event.createdAt,
         )
-
-        if let idx = state.problemAnnotations.firstIndex(where: { $0.id == annotation.id }) {
-            state.problemAnnotations[idx] = annotation
-        } else {
-            state.problemAnnotations.append(annotation)
-        }
+        runtimeOverlayState.confirmedProblemOverlays[annotation.id] = annotation
+        rebuildRenderedRuntimeProjection()
     }
 
     private func captureRecommendedIntervention(from event: EventEnvelope) {
@@ -2058,7 +2125,9 @@ public final class RunSessionStore: ObservableObject {
 
         guard let recommendationID = jsonInt(event.payload["recommendation_id"]) else { return }
         if eventType == SimulationEventType.patientRecommendedInterventionRemoved {
-            state.recommendedInterventions.removeAll { $0.recommendationID == recommendationID }
+            runtimeOverlayState.confirmedRecommendationOverlays.removeValue(forKey: recommendationID)
+            runtimeOverlayState.removedRecommendationIDs.insert(recommendationID)
+            rebuildRenderedRuntimeProjection()
             return
         }
 
@@ -2081,12 +2150,9 @@ public final class RunSessionStore: ObservableObject {
             warnings: jsonStringArray(event.payload["warnings"]),
             contraindications: jsonStringArray(event.payload["contraindications"]),
         )
-
-        if let idx = state.recommendedInterventions.firstIndex(where: { $0.recommendationID == recommendationID }) {
-            state.recommendedInterventions[idx] = item
-        } else {
-            state.recommendedInterventions.append(item)
-        }
+        runtimeOverlayState.removedRecommendationIDs.remove(recommendationID)
+        runtimeOverlayState.confirmedRecommendationOverlays[recommendationID] = item
+        rebuildRenderedRuntimeProjection()
     }
 
     // MARK: - Pulse Annotations
@@ -2341,17 +2407,19 @@ public final class RunSessionStore: ObservableObject {
                     hydratedProblems.first(where: { $0.causeID == causeID })
                 })
             }
-            state.problemAnnotations = hydratedProblems.map { problem in
+        }
+        if snapshot.presence.problems {
+            snapshotProblemAnnotations = hydratedProblems.map { problem in
                 makeProblemAnnotation(from: problem, causesByID: causesByID)
             }
         }
         if snapshot.presence.recommendedInterventions {
-            state.recommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
+            snapshotRecommendedInterventions = snapshot.recommendedInterventions.map { recommendation in
                 makeRecommendedInterventionItem(from: recommendation, problemsByID: problemsByID)
             }
         }
         if snapshot.presence.interventions {
-            state.interventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
+            snapshotInterventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
         }
         if snapshot.presence.pulses {
             state.pulseAnnotations = snapshot.pulses.compactMap(makePulseAnnotation)
@@ -2363,6 +2431,136 @@ public final class RunSessionStore: ObservableObject {
                 return makeVitalSnapshot(from: vitalState, existing: existing)
             }
         }
+        runtimeOverlayState.clear()
+        rebuildRenderedRuntimeProjection()
+    }
+
+    private func addPendingIntervention(
+        idempotencyKey: String,
+        interventionType: String,
+        siteCode: String,
+        targetProblemID: Int?,
+    ) {
+        runtimeOverlayState.pendingInterventions.append(
+            PendingInterventionState(
+                idempotencyKey: idempotencyKey,
+                interventionType: interventionType,
+                siteCode: siteCode.uppercased(),
+                targetProblemID: targetProblemID,
+                createdAt: Date(),
+            ),
+        )
+        syncPendingInterventionPublishedState()
+    }
+
+    private func discardPendingIntervention(idempotencyKey: String) {
+        let originalCount = runtimeOverlayState.pendingInterventions.count
+        runtimeOverlayState.pendingInterventions.removeAll { $0.idempotencyKey == idempotencyKey }
+        guard originalCount != runtimeOverlayState.pendingInterventions.count else { return }
+        syncPendingInterventionPublishedState()
+    }
+
+    private func reconcilePendingIntervention(
+        interventionType: String,
+        siteCode: String,
+        targetProblemID: Int?,
+    ) {
+        let normalizedSiteCode = siteCode.uppercased()
+        guard
+            let matchIndex = runtimeOverlayState.pendingInterventions
+                .enumerated()
+                .filter({
+                    $0.element.interventionType == interventionType
+                        && $0.element.siteCode == normalizedSiteCode
+                        && $0.element.targetProblemID == targetProblemID
+                })
+                .min(by: { lhs, rhs in lhs.element.createdAt < rhs.element.createdAt })?
+                .offset
+        else {
+            return
+        }
+
+        runtimeOverlayState.pendingInterventions.remove(at: matchIndex)
+        syncPendingInterventionPublishedState()
+    }
+
+    private func syncPendingInterventionPublishedState() {
+        pendingInterventionProblemIDs = Set(runtimeOverlayState.pendingInterventions.compactMap(\.targetProblemID))
+        pendingGeneralInterventionCount = runtimeOverlayState.pendingInterventions.filter { $0.targetProblemID == nil }.count
+    }
+
+    private func rebuildRenderedRuntimeProjection() {
+        state.problemAnnotations = mergedProblemAnnotations()
+        state.interventionAnnotations = mergedInterventionAnnotations()
+        state.recommendedInterventions = mergedRecommendedInterventions()
+        syncPendingInterventionPublishedState()
+    }
+
+    private func mergedProblemAnnotations() -> [ProblemAnnotation] {
+        mergeAnnotations(
+            base: snapshotProblemAnnotations,
+            overlays: Array(runtimeOverlayState.confirmedProblemOverlays.values),
+        ) { lhs, rhs in
+            if let leftID = lhs.problemID, let rightID = rhs.problemID {
+                return leftID == rightID
+            }
+            return lhs.id == rhs.id
+        }
+    }
+
+    private func mergedInterventionAnnotations() -> [InterventionAnnotation] {
+        mergeAnnotations(
+            base: snapshotInterventionAnnotations,
+            overlays: Array(runtimeOverlayState.confirmedInterventionOverlays.values),
+        ) { lhs, rhs in
+            if let leftID = lhs.interventionID, let rightID = rhs.interventionID {
+                return leftID == rightID
+            }
+            return lhs.id == rhs.id
+        }
+    }
+
+    private func mergedRecommendedInterventions() -> [RecommendedInterventionItem] {
+        var merged = snapshotRecommendedInterventions.filter { recommendation in
+            !runtimeOverlayState.removedRecommendationIDs.contains(recommendation.recommendationID)
+        }
+
+        for overlay in runtimeOverlayState.confirmedRecommendationOverlays.values.sorted(by: recommendationSortOrder) {
+            if let index = merged.firstIndex(where: { $0.recommendationID == overlay.recommendationID }) {
+                merged[index] = overlay
+            } else {
+                merged.append(overlay)
+            }
+        }
+
+        return merged
+            .filter { !runtimeOverlayState.removedRecommendationIDs.contains($0.recommendationID) }
+            .sorted(by: recommendationSortOrder)
+    }
+
+    private func mergeAnnotations<Item>(
+        base: [Item],
+        overlays: [Item],
+        matches: (Item, Item) -> Bool,
+    ) -> [Item] {
+        var merged = base
+        for overlay in overlays {
+            if let index = merged.firstIndex(where: { matches($0, overlay) }) {
+                merged[index] = overlay
+            } else {
+                merged.append(overlay)
+            }
+        }
+        return merged
+    }
+
+    private func recommendationSortOrder(_ lhs: RecommendedInterventionItem, _ rhs: RecommendedInterventionItem) -> Bool {
+        let leftPriority = lhs.priority ?? .max
+        let rightPriority = rhs.priority ?? .max
+        if leftPriority != rightPriority {
+            return leftPriority < rightPriority
+        }
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
     }
 
     // MARK: - Derived mapping from snapshot

@@ -444,6 +444,7 @@ public struct RunConsoleView: View {
                 problems: store.state.problemAnnotations,
                 recommendations: store.state.recommendedInterventions,
                 pulses: store.state.pulseAnnotations,
+                pendingInterventionProblemIDs: store.pendingInterventionProblemIDs,
                 canMutate: canMutate,
                 onSelectInjury: { injury in
                     guard canIntervene else { return }
@@ -1548,9 +1549,11 @@ public struct RunConsoleView: View {
     // MARK: - Intervention sheet (structured picker)
 
     private var interventionSheet: some View {
-        InterventionPickerSheet(
+        InterventionComposerSheet(
             dictionary: store.interventionDictionary,
             problems: store.state.problemAnnotations,
+            recommendations: store.state.recommendedInterventions,
+            interventions: store.state.interventionAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
             canMutate: canIntervene,
         ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
@@ -2250,13 +2253,16 @@ public struct RunConsoleView: View {
         let button = Button {
             performControl(control)
         } label: {
-            Label {
+            HStack(spacing: 6) {
+                Image(systemName: control.systemImage)
                 Text(control.title)
                     .lineLimit(multiline ? 2 : 1)
                     .multilineTextAlignment(fullWidth ? .center : .leading)
                     .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: control.systemImage)
+                if isPendingInterventionControl(control) {
+                    ProgressView()
+                        .controlSize(.mini)
+                }
             }
             .font(compact ? compactMetrics.buttonFont : .body)
             .frame(maxWidth: fullWidth ? .infinity : nil, alignment: fullWidth ? .center : .leading)
@@ -2315,322 +2321,10 @@ public struct RunConsoleView: View {
         .background(TrainerLabTheme.tacticalSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
-}
 
-// MARK: - Intervention picker sheet
-
-private struct InterventionPickerSheet: View {
-    let dictionary: [InterventionGroup]
-    let problems: [ProblemAnnotation]
-    let prefilledTargetProblemID: Int?
-    let canMutate: Bool
-    let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
-
-    @State private var selectedType: String?
-    @State private var selectedTargetProblemID: Int?
-    @State private var selectedLocationLabel: String?
-    @State private var selectedLaterality: String?
-    @State private var status: InterventionStatus = .applied
-    @State private var effectiveness: InterventionEffectiveness = .effective
-    @State private var tourniquetApplicationMode: TourniquetApplicationMode = .hasty
-    @State private var notes = ""
-    @Environment(\.dismiss) private var dismiss
-
-    private var selectedGroup: InterventionGroup? {
-        guard let type = selectedType else { return nil }
-        return dictionary.first { $0.interventionType == type }
-    }
-
-    private var locationGroups: [(location: String, sites: [InterventionSite])] {
-        guard let group = selectedGroup else { return [] }
-        return InterventionSite.grouped(group.sites)
-    }
-
-    private var resolvedSiteCode: String? {
-        guard let group = selectedGroup, let locLabel = selectedLocationLabel else { return nil }
-        let matchingSites = group.sites.filter { $0.locationLabel == locLabel }
-        if matchingSites.count == 1 {
-            return matchingSites.first?.code
-        }
-        if let lat = selectedLaterality {
-            return matchingSites.first { $0.laterality == lat }?.code
-        }
-        return nil
-    }
-
-    private var canSubmit: Bool {
-        canMutate && resolvedSiteCode != nil
-    }
-
-    private var selectedTourniquetApplicationMode: TourniquetApplicationMode? {
-        selectedType == "tourniquet" ? tourniquetApplicationMode : nil
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                if !problems.isEmpty {
-                    Section("Target Problem (Optional)") {
-                        Button {
-                            selectedTargetProblemID = nil
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("No specific problem")
-                                        .foregroundStyle(.primary)
-                                    Text("Record this as a general intervention.")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if selectedTargetProblemID == nil {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                            }
-                        }
-
-                        ForEach(problems) { problem in
-                            Button {
-                                selectedTargetProblemID = problem.problemID
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(problem.label)
-                                            .foregroundStyle(.primary)
-                                        Text(problem.status.rawValue.capitalized)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if selectedTargetProblemID == problem.problemID {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Color.accentColor)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Section("Target Problem (Optional)") {
-                        Text("Leave this blank to record a general intervention.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                // Step 1: Intervention type (MARCH grouped)
-                Section("Intervention Type") {
-                    if let type = selectedType {
-                        let label = dictionary.first { $0.interventionType == type }?.label ?? type
-                        selectedChip(label) {
-                            selectedType = nil
-                            selectedLocationLabel = nil
-                            selectedLaterality = nil
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(InterventionMARCHGroup.allCases, id: \.self) { marchGroup in
-                                let types = marchGroup.interventionTypes.compactMap { code in
-                                    dictionary.first { $0.interventionType == code }
-                                }
-                                if !types.isEmpty {
-                                    Text(marchGroup.rawValue)
-                                        .font(.caption.bold())
-                                        .foregroundStyle(.secondary)
-                                    LazyVGrid(
-                                        columns: [GridItem(.adaptive(minimum: 140), spacing: 8)],
-                                        spacing: 8,
-                                    ) {
-                                        ForEach(types) { group in
-                                            typeChip(group)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-
-                // Step 2: Location (visible after type selected)
-                if let group = selectedGroup, !locationGroups.isEmpty {
-                    Section("Location") {
-                        if let locLabel = selectedLocationLabel {
-                            selectedChip(locLabel) {
-                                selectedLocationLabel = nil
-                                selectedLaterality = nil
-                            }
-                            // Laterality inline after location selected
-                            let sites = group.sites.filter { $0.locationLabel == locLabel }
-                            let needsLat = sites.contains { $0.laterality != nil }
-                            if needsLat {
-                                if let lat = selectedLaterality {
-                                    selectedChip(lat.capitalized) { selectedLaterality = nil }
-                                } else {
-                                    HStack(spacing: 8) {
-                                        lateralityChip("left", label: "Left")
-                                        lateralityChip("right", label: "Right")
-                                        Spacer()
-                                    }
-                                }
-                            }
-                        } else {
-                            LazyVGrid(
-                                columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
-                                spacing: 8,
-                            ) {
-                                ForEach(locationGroups, id: \.location) { entry in
-                                    locationChip(entry.location)
-                                }
-                            }
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                }
-
-                // Effectiveness + Status + Notes (visible after type selected)
-                if selectedType != nil {
-                    Section("Effectiveness") {
-                        Picker("Effectiveness", selection: $effectiveness) {
-                            Text("Unknown").tag(InterventionEffectiveness.unknown)
-                            Text("Effective").tag(InterventionEffectiveness.effective)
-                            Text("Partial").tag(InterventionEffectiveness.partiallyEffective)
-                            Text("Ineffective").tag(InterventionEffectiveness.ineffective)
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.clear)
-                    }
-
-                    Section("Status") {
-                        Picker("Status", selection: $status) {
-                            Text("Applied").tag(InterventionStatus.applied)
-                            Text("Adjusted").tag(InterventionStatus.adjusted)
-                            Text("Reassessed").tag(InterventionStatus.reassessed)
-                            Text("Removed").tag(InterventionStatus.removed)
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.clear)
-                    }
-
-                    if selectedType == "tourniquet" {
-                        Section("Application Mode") {
-                            Picker("Application Mode", selection: $tourniquetApplicationMode) {
-                                Text("Hasty").tag(TourniquetApplicationMode.hasty)
-                                Text("Deliberate").tag(TourniquetApplicationMode.deliberate)
-                            }
-                            .pickerStyle(.segmented)
-                            .listRowBackground(Color.clear)
-                        }
-                    }
-
-                    Section("Notes (optional)") {
-                        TextField("Additional notes...", text: $notes, axis: .vertical)
-                            .lineLimit(1 ... 3)
-                    }
-                }
-            }
-            .navigationTitle("Add Intervention")
-            .inlineNavBarTitle()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
-                        guard let siteCode = resolvedSiteCode,
-                              let type = selectedType else { return }
-                        onSubmit(
-                            type,
-                            siteCode,
-                            selectedTargetProblemID,
-                            status,
-                            effectiveness,
-                            notes,
-                            selectedTourniquetApplicationMode,
-                        )
-                    }
-                    .disabled(!canSubmit)
-                }
-            }
-        }
-        .onAppear {
-            if selectedTargetProblemID == nil {
-                selectedTargetProblemID = prefilledTargetProblemID
-            }
-        }
-    }
-
-    private func selectedChip(_ label: String, onClear: @escaping () -> Void) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.vertical, 7)
-                .padding(.horizontal, 12)
-                .background(Color.accentColor)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            Button(action: onClear) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            Spacer()
-        }
-    }
-
-    private func typeChip(_ group: InterventionGroup) -> some View {
-        Button {
-            selectedType = group.interventionType
-            selectedLocationLabel = nil
-            selectedLaterality = nil
-            tourniquetApplicationMode = .hasty
-        } label: {
-            Text(group.label)
-                .font(.caption.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 6)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func locationChip(_ location: String) -> some View {
-        Button {
-            selectedLocationLabel = location
-            selectedLaterality = nil
-        } label: {
-            Text(location)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func lateralityChip(_ lat: String, label: String) -> some View {
-        let selected = selectedLaterality == lat
-        return Button {
-            selectedLaterality = selected ? nil : lat
-        } label: {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(selected ? .white : .primary)
-                .frame(maxWidth: 80)
-                .padding(.vertical, 8)
-                .background(selected ? Color.accentColor : Color.secondary.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
+    private func isPendingInterventionControl(_ control: RunConsoleControlItem) -> Bool {
+        guard case .quick(.intervention) = control else { return false }
+        return store.hasPendingInterventions
     }
 }
 
