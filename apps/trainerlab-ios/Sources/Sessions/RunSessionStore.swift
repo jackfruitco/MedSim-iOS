@@ -2260,9 +2260,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func applyRuntimeState(_ runtimeState: TrainerRestViewModelDTO, source: String) {
         let newRevision = runtimeState.runtimeSnapshot.stateRevision
-        guard newRevision >= appliedSnapshotRevision else {
+        let currentRevision = appliedSnapshotRevision
+        guard newRevision >= currentRevision else {
             logger.info(
-                "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(self.appliedSnapshotRevision, privacy: .public), source=\(source, privacy: .public))",
+                "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(currentRevision, privacy: .public), source=\(source, privacy: .public))",
             )
             return
         }
