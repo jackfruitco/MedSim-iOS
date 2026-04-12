@@ -454,6 +454,8 @@ private struct PatientPaneAccordionState: Equatable {
     var pinnedDiagram = false
     var openSection: PatientPaneSection = .diagram
 
+    private static let preferredSecondaryOrder: [PatientPaneSection] = [.causes, .problems, .pulses, .recommendations]
+
     func isExpanded(_ section: PatientPaneSection) -> Bool {
         if pinnedDiagram {
             return section == .diagram || section == openSection
@@ -468,12 +470,17 @@ private struct PatientPaneAccordionState: Equatable {
             return
         }
 
+        let availableSecondarySections = secondarySections(from: availableSections)
+        let preferredSecondarySection = fallbackSecondarySection(availableSections: availableSections)
+
         if pinnedDiagram {
-            if let fallback = fallbackSecondarySection(availableSections: availableSections) {
-                if openSection == .diagram || !availableSections.contains(openSection) {
-                    openSection = fallback
+            if let preferredSecondarySection {
+                // Pinned mode is diagram + exactly one non-diagram section whenever one exists.
+                if openSection == .diagram || !availableSecondarySections.contains(openSection) {
+                    openSection = preferredSecondarySection
                 }
             } else {
+                // Edge case: if no secondary sections exist, pinned mode can only show the diagram.
                 openSection = .diagram
             }
             return
@@ -489,6 +496,7 @@ private struct PatientPaneAccordionState: Equatable {
         guard availableSections.contains(section) else { return }
 
         if pinnedDiagram {
+            // The diagram header stays inert while pinned; only the pin button changes pin state.
             guard section != .diagram else { return }
             if openSection != section {
                 openSection = section
@@ -505,23 +513,16 @@ private struct PatientPaneAccordionState: Equatable {
         normalize(availableSections: availableSections)
         guard availableSections.contains(.diagram) else { return }
 
-        if pinnedDiagram {
-            pinnedDiagram = false
-            normalize(availableSections: availableSections)
-            return
-        }
-
-        pinnedDiagram = true
-        if let fallback = fallbackSecondarySection(availableSections: availableSections) {
-            openSection = fallback
-        } else {
-            openSection = .diagram
-        }
+        pinnedDiagram.toggle()
+        normalize(availableSections: availableSections)
     }
 
     func fallbackSecondarySection(availableSections: [PatientPaneSection]) -> PatientPaneSection? {
-        let preferredOrder: [PatientPaneSection] = [.causes, .problems, .pulses, .recommendations]
-        return preferredOrder.first(where: availableSections.contains)
+        Self.preferredSecondaryOrder.first(where: availableSections.contains)
+    }
+
+    func secondarySections(from availableSections: [PatientPaneSection]) -> [PatientPaneSection] {
+        availableSections.filter { $0 != .diagram }
     }
 }
 
@@ -715,7 +716,7 @@ struct PatientDiagramPanel: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button {
-                    accordionState.toggleSection(section, availableSections: availableSections)
+                    handleSectionTap(section)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: systemImage)
@@ -774,6 +775,12 @@ struct PatientDiagramPanel: View {
             RoundedRectangle(cornerRadius: sectionCornerRadius, style: .continuous)
                 .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
         )
+    }
+
+    private func handleSectionTap(_ section: PatientPaneSection) {
+        // Keep the diagram header inert while pinned so the pin affordance is the only diagram-state control.
+        guard !(accordionState.pinnedDiagram && section == .diagram) else { return }
+        accordionState.toggleSection(section, availableSections: availableSections)
     }
 
     private func accordionSection(

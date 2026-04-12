@@ -445,21 +445,30 @@ public struct RunConsoleView: View {
             Text("Patient State")
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
-            Group {
-                if layoutMode == .regular {
-                    ScrollView {
-                        patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
-                            .padding(.trailing, 2)
-                    }
-                    .scrollIndicators(.hidden)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                } else {
-                    patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
-                }
-            }
+            patientPaneSurface(layoutMode: layoutMode, compactMetrics: compactMetrics)
         }
         .trainerCardStyle()
         .frame(maxHeight: layoutMode == .regular ? .infinity : nil, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func patientPaneSurface(
+        layoutMode: RunConsoleLayoutMode,
+        compactMetrics: RunConsoleCompactMetrics,
+    ) -> some View {
+        if layoutMode == .regular {
+            // In the two-column layout, the patient pane scrolls independently so the left rail stays usable
+            // while the timeline and info stack scroll on the right.
+            ScrollView {
+                patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
+                    .padding(.trailing, 2)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxHeight: .infinity, alignment: .top)
+        } else {
+            // On compact screens, rely on the page-level scroll view to avoid awkward nested scrolling.
+            patientPaneContent(layoutMode: layoutMode, compactMetrics: compactMetrics)
+        }
     }
 
     private func patientPaneContent(
