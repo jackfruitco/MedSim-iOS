@@ -55,7 +55,9 @@ public struct RunConsoleView: View {
         let shortLabel: String
         let fullLabel: String
 
-        var id: String { shortLabel }
+        var id: String {
+            shortLabel
+        }
     }
 
     public init(
@@ -2162,10 +2164,6 @@ public struct RunConsoleView: View {
         Array(repeating: GridItem(.flexible(minimum: compactMetrics.vitalsColumnMinimum), spacing: compactMetrics.gridSpacing), count: compactMetrics.compactVitalsColumnCount)
     }
 
-    private func compactAVPUColumns(for compactMetrics: RunConsoleCompactMetrics) -> [GridItem] {
-        [GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing), GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing)]
-    }
-
     private var avpuOptions: [AVPUOption] {
         [
             AVPUOption(state: .alert, shortLabel: "A", fullLabel: "Alert"),
@@ -2402,7 +2400,7 @@ public struct RunConsoleView: View {
             Text("AVPU")
                 .font(.caption.weight(.semibold))
 
-            LazyVGrid(columns: compactAVPUColumns(for: compactMetrics), spacing: compactMetrics.gridSpacing) {
+            HStack(spacing: compactMetrics.gridSpacing) {
                 avpuButton(.alert, label: "A", accessibilityLabel: "Alert", compact: true, compactMetrics: compactMetrics)
                 avpuButton(.verbal, label: "V", accessibilityLabel: "Verbal", compact: true, compactMetrics: compactMetrics)
                 avpuButton(.pain, label: "P", accessibilityLabel: "Pain", compact: true, compactMetrics: compactMetrics)
