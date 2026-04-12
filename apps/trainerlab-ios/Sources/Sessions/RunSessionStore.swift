@@ -1492,15 +1492,15 @@ public final class RunSessionStore: ObservableObject {
     }
 
     // MARK: - Live event projection (guard-only; canonical panel state comes from snapshot)
-    //
-    // Panel state (scenarioBrief, vitals, annotations, assessmentFindings, etc.) is driven
-    // exclusively by applyRuntimeState() / the authoritative /state/ snapshot.
-    // Events that arrive via SSE or polling trigger a debounced snapshot refresh via
-    // scheduleRuntimeRefresh(), and the seeded lifecycle path forces an immediate refresh.
-    //
-    // The capture helpers below (captureVitalRange, captureInjuryAnnotation, …) are
-    // retained as overlay helpers for future optimistic-UI work but are NOT called from
-    // the main event-handling path.
+
+    /// Panel state (scenarioBrief, vitals, annotations, assessmentFindings, etc.) is driven
+    /// exclusively by applyRuntimeState() / the authoritative /state/ snapshot.
+    /// Events that arrive via SSE or polling trigger a debounced snapshot refresh via
+    /// scheduleRuntimeRefresh(), and the seeded lifecycle path forces an immediate refresh.
+    ///
+    /// The capture helpers below (captureVitalRange, captureInjuryAnnotation, …) are
+    /// retained as overlay helpers for future optimistic-UI work but are NOT called from
+    /// the main event-handling path.
     private func applyLiveEventProjection(from event: EventEnvelope) {
         switch event.eventType {
         case SimulationEventType.guardStateUpdated, SimulationEventType.guardWarningUpdated:
@@ -2262,7 +2262,7 @@ public final class RunSessionStore: ObservableObject {
         let newRevision = runtimeState.runtimeSnapshot.stateRevision
         guard newRevision >= appliedSnapshotRevision else {
             logger.info(
-                "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(appliedSnapshotRevision, privacy: .public), source=\(source, privacy: .public))",
+                "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(self.appliedSnapshotRevision, privacy: .public), source=\(source, privacy: .public))",
             )
             return
         }
@@ -2331,7 +2331,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     // MARK: - Derived mapping from snapshot
-    //
+
     // These are pure functions that convert authoritative DTO types into UI-facing annotation
     // and state types. They are called exclusively from applyRuntimeState() and are the single
     // place where snapshot data is translated into rendered panel state.

@@ -1951,8 +1951,8 @@ final class RunSessionStoreTests: XCTestCase {
         let service = MockTrainerLabService()
         service.getSessionResult = .success(makeSession(status: .seeded))
         service.getRuntimeStateResultsQueue = try [
-            .success(makeRuntimeState(status: "seeding", stateRevision: 1)),   // bootstrap — seeding in progress
-            .success(makeRuntimeState(                                           // seeded path
+            .success(makeRuntimeState(status: "seeding", stateRevision: 1)), // bootstrap — seeding in progress
+            .success(makeRuntimeState( // seeded path
                 status: "seeded",
                 stateRevision: 2,
                 scenarioBrief: [
@@ -2063,12 +2063,12 @@ final class RunSessionStoreTests: XCTestCase {
         // applied, it must be silently ignored to prevent the UI from regressing.
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
-            .success(makeRuntimeState(             // bootstrap — revision 5, has brief "A"
+            .success(makeRuntimeState( // bootstrap — revision 5, has brief "A"
                 status: "running",
                 stateRevision: 5,
                 scenarioBrief: ["read_aloud_brief": "Brief A", "environment": "Night"],
             )),
-            .success(makeRuntimeState(             // debounced refresh — revision 3 (stale)
+            .success(makeRuntimeState( // debounced refresh — revision 3 (stale)
                 status: "running",
                 stateRevision: 3,
                 scenarioBrief: ["read_aloud_brief": "Brief B", "environment": "Day"],
@@ -2117,7 +2117,7 @@ final class RunSessionStoreTests: XCTestCase {
                 stateRevision: 1,
                 scenarioBrief: ["read_aloud_brief": "Original brief", "environment": "Night"],
             )),
-            .failure(MockServiceError.unused),  // next fetch fails
+            .failure(MockServiceError.unused), // next fetch fails
         ]
 
         let realtime = MockRealtimeClient()
