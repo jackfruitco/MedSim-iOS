@@ -36,6 +36,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var runCommandResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
     var injectInterventionCalls: [InterventionEventRequest] = []
     var injectInterventionResult: Result<TrainerCommandAck, Error> = .failure(MockServiceError.unused)
+    var injectInterventionDelayNanoseconds: UInt64 = 0
 
     func accessMe() async throws -> LabAccess {
         throw MockServiceError.unused
@@ -138,6 +139,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func injectInterventionEvent(simulationID _: Int, request: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
         injectInterventionCalls.append(request)
+        if injectInterventionDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: injectInterventionDelayNanoseconds)
+        }
         return try injectInterventionResult.get()
     }
 
@@ -1404,6 +1408,173 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertTrue(store.hasPendingInterventions)
         XCTAssertTrue(store.state.problemAnnotations.isEmpty)
         XCTAssertTrue(store.state.interventionAnnotations.isEmpty)
+    }
+
+    func testPendingInterventionPersistsAcrossSnapshotRefreshUntilConfirmedEvent() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                problems: [[
+                    "problem_id": 55,
+                    "title": "External hemorrhage",
+                    "status": "active",
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+            )),
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 2,
+                problems: [[
+                    "problem_id": 55,
+                    "title": "External hemorrhage",
+                    "status": "active",
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+            )),
+        ]
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "cmd-1", status: "accepted"))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1 && store.state.problemAnnotations.first?.problemID == 55
+        }
+
+        store.addIntervention(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: 55,
+        )
+
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingIntervention(for: 55) && service.injectInterventionCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "snapshot-refresh",
+            eventType: SimulationEventType.simulationSnapshotUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+        }
+
+        XCTAssertTrue(store.hasPendingIntervention(for: 55))
+        XCTAssertTrue(store.hasPendingInterventions)
+        XCTAssertTrue(store.state.interventionAnnotations.isEmpty)
+    }
+
+    func testPendingInterventionClearsWhenMatchingBackendEventArrives() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "cmd-1", status: "accepted"))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        store.addIntervention(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: 55,
+        )
+
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingIntervention(for: 55) && service.injectInterventionCalls.count == 1
+        }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "intervention-created",
+            eventType: SimulationEventType.patientInterventionCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "domain_event_id": .number(801),
+                "intervention_id": .number(801),
+                "intervention_type": .string("tourniquet"),
+                "title": .string("Tourniquet"),
+                "site_code": .string("LEFT_ARM"),
+                "target_problem_id": .number(55),
+                "status": .string("applied"),
+                "effectiveness": .string("effective"),
+            ],
+        ))
+
+        await waitUntil(timeout: 1.0) {
+            !store.hasPendingIntervention(for: 55)
+                && !store.hasPendingInterventions
+                && store.state.interventionAnnotations.first?.interventionID == 801
+        }
+    }
+
+    func testPendingInterventionClearsOnCommandFailure() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionDelayNanoseconds = 150_000_000
+        service.injectInterventionResult = .failure(APIClientError.http(
+            statusCode: 500,
+            detail: "Server error",
+            correlationID: nil,
+        ))
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        store.addIntervention(
+            interventionType: "tourniquet",
+            siteCode: "LEFT_ARM",
+            targetProblemID: 55,
+        )
+
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingIntervention(for: 55)
+        }
+
+        await waitUntil(timeout: 2.0) {
+            service.injectInterventionCalls.count == 1 && !store.hasPendingInterventions
+        }
+
+        XCTAssertFalse(store.hasPendingIntervention(for: 55))
     }
 
     func testReplayPendingCommandsOnlyReplaysRowsForBoundSimulation() async throws {

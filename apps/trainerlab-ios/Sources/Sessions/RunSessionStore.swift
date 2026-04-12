@@ -92,12 +92,16 @@ public final class RunSessionStore: ObservableObject {
         var confirmedRecommendationOverlays: [Int: RecommendedInterventionItem] = [:]
         var removedRecommendationIDs: Set<Int> = []
 
-        mutating func clear() {
-            pendingInterventions = []
+        mutating func clearConfirmedOverlays() {
             confirmedProblemOverlays = [:]
             confirmedInterventionOverlays = [:]
             confirmedRecommendationOverlays = [:]
             removedRecommendationIDs = []
+        }
+
+        mutating func clearAll() {
+            pendingInterventions = []
+            clearConfirmedOverlays()
         }
     }
 
@@ -260,7 +264,7 @@ public final class RunSessionStore: ObservableObject {
         snapshotProblemAnnotations = []
         snapshotInterventionAnnotations = []
         snapshotRecommendedInterventions = []
-        runtimeOverlayState.clear()
+        runtimeOverlayState.clearAll()
         syncPendingInterventionPublishedState()
         appliedSnapshotRevision = -1
         lastAppliedLifecycleRevision = nil
@@ -2431,7 +2435,7 @@ public final class RunSessionStore: ObservableObject {
                 return makeVitalSnapshot(from: vitalState, existing: existing)
             }
         }
-        runtimeOverlayState.clear()
+        runtimeOverlayState.clearConfirmedOverlays()
         rebuildRenderedRuntimeProjection()
     }
 

@@ -41,16 +41,8 @@ public enum InterventionDisplayText {
 
         guard !rawTokens.isEmpty else { return siteCode }
 
-        let formattedTokens = rawTokens.map(formatToken)
-
-        if rawTokens.first == "IV", rawTokens.count >= 3 {
-            return (formattedTokens.dropFirst() + ["IV"]).joined(separator: " ")
-        }
-        if rawTokens.first == "IO", rawTokens.count >= 3 {
-            return (formattedTokens.dropFirst() + ["IO"]).joined(separator: " ")
-        }
-
-        return formattedTokens.joined(separator: " ")
+        let displayTokens = rawTokens.droppingAccessRoutePrefix()
+        return displayTokens.map(formatToken).joined(separator: " ")
     }
 
     private static func formatToken(_ token: String) -> String {
@@ -72,5 +64,14 @@ public enum InterventionDisplayText {
         default:
             token.capitalized
         }
+    }
+}
+
+private extension Array where Element == String {
+    func droppingAccessRoutePrefix() -> [String] {
+        guard let first, ["IV", "IO"].contains(first), count > 1 else {
+            return self
+        }
+        return Array(dropFirst())
     }
 }

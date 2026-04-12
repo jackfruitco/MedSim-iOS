@@ -404,11 +404,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     func testInterventionDisplayTextHumanizesSiteCodes() {
-        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("IV-RIGHT-AC"), "Right AC IV")
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("IV-RIGHT-AC"), "Right AC")
         XCTAssertEqual(
             InterventionDisplayText.siteLabel(siteCode: "IO-LEFT-PROX-TIBIA", siteLabel: nil),
-            "Left Proximal Tibia IO"
+            "Left Proximal Tibia"
         )
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("LEFT_LEG"), "Left Leg")
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("RIGHT_CHEST"), "Right Chest")
     }
 }
 
