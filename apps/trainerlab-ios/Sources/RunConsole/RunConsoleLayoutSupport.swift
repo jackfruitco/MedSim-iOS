@@ -325,6 +325,32 @@ struct RunConsoleCompactMetrics {
     )
 }
 
+struct RunConsoleRegularVitalsMetrics {
+    let sectionSpacing: CGFloat
+    let cardPadding: CGFloat
+    let vitalsRowSpacing: CGFloat
+    let vitalCellSpacing: CGFloat
+    let vitalValueFont: Font
+    let vitalValueVerticalPadding: CGFloat
+    let avpuSpacing: CGFloat
+    let avpuChipSpacing: CGFloat
+    let avpuChipHorizontalPadding: CGFloat
+    let avpuChipMinHeight: CGFloat
+
+    static let standard = Self(
+        sectionSpacing: 6,
+        cardPadding: 6,
+        vitalsRowSpacing: 6,
+        vitalCellSpacing: 4,
+        vitalValueFont: .footnote.monospacedDigit(),
+        vitalValueVerticalPadding: 4,
+        avpuSpacing: 8,
+        avpuChipSpacing: 6,
+        avpuChipHorizontalPadding: 10,
+        avpuChipMinHeight: 30,
+    )
+}
+
 // MARK: - InterventionMARCHGroup
 
 enum InterventionMARCHGroup: String, CaseIterable {
