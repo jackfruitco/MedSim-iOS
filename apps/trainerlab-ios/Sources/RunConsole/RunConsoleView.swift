@@ -50,6 +50,16 @@ public struct RunConsoleView: View {
 
     @State private var terminalCardDismissed = false
 
+    private struct AVPUOption: Identifiable {
+        let state: AVPUState
+        let shortLabel: String
+        let fullLabel: String
+
+        var id: String {
+            shortLabel
+        }
+    }
+
     public init(
         store: RunSessionStore,
         onBack: @escaping () -> Void,
@@ -208,7 +218,9 @@ public struct RunConsoleView: View {
         layoutMode: RunConsoleLayoutMode,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
-        VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : 8) {
+        let regularVitalsMetrics = RunConsoleRegularVitalsMetrics.standard
+
+        return VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : regularVitalsMetrics.sectionSpacing) {
             Text("Patient Vitals")
                 .font(layoutMode == .compact ? .subheadline.bold() : .headline)
 
@@ -220,19 +232,11 @@ public struct RunConsoleView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            } else if layoutMode == .regular {
-                HStack(spacing: 8) {
-                    ForEach(orderedVitals) { vital in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(vitalDisplayName(vital.key))
-                                .font(.caption2.bold())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            VitalValueCell(vital: vital, valueText: displayValue(vital))
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
+                if layoutMode == .regular {
+                    regularAVPUInlineControl(metrics: regularVitalsMetrics)
                 }
+            } else if layoutMode == .regular {
+                regularVitalsContent(metrics: regularVitalsMetrics)
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
@@ -244,17 +248,21 @@ public struct RunConsoleView: View {
                 }
             }
 
-            Divider()
-                .overlay(TrainerLabTheme.tacticalBorder.opacity(0.85))
+            if layoutMode == .compact {
+                Divider()
+                    .overlay(TrainerLabTheme.tacticalBorder.opacity(0.3))
 
-            avpuControlSection(layoutMode: layoutMode, compactMetrics: compactMetrics)
+                avpuControlSection(layoutMode: layoutMode, compactMetrics: compactMetrics)
+            }
         }
         .modifier(
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
-                padding: layoutMode == .compact ? compactMetrics.cardPadding : 8,
+                padding: layoutMode == .compact ? compactMetrics.cardPadding : regularVitalsMetrics.cardPadding,
             ),
         )
+        .frame(maxHeight: layoutMode == .regular ? regularVitalsMetrics.maxHeight : nil, alignment: .top)
+        .fixedSize(horizontal: false, vertical: layoutMode == .regular)
     }
 
     // MARK: - Command bars
@@ -501,24 +509,11 @@ public struct RunConsoleView: View {
         layoutMode: RunConsoleLayoutMode,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
-        VStack(alignment: .leading, spacing: layoutMode == .compact ? 6 : 8) {
-            Text("AVPU")
-                .font(layoutMode == .compact ? .caption.weight(.semibold) : .subheadline.bold())
-
+        Group {
             if layoutMode == .regular {
-                HStack(spacing: 8) {
-                    avpuButton(.alert, label: "Alert", compact: false, compactMetrics: compactMetrics)
-                    avpuButton(.verbal, label: "Verbal", compact: false, compactMetrics: compactMetrics)
-                    avpuButton(.pain, label: "Pain", compact: false, compactMetrics: compactMetrics)
-                    avpuButton(.unalert, label: "Unalert", compact: false, compactMetrics: compactMetrics)
-                }
+                regularAVPUInlineControl(metrics: .standard)
             } else {
-                LazyVGrid(columns: compactAVPUColumns(for: compactMetrics), spacing: compactMetrics.gridSpacing) {
-                    avpuButton(.alert, label: "Alert", compact: true, compactMetrics: compactMetrics)
-                    avpuButton(.verbal, label: "Verbal", compact: true, compactMetrics: compactMetrics)
-                    avpuButton(.pain, label: "Pain", compact: true, compactMetrics: compactMetrics)
-                    avpuButton(.unalert, label: "Unalert", compact: true, compactMetrics: compactMetrics)
-                }
+                compactAVPUControl(compactMetrics: compactMetrics)
             }
         }
     }
@@ -2022,6 +2017,7 @@ public struct RunConsoleView: View {
     private func avpuButton(
         _ stateValue: AVPUState,
         label: String,
+        accessibilityLabel: String? = nil,
         compact: Bool,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
@@ -2043,6 +2039,7 @@ public struct RunConsoleView: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel ?? label)
         .disabled(!canMutate)
         .opacity(canMutate ? 1 : 0.55)
     }
@@ -2168,8 +2165,13 @@ public struct RunConsoleView: View {
         Array(repeating: GridItem(.flexible(minimum: compactMetrics.vitalsColumnMinimum), spacing: compactMetrics.gridSpacing), count: compactMetrics.compactVitalsColumnCount)
     }
 
-    private func compactAVPUColumns(for compactMetrics: RunConsoleCompactMetrics) -> [GridItem] {
-        [GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing), GridItem(.flexible(minimum: compactMetrics.controlColumnMinimum), spacing: compactMetrics.gridSpacing)]
+    private var avpuOptions: [AVPUOption] {
+        [
+            AVPUOption(state: .alert, shortLabel: "A", fullLabel: "Alert"),
+            AVPUOption(state: .verbal, shortLabel: "V", fullLabel: "Verbal"),
+            AVPUOption(state: .pain, shortLabel: "P", fullLabel: "Pain"),
+            AVPUOption(state: .unalert, shortLabel: "U", fullLabel: "Unalert"),
+        ]
     }
 
     // MARK: - Button helpers
@@ -2301,6 +2303,114 @@ public struct RunConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TrainerLabTheme.tacticalSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func regularVitalCell(
+        _ vital: VitalStatusSnapshot,
+        metrics: RunConsoleRegularVitalsMetrics,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: metrics.vitalCellSpacing) {
+            Text(vitalDisplayName(vital.key))
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            VitalValueCell(
+                vital: vital,
+                valueText: displayValue(vital),
+                font: metrics.vitalValueFont,
+                verticalPadding: metrics.vitalValueVerticalPadding,
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func regularVitalsContent(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: metrics.inlineGroupSpacing) {
+                regularVitalsRow(metrics: metrics)
+                regularAVPUInlineControl(metrics: metrics)
+            }
+
+            VStack(alignment: .leading, spacing: metrics.fallbackRowSpacing) {
+                regularVitalsRow(metrics: metrics)
+                regularAVPUInlineControl(metrics: metrics)
+            }
+        }
+    }
+
+    private func regularVitalsRow(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        HStack(alignment: .top, spacing: metrics.vitalsRowSpacing) {
+            ForEach(orderedVitals) { vital in
+                regularVitalCell(vital, metrics: metrics)
+            }
+        }
+    }
+
+    private func regularAVPUInlineControl(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        HStack(alignment: .center, spacing: metrics.avpuSpacing) {
+            avpuInlineLabel
+            regularAVPUChipRow(metrics: metrics)
+        }
+        .fixedSize(horizontal: true, vertical: true)
+    }
+
+    private var avpuInlineLabel: some View {
+        Text("AVPU")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private func regularAVPUChipRow(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+        HStack(spacing: metrics.avpuChipSpacing) {
+            ForEach(avpuOptions) { option in
+                regularAVPUChip(option, metrics: metrics)
+            }
+        }
+    }
+
+    private func regularAVPUChip(
+        _ option: AVPUOption,
+        metrics: RunConsoleRegularVitalsMetrics,
+    ) -> some View {
+        Button {
+            selectedAVPU = option.state
+            store.adjustAVPU(option.state)
+        } label: {
+            Text(option.fullLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, metrics.avpuChipHorizontalPadding)
+                .frame(minHeight: metrics.avpuChipMinHeight)
+                .background(avpuColor(option.state))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(selectedAVPU == option.state ? Color.white : Color.clear, lineWidth: 2),
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.fullLabel)
+        .accessibilityAddTraits(selectedAVPU == option.state ? .isSelected : [])
+        .help(option.fullLabel)
+        .disabled(!canMutate)
+        .opacity(canMutate ? 1 : 0.55)
+    }
+
+    private func compactAVPUControl(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("AVPU")
+                .font(.caption.weight(.semibold))
+
+            HStack(spacing: compactMetrics.gridSpacing) {
+                avpuButton(.alert, label: "A", accessibilityLabel: "Alert", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.verbal, label: "V", accessibilityLabel: "Verbal", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.pain, label: "P", accessibilityLabel: "Pain", compact: true, compactMetrics: compactMetrics)
+                avpuButton(.unalert, label: "U", accessibilityLabel: "Unalert", compact: true, compactMetrics: compactMetrics)
+            }
+        }
     }
 
     private func isPendingInterventionControl(_ control: RunConsoleControlItem) -> Bool {

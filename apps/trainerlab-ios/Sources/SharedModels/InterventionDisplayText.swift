@@ -67,7 +67,7 @@ public enum InterventionDisplayText {
     }
 }
 
-private extension Array where Element == String {
+private extension [String] {
     func droppingAccessRoutePrefix() -> [String] {
         guard let first, ["IV", "IO"].contains(first), count > 1 else {
             return self
