@@ -1145,7 +1145,7 @@ struct PatientDiagramPanel: View {
     private func interventionRow(_ intervention: InterventionAnnotation) -> some View {
         let siteSummary = InterventionDisplayText.siteLabel(
             siteCode: intervention.siteCode,
-            siteLabel: intervention.siteLabel
+            siteLabel: intervention.siteLabel,
         ) ?? intervention.siteCode
         return HStack(spacing: 6) {
             Image(systemName: "plus.circle.fill")
@@ -1228,7 +1228,7 @@ struct PatientDiagramPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     let siteSummary = InterventionDisplayText.siteLabel(
                         siteCode: intervention.siteCode,
-                        siteLabel: intervention.siteLabel
+                        siteLabel: intervention.siteLabel,
                     ) ?? intervention.siteCode
                     Text(intervention.title)
                         .font(.caption.bold())

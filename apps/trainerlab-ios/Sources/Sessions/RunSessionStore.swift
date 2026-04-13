@@ -77,7 +77,7 @@ public final class RunSessionStore: ObservableObject {
         let canonicalEventType: String
     }
 
-    private struct PendingInterventionState: Equatable, Sendable {
+    private struct PendingInterventionState: Equatable {
         let idempotencyKey: String
         let interventionType: String
         let siteCode: String
@@ -85,7 +85,7 @@ public final class RunSessionStore: ObservableObject {
         let createdAt: Date
     }
 
-    private struct TrainerRuntimeOverlayState: Sendable {
+    private struct TrainerRuntimeOverlayState {
         var pendingInterventions: [PendingInterventionState] = []
         var confirmedProblemOverlays: [String: ProblemAnnotation] = [:]
         var confirmedInterventionOverlays: [String: InterventionAnnotation] = [:]
@@ -2472,14 +2472,14 @@ public final class RunSessionStore: ObservableObject {
         let normalizedSiteCode = siteCode.uppercased()
         guard
             let matchIndex = runtimeOverlayState.pendingInterventions
-                .enumerated()
-                .filter({
-                    $0.element.interventionType == interventionType
-                        && $0.element.siteCode == normalizedSiteCode
-                        && $0.element.targetProblemID == targetProblemID
-                })
-                .min(by: { lhs, rhs in lhs.element.createdAt < rhs.element.createdAt })?
-                .offset
+            .enumerated()
+            .filter({
+                $0.element.interventionType == interventionType
+                    && $0.element.siteCode == normalizedSiteCode
+                    && $0.element.targetProblemID == targetProblemID
+            })
+            .min(by: { lhs, rhs in lhs.element.createdAt < rhs.element.createdAt })?
+            .offset
         else {
             return
         }
@@ -2490,7 +2490,7 @@ public final class RunSessionStore: ObservableObject {
 
     private func syncPendingInterventionPublishedState() {
         pendingInterventionProblemIDs = Set(runtimeOverlayState.pendingInterventions.compactMap(\.targetProblemID))
-        pendingGeneralInterventionCount = runtimeOverlayState.pendingInterventions.filter { $0.targetProblemID == nil }.count
+        pendingGeneralInterventionCount = runtimeOverlayState.pendingInterventions.count(where: { $0.targetProblemID == nil })
     }
 
     private func rebuildRenderedRuntimeProjection() {

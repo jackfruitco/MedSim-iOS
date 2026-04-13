@@ -27,7 +27,7 @@ struct InterventionComposerPrefill: Equatable {
         status: InterventionStatus = .applied,
         effectiveness: InterventionEffectiveness = .effective,
         notes: String = "",
-        tourniquetApplicationMode: TourniquetApplicationMode? = nil
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
     ) {
         self.interventionType = interventionType
         self.siteCode = siteCode
@@ -115,8 +115,13 @@ struct AvailableAccessInventory: Equatable {
         ioSites = active.filter { $0.interventionType == "io_access" }
     }
 
-    var hasIV: Bool { !ivSites.isEmpty }
-    var hasIO: Bool { !ioSites.isEmpty }
+    var hasIV: Bool {
+        !ivSites.isEmpty
+    }
+
+    var hasIO: Bool {
+        !ioSites.isEmpty
+    }
 
     var preferredRouteToken: String? {
         if let newestIV = ivSites.first, let newestIO = ioSites.first {
@@ -173,8 +178,13 @@ struct RecommendedInterventionAction: Identifiable, Equatable {
     let disabledReason: String?
     let prefill: InterventionComposerPrefill
 
-    var id: Int { recommendationID }
-    var isEnabled: Bool { disabledReason == nil && prefill.siteCode != nil }
+    var id: Int {
+        recommendationID
+    }
+
+    var isEnabled: Bool {
+        disabledReason == nil && prefill.siteCode != nil
+    }
 }
 
 struct InterventionMenuContext {
@@ -190,7 +200,7 @@ struct InterventionMenuContext {
         problems: [ProblemAnnotation],
         recommendations: [RecommendedInterventionItem],
         interventions: [InterventionAnnotation],
-        selectedTargetProblemID: Int?
+        selectedTargetProblemID: Int?,
     ) {
         let selectedProblem = problems.first(where: { $0.problemID == selectedTargetProblemID })
         let accessInventory = AvailableAccessInventory(interventions: interventions)
@@ -205,8 +215,8 @@ struct InterventionMenuContext {
                     InterventionDisabledOption(
                         id: group.interventionType,
                         title: group.label,
-                        reason: reason
-                    )
+                        reason: reason,
+                    ),
                 )
             }
         }
@@ -226,7 +236,7 @@ struct InterventionMenuContext {
                 recommendation: recommendation,
                 selectedProblem: selectedProblem,
                 accessInventory: accessInventory,
-                availableSites: availableSitesByType[group.interventionType] ?? group.sites
+                availableSites: availableSitesByType[group.interventionType] ?? group.sites,
             )
             let disabledReason = accessInventory.disabledReason(for: group)
                 ?? (prefill.siteCode == nil && (availableSitesByType[group.interventionType] ?? group.sites).count > 1 ? "Choose site in edit" : nil)
@@ -240,10 +250,10 @@ struct InterventionMenuContext {
                     siteCode: prefill.siteCode,
                     siteLabel: recommendation.siteLabel,
                     interventionType: interventionType,
-                    dictionary: dictionary
+                    dictionary: dictionary,
                 ),
                 disabledReason: disabledReason,
-                prefill: prefill
+                prefill: prefill,
             )
         }
 
@@ -264,7 +274,7 @@ struct InterventionMenuContext {
         self.recommendedActions = recommendedActions
         self.availableSitesByType = availableSitesByType
         self.disabledItems = disabledItems
-        self.availableGroups = ordered
+        availableGroups = ordered
     }
 
     func availableSites(for group: InterventionGroup) -> [InterventionSite] {
@@ -278,13 +288,13 @@ struct InterventionMenuContext {
             recommendation: nil,
             selectedProblem: selectedProblem,
             accessInventory: accessInventory,
-            availableSites: availableSites(for: group)
+            availableSites: availableSites(for: group),
         )
     }
 
     private static func recommendedInterventionType(
         for recommendation: RecommendedInterventionItem,
-        dictionary: [InterventionGroup]
+        dictionary: [InterventionGroup],
     ) -> String? {
         let candidates = [
             recommendation.normalizedKind,
@@ -303,7 +313,7 @@ struct InterventionMenuContext {
 
     private static func recommendationSortOrder(
         _ lhs: RecommendedInterventionItem,
-        _ rhs: RecommendedInterventionItem
+        _ rhs: RecommendedInterventionItem,
     ) -> Bool {
         let leftPriority = lhs.priority ?? .max
         let rightPriority = rhs.priority ?? .max
@@ -318,7 +328,7 @@ struct InterventionMenuContext {
         recommendation: RecommendedInterventionItem?,
         selectedProblem: ProblemAnnotation?,
         accessInventory: AvailableAccessInventory,
-        availableSites: [InterventionSite]
+        availableSites: [InterventionSite],
     ) -> InterventionComposerPrefill {
         let explicitSiteCode = recommendation?.siteCode
         let inferredSiteCode = explicitSiteCode.flatMap { siteCode in
@@ -332,7 +342,7 @@ struct InterventionMenuContext {
             status: .applied,
             effectiveness: .effective,
             notes: "",
-            tourniquetApplicationMode: group.interventionType == "tourniquet" ? .hasty : nil
+            tourniquetApplicationMode: group.interventionType == "tourniquet" ? .hasty : nil,
         )
     }
 
@@ -340,7 +350,7 @@ struct InterventionMenuContext {
         for group: InterventionGroup,
         selectedProblem: ProblemAnnotation?,
         availableSites: [InterventionSite],
-        accessInventory: AvailableAccessInventory
+        accessInventory _: AvailableAccessInventory,
     ) -> String? {
         if group.interventionType == "fluid_resuscitation" || group.interventionType == "blood_transfusion" {
             return availableSites.first?.code
@@ -385,7 +395,7 @@ struct InterventionMenuContext {
         let tokens = Set(
             site.code.uppercased()
                 .split(whereSeparator: { $0 == "_" || $0 == "-" })
-                .map(String.init)
+                .map(String.init),
         )
         return tokens.intersection(locationTokens).count
     }
@@ -410,7 +420,7 @@ struct InterventionComposerSheet: View {
         interventions: [InterventionAnnotation],
         prefilledTargetProblemID: Int?,
         canMutate: Bool,
-        onSubmit: @escaping (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
+        onSubmit: @escaping (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void,
     ) {
         self.dictionary = dictionary
         self.problems = problems
@@ -428,7 +438,7 @@ struct InterventionComposerSheet: View {
             problems: problems,
             recommendations: recommendations,
             interventions: interventions,
-            selectedTargetProblemID: draft.selectedTargetProblemID
+            selectedTargetProblemID: draft.selectedTargetProblemID,
         )
     }
 
@@ -494,7 +504,7 @@ struct InterventionComposerSheet: View {
                 selectionRow(
                     title: "General intervention",
                     subtitle: "Not tied to a single problem",
-                    selected: draft.selectedTargetProblemID == nil
+                    selected: draft.selectedTargetProblemID == nil,
                 )
             }
             .buttonStyle(.plain)
@@ -508,7 +518,7 @@ struct InterventionComposerSheet: View {
                     selectionRow(
                         title: problem.label,
                         subtitle: problem.status.rawValue.capitalized,
-                        selected: draft.selectedTargetProblemID == problem.problemID
+                        selected: draft.selectedTargetProblemID == problem.problemID,
                     )
                 }
                 .buttonStyle(.plain)
@@ -527,36 +537,39 @@ struct InterventionComposerSheet: View {
 
             ForEach(context.recommendedActions) { action in
                 HStack(alignment: .top, spacing: 10) {
-                    Button(action: { submit(action) }) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(action.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            if let subtitle = action.subtitle, !subtitle.isEmpty {
-                                Text(subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    Button(
+                        action: { submit(action) },
+                        label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(action.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                if let subtitle = action.subtitle, !subtitle.isEmpty {
+                                    Text(subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
+                                    Text(siteSummary)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(TrainerLabTheme.accentBlue)
+                                }
+                                if let disabledReason = action.disabledReason {
+                                    Text(disabledReason)
+                                        .font(.caption2)
+                                        .foregroundStyle(TrainerLabTheme.warning)
+                                } else if let validationStatus = action.validationStatus {
+                                    Text(SimulationEventRegistry.humanizedLabel(validationStatus))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
-                                Text(siteSummary)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(TrainerLabTheme.accentBlue)
-                            }
-                            if let disabledReason = action.disabledReason {
-                                Text(disabledReason)
-                                    .font(.caption2)
-                                    .foregroundStyle(TrainerLabTheme.warning)
-                            } else if let validationStatus = action.validationStatus {
-                                Text(SimulationEventRegistry.humanizedLabel(validationStatus))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color.white.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        },
+                    )
                     .buttonStyle(.plain)
                     .disabled(!action.isEnabled || !canMutate)
 
@@ -589,13 +602,13 @@ struct InterventionComposerSheet: View {
             collapsibleSection(
                 title: "Intervention Type",
                 section: .type,
-                summary: draft.selectedType.map { InterventionDisplayText.interventionTypeLabel($0, dictionary: dictionary) }
+                summary: draft.selectedType.map { InterventionDisplayText.interventionTypeLabel($0, dictionary: dictionary) },
             ) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(context.availableGroups, id: \.id) { group in
                         compactChip(
                             title: group.label,
-                            selected: draft.selectedType == group.interventionType
+                            selected: draft.selectedType == group.interventionType,
                         ) {
                             selectInterventionType(group.interventionType)
                         }
@@ -612,16 +625,16 @@ struct InterventionComposerSheet: View {
                             siteCode: $0,
                             siteLabel: nil,
                             interventionType: draft.selectedType,
-                            dictionary: dictionary
+                            dictionary: dictionary,
                         )
-                    }
+                    },
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                             ForEach(locationGroups, id: \.location) { entry in
                                 compactChip(
                                     title: entry.location,
-                                    selected: draft.selectedLocationLabel == entry.location
+                                    selected: draft.selectedLocationLabel == entry.location,
                                 ) {
                                     draft.selectedLocationLabel = entry.location
                                     draft.selectedLaterality = entry.sites.count == 1 ? entry.sites.first?.laterality : nil
@@ -650,7 +663,7 @@ struct InterventionComposerSheet: View {
                 collapsibleSection(
                     title: "Status & Effectiveness",
                     section: .review,
-                    summary: "\(draft.status.rawValue.capitalized) · \(SimulationEventRegistry.humanizedLabel(draft.effectiveness.rawValue))"
+                    summary: "\(draft.status.rawValue.capitalized) · \(SimulationEventRegistry.humanizedLabel(draft.effectiveness.rawValue))",
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top, spacing: 10) {
@@ -660,7 +673,7 @@ struct InterventionComposerSheet: View {
                                     .foregroundStyle(.secondary)
                                 chipGrid(
                                     items: InterventionStatus.allCases.map { ($0.rawValue.capitalized, $0) },
-                                    selected: draft.status
+                                    selected: draft.status,
                                 ) { value in
                                     draft.status = value
                                 }
@@ -672,7 +685,7 @@ struct InterventionComposerSheet: View {
                                     .foregroundStyle(.secondary)
                                 chipGrid(
                                     items: InterventionEffectiveness.allCases.map { (SimulationEventRegistry.humanizedLabel($0.rawValue), $0) },
-                                    selected: draft.effectiveness
+                                    selected: draft.effectiveness,
                                 ) { value in
                                     draft.effectiveness = value
                                 }
@@ -686,7 +699,7 @@ struct InterventionComposerSheet: View {
                                     .foregroundStyle(.secondary)
                                 chipGrid(
                                     items: TourniquetApplicationMode.allCases.map { (SimulationEventRegistry.humanizedLabel($0.rawValue), $0) },
-                                    selected: draft.tourniquetApplicationMode
+                                    selected: draft.tourniquetApplicationMode,
                                 ) { value in
                                     draft.tourniquetApplicationMode = value
                                 }
@@ -698,7 +711,7 @@ struct InterventionComposerSheet: View {
                 collapsibleSection(
                     title: "Notes",
                     section: .notes,
-                    summary: draft.notes.isEmpty ? nil : draft.notes
+                    summary: draft.notes.isEmpty ? nil : draft.notes,
                 ) {
                     TextField("Optional notes", text: $draft.notes, axis: .vertical)
                         .lineLimit(2 ... 4)
@@ -736,11 +749,11 @@ struct InterventionComposerSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func collapsibleSection<Content: View>(
+    private func collapsibleSection(
         title: String,
         section: InterventionComposerSection,
         summary: String?,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -778,7 +791,7 @@ struct InterventionComposerSheet: View {
     private func chipGrid<Value: Hashable>(
         items: [(String, Value)],
         selected: Value,
-        onSelect: @escaping (Value) -> Void
+        onSelect: @escaping (Value) -> Void,
     ) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
             ForEach(items, id: \.0) { item in
@@ -859,7 +872,7 @@ struct InterventionComposerSheet: View {
             draft.status,
             draft.effectiveness,
             draft.notes,
-            draft.selectedTourniquetApplicationMode
+            draft.selectedTourniquetApplicationMode,
         )
         dismiss()
     }
@@ -873,7 +886,7 @@ struct InterventionComposerSheet: View {
             action.prefill.status,
             action.prefill.effectiveness,
             action.prefill.notes,
-            action.prefill.tourniquetApplicationMode
+            action.prefill.tourniquetApplicationMode,
         )
         dismiss()
     }

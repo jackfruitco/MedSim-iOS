@@ -312,13 +312,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                     sites: [
                         InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
                         InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
-                    ]
+                    ],
                 ),
             ],
             problems: [],
             recommendations: [],
             interventions: [],
-            selectedTargetProblemID: nil
+            selectedTargetProblemID: nil,
         )
 
         XCTAssertTrue(context.availableGroups.isEmpty)
@@ -333,7 +333,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 sites: [
                     InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
                     InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-                ]
+                ],
             ),
             InterventionGroup(
                 interventionType: "pressure_dressing",
@@ -341,7 +341,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 sites: [
                     InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
                     InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-                ]
+                ],
             ),
         ]
         let problem = ProblemAnnotation(
@@ -354,14 +354,14 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             side: .front,
             x: 0.4,
             y: 0.7,
-            status: .active
+            status: .active,
         )
         let recommendation = RecommendedInterventionItem(
             recommendationID: 7,
             title: "Apply tourniquet",
             kind: "tourniquet",
             targetProblemID: 41,
-            priority: 1
+            priority: 1,
         )
 
         let context = InterventionMenuContext(
@@ -369,7 +369,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             problems: [problem],
             recommendations: [recommendation],
             interventions: [],
-            selectedTargetProblemID: 41
+            selectedTargetProblemID: 41,
         )
 
         XCTAssertEqual(context.availableGroups.map(\.interventionType), ["tourniquet", "pressure_dressing"])
@@ -384,7 +384,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
                 sites: [
                     InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
                     InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-                ]
+                ],
             ),
         ]
         var draft = InterventionComposerDraft(prefilledTargetProblemID: 41)
@@ -392,9 +392,9 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             InterventionComposerPrefill(
                 interventionType: "tourniquet",
                 siteCode: "LEFT_LEG",
-                targetProblemID: 41
+                targetProblemID: 41,
             ),
-            dictionary: dictionary
+            dictionary: dictionary,
         )
 
         XCTAssertEqual(draft.selectedType, "tourniquet")
@@ -407,7 +407,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("IV-RIGHT-AC"), "Right AC")
         XCTAssertEqual(
             InterventionDisplayText.siteLabel(siteCode: "IO-LEFT-PROX-TIBIA", siteLabel: nil),
-            "Left Proximal Tibia"
+            "Left Proximal Tibia",
         )
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("LEFT_LEG"), "Left Leg")
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("RIGHT_CHEST"), "Right Chest")
@@ -418,7 +418,7 @@ private func makeInterventionAnnotation(
     id: String,
     type: String,
     siteCode: String,
-    updatedAt: Date
+    updatedAt: Date,
 ) -> InterventionAnnotation {
     InterventionAnnotation(
         id: id,
@@ -430,6 +430,6 @@ private func makeInterventionAnnotation(
         y: 0.4,
         effectiveness: "effective",
         status: InterventionStatus.applied.rawValue,
-        updatedAt: updatedAt
+        updatedAt: updatedAt,
     )
 }
