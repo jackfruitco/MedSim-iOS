@@ -222,7 +222,7 @@ public struct RunConsoleView: View {
 
         return VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : regularVitalsMetrics.sectionSpacing) {
             Text("Patient Vitals")
-                .font(layoutMode == .compact ? .subheadline.bold() : .headline)
+                .font(.subheadline.bold())
 
             if orderedVitals.isEmpty {
                 Text(
