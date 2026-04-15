@@ -282,4 +282,154 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertNil(row.detail)
         XCTAssertEqual(row.canonicalEventType, SimulationEventType.simulationSummaryUpdated)
     }
+
+    func testAvailableAccessInventoryDerivesIVAndIOAvailability() {
+        let none = AvailableAccessInventory(interventions: [])
+        XCTAssertFalse(none.hasIV)
+        XCTAssertFalse(none.hasIO)
+
+        let ivOnly = AvailableAccessInventory(interventions: [
+            makeInterventionAnnotation(id: "iv-1", type: "iv_access", siteCode: "IV-RIGHT-AC", updatedAt: Date(timeIntervalSince1970: 20)),
+        ])
+        XCTAssertTrue(ivOnly.hasIV)
+        XCTAssertFalse(ivOnly.hasIO)
+
+        let both = AvailableAccessInventory(interventions: [
+            makeInterventionAnnotation(id: "iv-1", type: "iv_access", siteCode: "IV-RIGHT-AC", updatedAt: Date(timeIntervalSince1970: 10)),
+            makeInterventionAnnotation(id: "io-1", type: "io_access", siteCode: "IO-LEFT-PROX-TIBIA", updatedAt: Date(timeIntervalSince1970: 20)),
+        ])
+        XCTAssertTrue(both.hasIV)
+        XCTAssertTrue(both.hasIO)
+        XCTAssertEqual(both.preferredRouteToken, "IO")
+    }
+
+    func testInterventionMenuContextDisablesFluidActionsWithoutAccess() {
+        let context = InterventionMenuContext(
+            dictionary: [
+                InterventionGroup(
+                    interventionType: "fluid_resuscitation",
+                    label: "Fluid Resuscitation",
+                    sites: [
+                        InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
+                        InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
+                    ],
+                ),
+            ],
+            problems: [],
+            recommendations: [],
+            interventions: [],
+            selectedTargetProblemID: nil,
+        )
+
+        XCTAssertTrue(context.availableGroups.isEmpty)
+        XCTAssertEqual(context.disabledItems.first?.reason, "Requires IV or IO access")
+    }
+
+    func testInterventionMenuContextPrefersRecommendedTypesAndProblemSiteDefaults() {
+        let dictionary = [
+            InterventionGroup(
+                interventionType: "tourniquet",
+                label: "Tourniquet",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "pressure_dressing",
+                label: "Pressure Dressing",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                ],
+            ),
+        ]
+        let problem = ProblemAnnotation(
+            id: "problem-1",
+            problemID: 41,
+            title: "Massive hemorrhage",
+            description: "Left lower leg bleeding",
+            isAnatomic: true,
+            locationCode: "LEFT_LOWER_LEG",
+            side: .front,
+            x: 0.4,
+            y: 0.7,
+            status: .active,
+        )
+        let recommendation = RecommendedInterventionItem(
+            recommendationID: 7,
+            title: "Apply tourniquet",
+            kind: "tourniquet",
+            targetProblemID: 41,
+            priority: 1,
+        )
+
+        let context = InterventionMenuContext(
+            dictionary: dictionary,
+            problems: [problem],
+            recommendations: [recommendation],
+            interventions: [],
+            selectedTargetProblemID: 41,
+        )
+
+        XCTAssertEqual(context.availableGroups.map(\.interventionType), ["tourniquet", "pressure_dressing"])
+        XCTAssertEqual(context.recommendedActions.first?.prefill.siteCode, "LEFT_LEG")
+    }
+
+    func testInterventionComposerDraftAppliesPrefillAndResolvesSiteCode() {
+        let dictionary = [
+            InterventionGroup(
+                interventionType: "tourniquet",
+                label: "Tourniquet",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                ],
+            ),
+        ]
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: 41)
+        draft.applyPrefill(
+            InterventionComposerPrefill(
+                interventionType: "tourniquet",
+                siteCode: "LEFT_LEG",
+                targetProblemID: 41,
+            ),
+            dictionary: dictionary,
+        )
+
+        XCTAssertEqual(draft.selectedType, "tourniquet")
+        XCTAssertEqual(draft.selectedLocationLabel, "Leg")
+        XCTAssertEqual(draft.selectedLaterality, "left")
+        XCTAssertEqual(draft.resolvedSiteCode(in: dictionary[0].sites), "LEFT_LEG")
+    }
+
+    func testInterventionDisplayTextHumanizesSiteCodes() {
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("IV-RIGHT-AC"), "Right AC")
+        XCTAssertEqual(
+            InterventionDisplayText.siteLabel(siteCode: "IO-LEFT-PROX-TIBIA", siteLabel: nil),
+            "Left Proximal Tibia",
+        )
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("LEFT_LEG"), "Left Leg")
+        XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("RIGHT_CHEST"), "Right Chest")
+    }
+}
+
+private func makeInterventionAnnotation(
+    id: String,
+    type: String,
+    siteCode: String,
+    updatedAt: Date,
+) -> InterventionAnnotation {
+    InterventionAnnotation(
+        id: id,
+        interventionID: Int(id.split(separator: "-").last ?? "1"),
+        interventionType: type,
+        siteCode: siteCode,
+        side: .front,
+        x: 0.4,
+        y: 0.4,
+        effectiveness: "effective",
+        status: InterventionStatus.applied.rawValue,
+        updatedAt: updatedAt,
+    )
 }
