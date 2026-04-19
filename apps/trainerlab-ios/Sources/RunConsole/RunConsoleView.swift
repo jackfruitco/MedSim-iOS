@@ -1,10 +1,14 @@
 import DesignSystem
+import FeedbackFeature
+import Networking
 import Sessions
 import SharedModels
 import SwiftUI
 
 public struct RunConsoleView: View {
     @ObservedObject private var store: RunSessionStore
+    private let feedbackService: FeedbackServiceProtocol
+    private let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     private let onBack: () -> Void
     private let onOpenSummary: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -14,6 +18,8 @@ public struct RunConsoleView: View {
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
+    @State private var activeFeedbackContext: FeedbackLaunchContext?
+    @State private var feedbackSuccessMessage: String?
 
     @State private var quickActionInjury: InjuryAnnotation?
 
@@ -62,10 +68,14 @@ public struct RunConsoleView: View {
 
     public init(
         store: RunSessionStore,
+        feedbackService: FeedbackServiceProtocol,
+        feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         onBack: @escaping () -> Void,
         onOpenSummary: @escaping () -> Void,
     ) {
         self.store = store
+        self.feedbackService = feedbackService
+        self.feedbackHeaderProvider = feedbackHeaderProvider
         self.onBack = onBack
         self.onOpenSummary = onOpenSummary
     }
@@ -152,6 +162,32 @@ public struct RunConsoleView: View {
         .onChange(of: store.state.terminalCard) { _, newValue in
             if newValue != nil {
                 terminalCardDismissed = false
+            }
+        }
+        .sheet(item: $activeFeedbackContext) { context in
+            FeedbackFormView(
+                viewModel: FeedbackViewModel(
+                    service: feedbackService,
+                    headerProvider: feedbackHeaderProvider,
+                    launchContext: context,
+                ),
+                onSubmitted: {
+                    feedbackSuccessMessage = "Feedback sent."
+                },
+            )
+        }
+        .overlay(alignment: .top) {
+            if let feedbackSuccessMessage {
+                FeedbackSuccessBanner(message: feedbackSuccessMessage)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
+        }
+        .task(id: feedbackSuccessMessage) {
+            guard feedbackSuccessMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled {
+                feedbackSuccessMessage = nil
             }
         }
     }
@@ -2215,6 +2251,8 @@ public struct RunConsoleView: View {
                 showEventSheet = true
             case .annotation:
                 showAnnotationSheet = true
+            case .sendFeedback:
+                activeFeedbackContext = feedbackLaunchContext()
             case .steer:
                 showSteerSheet = true
             case .tickAI:
@@ -2416,6 +2454,17 @@ public struct RunConsoleView: View {
     private func isPendingInterventionControl(_ control: RunConsoleControlItem) -> Bool {
         guard case .quick(.intervention) = control else { return false }
         return store.hasPendingInterventions
+    }
+
+    private func feedbackLaunchContext() -> FeedbackLaunchContext {
+        FeedbackLaunchContext(
+            scope: .simulation,
+            sourceScreen: "trainer_run_console",
+            simulationID: store.state.session?.simulationID,
+            labType: .trainerlab,
+            simulationDisplayName: store.state.session.map { "Simulation #\($0.simulationID)" },
+            simulationStatus: store.state.session?.status.rawValue,
+        )
     }
 }
 

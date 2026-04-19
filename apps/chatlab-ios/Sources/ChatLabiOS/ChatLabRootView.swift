@@ -1,3 +1,5 @@
+import FeedbackFeature
+import Networking
 import SharedModels
 import SwiftUI
 
@@ -5,6 +7,8 @@ public struct ChatLabRootView: View {
     @StateObject private var homeStore: ChatLabHomeStore
     private let makeRunStore: (ChatSimulation) -> ChatRunStore
     private let makeToolsStore: (Int) -> ChatToolsStore
+    private let feedbackService: FeedbackServiceProtocol
+    private let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     private let mediaLoader: ChatMediaLoading
     private let onExit: () -> Void
 
@@ -14,12 +18,16 @@ public struct ChatLabRootView: View {
         homeStore: ChatLabHomeStore,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
+        feedbackService: FeedbackServiceProtocol,
+        feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         mediaLoader: ChatMediaLoading,
         onExit: @escaping () -> Void,
     ) {
         _homeStore = StateObject(wrappedValue: homeStore)
         self.makeRunStore = makeRunStore
         self.makeToolsStore = makeToolsStore
+        self.feedbackService = feedbackService
+        self.feedbackHeaderProvider = feedbackHeaderProvider
         self.mediaLoader = mediaLoader
         self.onExit = onExit
     }
@@ -32,6 +40,8 @@ public struct ChatLabRootView: View {
                         simulation: simulation,
                         makeRunStore: makeRunStore,
                         makeToolsStore: makeToolsStore,
+                        feedbackService: feedbackService,
+                        feedbackHeaderProvider: feedbackHeaderProvider,
                         mediaLoader: mediaLoader,
                         onBack: { selectedSimulation = nil },
                     )
@@ -59,6 +69,8 @@ private struct ChatRunScreen: View {
     let simulation: ChatSimulation
     let makeRunStore: (ChatSimulation) -> ChatRunStore
     let makeToolsStore: (Int) -> ChatToolsStore
+    let feedbackService: FeedbackServiceProtocol
+    let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     let mediaLoader: ChatMediaLoading
     let onBack: () -> Void
 
@@ -69,12 +81,16 @@ private struct ChatRunScreen: View {
         simulation: ChatSimulation,
         makeRunStore: @escaping (ChatSimulation) -> ChatRunStore,
         makeToolsStore: @escaping (Int) -> ChatToolsStore,
+        feedbackService: FeedbackServiceProtocol,
+        feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         mediaLoader: ChatMediaLoading,
         onBack: @escaping () -> Void,
     ) {
         self.simulation = simulation
         self.makeRunStore = makeRunStore
         self.makeToolsStore = makeToolsStore
+        self.feedbackService = feedbackService
+        self.feedbackHeaderProvider = feedbackHeaderProvider
         self.mediaLoader = mediaLoader
         self.onBack = onBack
         _runStore = StateObject(wrappedValue: makeRunStore(simulation))
@@ -85,6 +101,8 @@ private struct ChatRunScreen: View {
         ChatRunView(
             store: runStore,
             toolsStore: toolsStore,
+            feedbackService: feedbackService,
+            feedbackHeaderProvider: feedbackHeaderProvider,
             mediaLoader: mediaLoader,
             onBack: onBack,
         )

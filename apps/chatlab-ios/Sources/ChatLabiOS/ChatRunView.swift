@@ -1,4 +1,6 @@
 import DesignSystem
+import FeedbackFeature
+import Networking
 import SharedModels
 import SwiftUI
 #if os(iOS)
@@ -10,12 +12,16 @@ import SwiftUI
 public struct ChatRunView: View {
     @ObservedObject private var store: ChatRunStore
     @ObservedObject private var toolsStore: ChatToolsStore
+    private let feedbackService: FeedbackServiceProtocol
+    private let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     private let mediaLoader: ChatMediaLoading
     private let onBack: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var showToolsSheet = false
+    @State private var activeFeedbackContext: FeedbackLaunchContext?
+    @State private var feedbackSuccessMessage: String?
     @State private var stagedOrderText = ""
     @State private var expandedToolSections = Set<ChatToolsSection>()
     @State private var lastToolLayoutMode: ChatRunLayoutMode?
@@ -26,11 +32,15 @@ public struct ChatRunView: View {
     public init(
         store: ChatRunStore,
         toolsStore: ChatToolsStore,
+        feedbackService: FeedbackServiceProtocol,
+        feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         mediaLoader: ChatMediaLoading,
         onBack: @escaping () -> Void,
     ) {
         self.store = store
         self.toolsStore = toolsStore
+        self.feedbackService = feedbackService
+        self.feedbackHeaderProvider = feedbackHeaderProvider
         self.mediaLoader = mediaLoader
         self.onBack = onBack
     }
@@ -83,6 +93,32 @@ public struct ChatRunView: View {
         .modifier(ChatInlineNavigationTitleModifier())
         .modifier(ChatHideRunNavigationBarModifier())
         .modifier(ChatKeyboardStateModifier(isKeyboardPresented: $isKeyboardPresented))
+        .sheet(item: $activeFeedbackContext) { context in
+            FeedbackFormView(
+                viewModel: FeedbackViewModel(
+                    service: feedbackService,
+                    headerProvider: feedbackHeaderProvider,
+                    launchContext: context,
+                ),
+                onSubmitted: {
+                    feedbackSuccessMessage = "Feedback sent."
+                },
+            )
+        }
+        .overlay(alignment: .top) {
+            if let feedbackSuccessMessage {
+                FeedbackSuccessBanner(message: feedbackSuccessMessage)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
+        }
+        .task(id: feedbackSuccessMessage) {
+            guard feedbackSuccessMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled {
+                feedbackSuccessMessage = nil
+            }
+        }
     }
 
     private func padWorkspace(chromeMode: ChatRunChromeMode) -> some View {
@@ -431,6 +467,11 @@ public struct ChatRunView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
             }
+
+            Button("Send Feedback") {
+                activeFeedbackContext = feedbackLaunchContext()
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -780,6 +821,14 @@ public struct ChatRunView: View {
                 .frame(maxWidth: .infinity)
             }
 
+            if layoutMode != .padWorkspace {
+                Button("Send Feedback") {
+                    activeFeedbackContext = feedbackLaunchContext()
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
+            }
+
             if isInStitchConversation {
                 // Currently in the Stitch debrief — show a clear indicator instead of a button.
                 Label("Stitch Debrief", systemImage: "bubble.left.and.text.bubble.right.fill")
@@ -857,6 +906,19 @@ public struct ChatRunView: View {
             .onSubmit {
                 stageCurrentOrder()
             }
+    }
+
+    private func feedbackLaunchContext() -> FeedbackLaunchContext {
+        FeedbackLaunchContext(
+            scope: .simulation,
+            sourceScreen: "chat_run",
+            simulationID: store.simulation.id,
+            conversationID: store.activeConversationID,
+            labType: .chatlab,
+            simulationDisplayName: store.simulation.patientDisplayName,
+            simulationStatus: store.simulation.status.rawValue,
+            conversationKind: activeConversation?.conversationType,
+        )
     }
 
     private var addOrderButton: some View {

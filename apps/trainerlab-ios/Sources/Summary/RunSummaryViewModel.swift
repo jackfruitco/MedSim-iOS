@@ -12,7 +12,7 @@ public final class RunSummaryViewModel: ObservableObject {
     @Published public private(set) var notReadyMessage: String?
 
     private let service: TrainerLabServiceProtocol
-    private let simulationID: Int
+    public let simulationID: Int
 
     public init(service: TrainerLabServiceProtocol, simulationID: Int) {
         self.service = service

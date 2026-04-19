@@ -21,6 +21,7 @@ let package = Package(
                 .product(name: "Networking", package: "trainerlab-ios"),
                 .product(name: "Persistence", package: "trainerlab-ios"),
                 .product(name: "DesignSystem", package: "trainerlab-ios"),
+                .product(name: "FeedbackFeature", package: "trainerlab-ios"),
                 .product(name: "SharedModels", package: "trainerlab-ios"),
             ],
         ),
