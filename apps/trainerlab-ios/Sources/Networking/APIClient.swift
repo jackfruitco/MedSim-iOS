@@ -245,6 +245,8 @@ public enum FeedbackAPI {
             method: .post,
             body: body,
             headers: headers,
+            requiresAuth: true,
+            requiresAccountContext: false,
         )
     }
 }

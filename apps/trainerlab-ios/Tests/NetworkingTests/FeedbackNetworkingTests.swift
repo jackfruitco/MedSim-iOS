@@ -24,6 +24,14 @@ private final class FeedbackMockTokenProvider: AuthTokenProvider, @unchecked Sen
     }
 }
 
+private struct FeedbackStaticAccountContextProvider: AccountContextProvider {
+    let accountUUID: String?
+
+    func selectedAccountUUID() async -> String? {
+        accountUUID
+    }
+}
+
 private final class FeedbackURLProtocolMock: URLProtocol {
     nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
@@ -116,7 +124,7 @@ final class FeedbackNetworkingTests: XCTestCase {
         XCTAssertEqual(create.path, "/api/v1/feedback/")
         XCTAssertEqual(create.method, .post)
         XCTAssertTrue(create.requiresAuth)
-        XCTAssertTrue(create.requiresAccountContext)
+        XCTAssertFalse(create.requiresAccountContext)
         XCTAssertEqual(create.headers["X-Platform"], "ios")
     }
 
@@ -181,6 +189,7 @@ final class FeedbackNetworkingTests: XCTestCase {
             XCTAssertEqual(self.normalizedPath(request.url?.path), "/api/v1/feedback")
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-1")
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Account-UUID"))
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Platform"), "ios")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-App-Version"), "1.2.3 (45)")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-OS-Version"), "18.0")
@@ -197,7 +206,7 @@ final class FeedbackNetworkingTests: XCTestCase {
                 #"{"id":11,"category":"simulation_content","title":"Realism","body":"Helpful feedback","simulation_id":9,"conversation_id":3,"rating":4,"allow_follow_up":true,"created_at":"2026-04-19T12:00:00Z"}"#.utf8
             )
             return (
-                HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 201, httpVersion: nil, headerFields: nil)!,
                 responseData
             )
         }
@@ -207,6 +216,7 @@ final class FeedbackNetworkingTests: XCTestCase {
             tokenProvider: FeedbackMockTokenProvider(
                 tokens: AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
             ),
+            accountContextProvider: FeedbackStaticAccountContextProvider(accountUUID: "acct-123"),
             session: session,
         )
         let service = FeedbackService(
