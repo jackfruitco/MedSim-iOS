@@ -155,9 +155,9 @@ final class FeedbackNetworkingTests: XCTestCase {
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
             let body = Data(#"[{"value":"bug_report","label":"Bug Report"}]"#.utf8)
-            return (
-                HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                body
+            return try (
+                HTTPURLResponse(url: XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                body,
             )
         }
 
@@ -203,18 +203,18 @@ final class FeedbackNetworkingTests: XCTestCase {
             XCTAssertEqual(object["body"] as? String, "Helpful feedback")
 
             let responseData = Data(
-                #"{"id":11,"category":"simulation_content","title":"Realism","body":"Helpful feedback","simulation_id":9,"conversation_id":3,"rating":4,"allow_follow_up":true,"created_at":"2026-04-19T12:00:00Z"}"#.utf8
+                #"{"id":11,"category":"simulation_content","title":"Realism","body":"Helpful feedback","simulation_id":9,"conversation_id":3,"rating":4,"allow_follow_up":true,"created_at":"2026-04-19T12:00:00Z"}"#.utf8,
             )
-            return (
-                HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 201, httpVersion: nil, headerFields: nil)!,
-                responseData
+            return try (
+                HTTPURLResponse(url: XCTUnwrap(request.url), statusCode: 201, httpVersion: nil, headerFields: nil)!,
+                responseData,
             )
         }
 
         let client = APIClient(
             baseURLProvider: { URL(string: "https://example.com")! },
             tokenProvider: FeedbackMockTokenProvider(
-                tokens: AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer")
+                tokens: AuthTokens(accessToken: "token-1", refreshToken: "refresh-1", expiresIn: 3600, tokenType: "Bearer"),
             ),
             accountContextProvider: FeedbackStaticAccountContextProvider(accountUUID: "acct-123"),
             session: session,
@@ -238,7 +238,7 @@ final class FeedbackNetworkingTests: XCTestCase {
                 conversationID: 3,
                 rating: 4,
                 allowFollowUp: true,
-            )
+            ),
         )
 
         XCTAssertEqual(response.id, 11)

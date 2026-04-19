@@ -1,7 +1,6 @@
-import FeedbackFeature
+@testable import FeedbackFeature
 import Networking
 import SharedModels
-@testable import FeedbackFeature
 import XCTest
 
 private enum MockFeedbackError: Error {
@@ -71,7 +70,7 @@ final class FeedbackViewModelTests: XCTestCase {
                 allowFollowUp: true,
                 context: nil,
                 createdAt: nil,
-            )
+            ),
         )
         let viewModel = FeedbackViewModel(
             service: service,
@@ -158,7 +157,7 @@ final class FeedbackViewModelTests: XCTestCase {
                 allowFollowUp: false,
                 context: nil,
                 createdAt: nil,
-            )
+            ),
         )
         let viewModel = FeedbackViewModel(
             service: service,

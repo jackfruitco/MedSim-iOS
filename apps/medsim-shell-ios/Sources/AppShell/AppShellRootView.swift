@@ -293,7 +293,7 @@ private struct RunConsoleScreen: View {
             onBack: onBack,
             onOpenSummary: onOpenSummary,
         )
-            .appShellOrientationLock(.iPadLandscape)
+        .appShellOrientationLock(.iPadLandscape)
     }
 }
 
