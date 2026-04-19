@@ -1424,9 +1424,9 @@ private struct PatientResultRow: View {
                 Text(
                     result.displayName
                         .replacingOccurrences(of: "_", with: " ")
-                        .uppercased()
+                        .uppercased(),
                 )
-                    .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 12)
                 Text(valueText)
                     .font(.headline.monospacedDigit())
@@ -1738,10 +1738,9 @@ private struct FeedbackFieldRow: View {
         field.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "patient experience"
     }
 
-    @ViewBuilder
     private func starRatingView(rating: Int) -> some View {
         HStack(spacing: 2) {
-            ForEach(0..<5, id: \.self) { index in
+            ForEach(0 ..< 5, id: \.self) { index in
                 Image(systemName: index < rating ? "star.fill" : "star")
                     .font(.footnote)
                     .foregroundStyle(.yellow)
