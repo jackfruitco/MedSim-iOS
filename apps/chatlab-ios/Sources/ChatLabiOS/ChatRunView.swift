@@ -1396,9 +1396,18 @@ private struct PatientResultsRows: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        ForEach(Array(section.rows.enumerated()), id: \.offset) { _, result in
-                            PatientResultRow(result: result)
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(section.rows.enumerated()), id: \.offset) { index, result in
+                                PatientResultRow(result: result)
+
+                                if index < section.rows.count - 1 {
+                                    Divider()
+                                        .overlay(Color.secondary.opacity(0.12))
+                                }
+                            }
                         }
+                        .background(Color.secondary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                 }
             }
@@ -1412,18 +1421,17 @@ private struct PatientResultRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(result.displayName)
+                Text(
+                    result.displayName
+                        .replacingOccurrences(of: "_", with: " ")
+                        .uppercased()
+                )
                     .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 12)
                 Text(valueText)
                     .font(.headline.monospacedDigit())
                     .multilineTextAlignment(.trailing)
-            }
-
-            if !metadataLine.isEmpty {
-                Text(metadataLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(result.flag == "abnormal" ? .red : .primary)
             }
 
             if let referenceRangeText {
@@ -1434,8 +1442,6 @@ private struct PatientResultRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(Color.secondary.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var valueText: String {
@@ -1550,12 +1556,22 @@ private struct SimulationFeedbackRows: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
+            let fields = rows.flatMap(feedbackFields(from:))
+            let diagnosisField = fields.first { normalizedFeedbackKey(for: $0.label) == "diagnosis" }
+            let treatmentPlanField = fields.first { normalizedFeedbackKey(for: $0.label) == "treatment plan" }
+            let remainingFields = fields.filter {
+                let normalized = normalizedFeedbackKey(for: $0.label)
+                return normalized != "diagnosis" && normalized != "treatment plan"
+            }
+
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    let fields = ChatFeedbackPresentation.fields(from: row)
+                if diagnosisField != nil || treatmentPlanField != nil {
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
-                            FeedbackFieldRow(field: field)
+                        if let diagnosisField {
+                            FeedbackFieldRow(field: diagnosisField)
+                        }
+                        if let treatmentPlanField {
+                            FeedbackFieldRow(field: treatmentPlanField)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1563,8 +1579,75 @@ private struct SimulationFeedbackRows: View {
                     .background(Color.secondary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
+
+                ForEach(Array(remainingFields.enumerated()), id: \.offset) { _, field in
+                    FeedbackFieldRow(field: field)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
             }
         }
+    }
+
+    private func feedbackFields(from row: [String: JSONValue]) -> [ChatFeedbackField] {
+        guard let rawKeyValue = row["key"] else {
+            return []
+        }
+
+        let rawKey = ChatToolValueFormatter.render(rawKeyValue)
+        let loweredRawKey = rawKey.lowercased()
+        guard !rawKey.isEmpty,
+              rawKey != "-",
+              loweredRawKey != "kind",
+              loweredRawKey != "key",
+              loweredRawKey != "db_pk"
+        else {
+            return []
+        }
+
+        let label = prettyFeedbackLabel(from: rawKey)
+        let value = row["value"] ?? .null
+
+        switch value {
+        case let .bool(boolValue):
+            return [
+                ChatFeedbackField(
+                    label: label,
+                    kind: boolValue ? .boolTrue : .boolFalse,
+                ),
+            ]
+        default:
+            let rendered = ChatToolValueFormatter.render(value)
+            guard !rendered.isEmpty,
+                  rendered != "-",
+                  rendered.lowercased() != "simulation_feedback"
+            else {
+                return []
+            }
+
+            return [
+                ChatFeedbackField(
+                    label: label,
+                    kind: .text(rendered),
+                ),
+            ]
+        }
+    }
+
+    private func prettyFeedbackLabel(from rawKey: String) -> String {
+        let stripped = rawKey
+            .replacingOccurrences(of: "hotwash_", with: "")
+            .replacingOccurrences(of: "correct_", with: "")
+
+        return ChatToolValueFormatter.friendlyLabel(for: stripped)
+    }
+
+    private func normalizedFeedbackKey(for label: String) -> String {
+        label
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 }
 
@@ -1573,49 +1656,104 @@ private struct FeedbackFieldRow: View {
 
     var body: some View {
         switch field.kind {
-        // Boolish rows: icon (for visual scanning) + "Label: Yes/No/Partial" text.
-        // VoiceOver reads the combined label so it announces the full semantic meaning.
         case .boolTrue:
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "checkmark.square.fill")
-                    .foregroundStyle(.green)
-                    .accessibilityHidden(true) // text below carries the full meaning
-                Text("\(field.label): Yes")
-                    .font(.footnote)
-                Spacer(minLength: 0)
-            }
-            .accessibilityLabel("\(field.label): Yes")
-        case .boolFalse:
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "x.square.fill")
-                    .foregroundStyle(.red)
-                    .accessibilityHidden(true)
-                Text("\(field.label): No")
-                    .font(.footnote)
-                Spacer(minLength: 0)
-            }
-            .accessibilityLabel("\(field.label): No")
-        case .partial:
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "exclamationmark.square.fill")
-                    .foregroundStyle(.yellow)
-                    .accessibilityHidden(true)
-                Text("\(field.label): Partial")
-                    .font(.footnote)
-                Spacer(minLength: 0)
-            }
-            .accessibilityLabel("\(field.label): Partial")
-        // Text rows: compact two-line label/value, consistent with boolish scanability.
-        case let .text(value):
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(field.label)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.footnote)
+                Spacer(minLength: 8)
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel("\(field.label): \(value)")
+            .accessibilityLabel("\(field.label): Yes")
+
+        case .boolFalse:
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(field.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("\(field.label): No")
+
+        case .partial:
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(field.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("\(field.label): Partial")
+
+        case let .text(value):
+            if let rating = starRatingValue(from: value), isPatientExperienceLabel {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(field.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    starRatingView(rating: rating)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("\(field.label): \(rating) out of 5 stars")
+            } else if value.count > 40 || value.contains("\n") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(field.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(value)
+                        .font(.footnote)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("\(field.label): \(value)")
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(field.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .font(.footnote)
+                        .multilineTextAlignment(.trailing)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("\(field.label): \(value)")
+            }
         }
+    }
+
+    private var isPatientExperienceLabel: Bool {
+        field.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "patient experience"
+    }
+
+    @ViewBuilder
+    private func starRatingView(rating: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { index in
+                Image(systemName: index < rating ? "star.fill" : "star")
+                    .font(.footnote)
+                    .foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private func starRatingValue(from value: String) -> Int? {
+        guard let parsed = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        return min(max(parsed, 0), 5)
     }
 }
