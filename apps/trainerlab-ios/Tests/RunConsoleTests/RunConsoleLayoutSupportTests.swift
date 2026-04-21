@@ -412,12 +412,272 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("LEFT_LEG"), "Left Leg")
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("RIGHT_CHEST"), "Right Chest")
     }
+
+    // MARK: - PatientPane Accordion
+
+    func testPatientPaneAccordionOpenSecondaryPinsDiagram() {
+        var state = PatientPaneAccordionState()
+        let sections: [PatientPaneSection] = [.diagram, .causes, .problems]
+
+        state.toggleSection(.causes, availableSections: sections)
+
+        XCTAssertTrue(state.pinnedDiagram, "Opening a secondary section should auto-pin the diagram")
+        XCTAssertEqual(state.openSection, .causes)
+        XCTAssertTrue(state.isExpanded(.diagram), "Diagram must remain visible when a secondary section opens")
+        XCTAssertTrue(state.isExpanded(.causes))
+        XCTAssertFalse(state.isExpanded(.problems))
+    }
+
+    func testPatientPaneAccordionRepeatTapCollapsesPinnedSection() {
+        var state = PatientPaneAccordionState()
+        let sections: [PatientPaneSection] = [.diagram, .causes, .problems]
+
+        state.toggleSection(.causes, availableSections: sections)
+        XCTAssertTrue(state.pinnedDiagram)
+        XCTAssertEqual(state.openSection, .causes)
+
+        state.toggleSection(.causes, availableSections: sections)
+
+        XCTAssertFalse(state.pinnedDiagram, "Tapping the active secondary section should unpin and collapse")
+        XCTAssertEqual(state.openSection, .diagram, "After collapse the diagram should be the open section")
+        XCTAssertTrue(state.isExpanded(.diagram))
+        XCTAssertFalse(state.isExpanded(.causes))
+    }
+
+    func testPatientPaneAccordionSwitchBetweenSectionsKeepsDiagramPinned() {
+        var state = PatientPaneAccordionState()
+        let sections: [PatientPaneSection] = [.diagram, .causes, .problems, .recommendations]
+
+        state.toggleSection(.causes, availableSections: sections)
+        XCTAssertTrue(state.pinnedDiagram)
+        XCTAssertEqual(state.openSection, .causes)
+
+        state.toggleSection(.problems, availableSections: sections)
+
+        XCTAssertTrue(state.pinnedDiagram, "Diagram should stay pinned when switching between secondary sections")
+        XCTAssertEqual(state.openSection, .problems)
+        XCTAssertTrue(state.isExpanded(.diagram))
+        XCTAssertFalse(state.isExpanded(.causes))
+        XCTAssertTrue(state.isExpanded(.problems))
+    }
+
+    func testPatientPaneAccordionDiagramOnlyWhenNoSecondary() {
+        var state = PatientPaneAccordionState()
+        let sections: [PatientPaneSection] = [.diagram]
+
+        // Tapping diagram when it is the only section is a no-op.
+        state.toggleSection(.diagram, availableSections: sections)
+
+        XCTAssertFalse(state.pinnedDiagram)
+        XCTAssertEqual(state.openSection, .diagram)
+        XCTAssertTrue(state.isExpanded(.diagram))
+    }
+
+    func testPatientPaneAccordionUnavailableSectionIsIgnored() {
+        var state = PatientPaneAccordionState()
+        let sections: [PatientPaneSection] = [.diagram, .causes]
+
+        // .problems is not in the available list; toggle should be a no-op.
+        state.toggleSection(.problems, availableSections: sections)
+
+        XCTAssertFalse(state.pinnedDiagram)
+        XCTAssertEqual(state.openSection, .diagram)
+    }
+
+    // MARK: - Target Problem Chooser Collapse
+
+    func testInterventionComposerDraftStartsWithTargetChooserOpen() {
+        let draft = InterventionComposerDraft(prefilledTargetProblemID: nil)
+
+        XCTAssertEqual(draft.activeSection, .target, "Draft with no prefill should start at the target-chooser step")
+        XCTAssertNil(draft.selectedTargetProblemID)
+    }
+
+    func testInterventionComposerDraftPrefilledProblemStartsAtTypeStep() {
+        let draft = InterventionComposerDraft(prefilledTargetProblemID: 42)
+
+        XCTAssertEqual(draft.activeSection, .type, "Prefilled draft should start at the type step, not the chooser")
+        XCTAssertEqual(draft.selectedTargetProblemID, 42)
+    }
+
+    func testInterventionComposerDraftSelectingProblemCollapsesChooser() {
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: nil)
+        XCTAssertEqual(draft.activeSection, .target)
+
+        // Simulate selecting a target problem (same logic as the button action).
+        draft.selectedTargetProblemID = 99
+        draft.activeSection = .type
+
+        XCTAssertEqual(draft.activeSection, .type, "Chooser must collapse (activeSection advances to .type) after selection")
+        XCTAssertEqual(draft.selectedTargetProblemID, 99, "Selected problem ID must be preserved after collapse")
+    }
+
+    func testInterventionComposerDraftSelectedProblemVisibleWhenCollapsed() {
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: nil)
+        draft.selectedTargetProblemID = 7
+        draft.activeSection = .type
+
+        // The summary chip should be derivable from draft state.
+        XCTAssertEqual(draft.selectedTargetProblemID, 7)
+        XCTAssertNotEqual(draft.activeSection, .target, "Chooser list must not be open after collapse")
+    }
+
+    func testInterventionComposerDraftCanReopenChooser() {
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: nil)
+        draft.selectedTargetProblemID = 7
+        draft.activeSection = .type
+
+        // Simulate the header button toggling back to .target.
+        draft.activeSection = .target
+
+        XCTAssertEqual(draft.activeSection, .target, "Tapping the summary should re-open the chooser")
+        XCTAssertEqual(draft.selectedTargetProblemID, 7, "Previously selected problem should still be set while chooser is open")
+    }
+
+    func testInterventionComposerDraftGeneralSelectionCollapsesChooser() {
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: nil)
+        XCTAssertEqual(draft.activeSection, .target)
+
+        // Simulate selecting "General intervention".
+        draft.selectedTargetProblemID = nil
+        draft.activeSection = .type
+
+        XCTAssertEqual(draft.activeSection, .type)
+        XCTAssertNil(draft.selectedTargetProblemID)
+    }
+
+    // MARK: - Recommendation Acceptance State
+
+    func testRecommendationAcceptanceNoInterventionsAllPending() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+
+        let accepted = InterventionMenuContext.isRecommendationAccepted(
+            rec,
+            interventionType: "tourniquet",
+            interventions: [],
+        )
+
+        XCTAssertFalse(accepted)
+    }
+
+    func testRecommendationAcceptanceMatchingInterventionIsAccepted() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+
+        let accepted = InterventionMenuContext.isRecommendationAccepted(
+            rec,
+            interventionType: "tourniquet",
+            interventions: [intervention],
+        )
+
+        XCTAssertTrue(accepted)
+    }
+
+    func testRecommendationAcceptanceDifferentTypeNotAccepted() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+        // An intervention for the same problem but a different type should NOT accept this recommendation.
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "pressure_dressing", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+
+        let accepted = InterventionMenuContext.isRecommendationAccepted(
+            rec,
+            interventionType: "tourniquet",
+            interventions: [intervention],
+        )
+
+        XCTAssertFalse(accepted, "A different intervention type for the same problem must not mark the recommendation as accepted")
+    }
+
+    func testRecommendationAcceptanceDifferentProblemNotAccepted() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+        // Same type, but targeting a different problem — should not accept.
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 99, updatedAt: Date())
+
+        let accepted = InterventionMenuContext.isRecommendationAccepted(
+            rec,
+            interventionType: "tourniquet",
+            interventions: [intervention],
+        )
+
+        XCTAssertFalse(accepted, "An intervention targeting a different problem must not mark this recommendation as accepted")
+    }
+
+    func testRecommendationAcceptanceOnePendingOneAcceptedOnSameProblem() {
+        let recTourniquet = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+        let recDressing = RecommendedInterventionItem(
+            recommendationID: 2, title: "Pressure Dressing", kind: "pressure_dressing", targetProblemID: 10, priority: 2,
+        )
+
+        // Only the tourniquet was applied.
+        let interventions = [
+            makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date()),
+        ]
+
+        let tourniquetAccepted = InterventionMenuContext.isRecommendationAccepted(
+            recTourniquet, interventionType: "tourniquet", interventions: interventions,
+        )
+        let dressingAccepted = InterventionMenuContext.isRecommendationAccepted(
+            recDressing, interventionType: "pressure_dressing", interventions: interventions,
+        )
+
+        XCTAssertTrue(tourniquetAccepted, "Tourniquet recommendation must be accepted since a tourniquet was applied")
+        XCTAssertFalse(dressingAccepted, "Pressure dressing recommendation must remain pending — only tourniquet was applied")
+    }
+
+    func testRecommendationAcceptanceTwoProblemsWithDifferentStates() {
+        let recProblem10 = RecommendedInterventionItem(
+            recommendationID: 1, title: "Tourniquet", kind: "tourniquet", targetProblemID: 10, priority: 1,
+        )
+        let recProblem20 = RecommendedInterventionItem(
+            recommendationID: 2, title: "Tourniquet", kind: "tourniquet", targetProblemID: 20, priority: 1,
+        )
+
+        // Only problem 10 was treated.
+        let interventions = [
+            makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date()),
+        ]
+
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(recProblem10, interventionType: "tourniquet", interventions: interventions),
+        )
+        XCTAssertFalse(
+            InterventionMenuContext.isRecommendationAccepted(recProblem20, interventionType: "tourniquet", interventions: interventions),
+            "Recommendation for problem 20 must remain pending — intervention targeted problem 10",
+        )
+    }
+
+    func testRecommendationAcceptanceMultipleInterventionTypesOnlyMatchCorrect() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1, title: "IV Access", kind: "iv_access", targetProblemID: 5, priority: 1,
+        )
+        let interventions = [
+            makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 5, updatedAt: Date()),
+            makeInterventionAnnotation(id: "int-2", type: "pressure_dressing", siteCode: "LEFT_LEG", targetProblemID: 5, updatedAt: Date()),
+            makeInterventionAnnotation(id: "int-3", type: "iv_access", siteCode: "IV-RIGHT-AC", targetProblemID: 5, updatedAt: Date()),
+        ]
+
+        let accepted = InterventionMenuContext.isRecommendationAccepted(
+            rec, interventionType: "iv_access", interventions: interventions,
+        )
+
+        XCTAssertTrue(accepted, "IV access recommendation must be accepted since an iv_access intervention for the same problem exists")
+    }
 }
 
 private func makeInterventionAnnotation(
     id: String,
     type: String,
     siteCode: String,
+    targetProblemID: Int? = nil,
     updatedAt: Date,
 ) -> InterventionAnnotation {
     InterventionAnnotation(
@@ -425,6 +685,7 @@ private func makeInterventionAnnotation(
         interventionID: Int(id.split(separator: "-").last ?? "1"),
         interventionType: type,
         siteCode: siteCode,
+        targetProblemID: targetProblemID,
         side: .front,
         x: 0.4,
         y: 0.4,

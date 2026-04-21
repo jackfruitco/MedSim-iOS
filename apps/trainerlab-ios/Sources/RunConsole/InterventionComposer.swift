@@ -176,6 +176,7 @@ struct RecommendedInterventionAction: Identifiable, Equatable {
     let validationStatus: String?
     let siteSummary: String?
     let disabledReason: String?
+    let isAccepted: Bool
     let prefill: InterventionComposerPrefill
 
     var id: Int {
@@ -241,6 +242,12 @@ struct InterventionMenuContext {
             let disabledReason = accessInventory.disabledReason(for: group)
                 ?? (prefill.siteCode == nil && (availableSitesByType[group.interventionType] ?? group.sites).count > 1 ? "Choose site in edit" : nil)
 
+            let isAccepted = Self.isRecommendationAccepted(
+                recommendation,
+                interventionType: interventionType,
+                interventions: interventions,
+            )
+
             return RecommendedInterventionAction(
                 recommendationID: recommendation.recommendationID,
                 title: recommendation.title,
@@ -253,6 +260,7 @@ struct InterventionMenuContext {
                     dictionary: dictionary,
                 ),
                 disabledReason: disabledReason,
+                isAccepted: isAccepted,
                 prefill: prefill,
             )
         }
@@ -292,7 +300,7 @@ struct InterventionMenuContext {
         )
     }
 
-    private static func recommendedInterventionType(
+    static func recommendedInterventionType(
         for recommendation: RecommendedInterventionItem,
         dictionary: [InterventionGroup],
     ) -> String? {
@@ -308,6 +316,19 @@ struct InterventionMenuContext {
 
         return candidates.first { candidate in
             dictionary.contains(where: { $0.interventionType == candidate })
+        }
+    }
+
+    // Returns true only when an already-submitted intervention matches this specific
+    // recommendation by type AND target problem — not merely by target problem alone.
+    static func isRecommendationAccepted(
+        _ recommendation: RecommendedInterventionItem,
+        interventionType: String,
+        interventions: [InterventionAnnotation],
+    ) -> Bool {
+        interventions.contains { intervention in
+            intervention.interventionType == interventionType
+                && intervention.targetProblemID == recommendation.targetProblemID
         }
     }
 
@@ -493,35 +514,66 @@ struct InterventionComposerSheet: View {
 
     private var targetProblemSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Target Problem")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-
             Button {
-                draft.selectedTargetProblemID = nil
-                draft.activeSection = .type
+                draft.activeSection = draft.activeSection == .target ? .type : .target
             } label: {
-                selectionRow(
-                    title: "General intervention",
-                    subtitle: "Not tied to a single problem",
-                    selected: draft.selectedTargetProblemID == nil,
-                )
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Target Problem")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        if draft.activeSection != .target {
+                            if let id = draft.selectedTargetProblemID,
+                               let problem = problems.first(where: { $0.problemID == id })
+                            {
+                                Text(problem.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                            } else {
+                                Text("General intervention")
+                                    .font(.caption)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: draft.activeSection == .target ? "chevron.up" : "chevron.down")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            ForEach(problems) { problem in
+            if draft.activeSection == .target {
                 Button {
-                    draft.selectedTargetProblemID = problem.problemID
+                    draft.selectedTargetProblemID = nil
                     draft.activeSection = .type
-                    refreshDefaultsForCurrentType()
                 } label: {
                     selectionRow(
-                        title: problem.label,
-                        subtitle: problem.status.rawValue.capitalized,
-                        selected: draft.selectedTargetProblemID == problem.problemID,
+                        title: "General intervention",
+                        subtitle: "Not tied to a single problem",
+                        selected: draft.selectedTargetProblemID == nil,
                     )
                 }
                 .buttonStyle(.plain)
+
+                ForEach(problems) { problem in
+                    Button {
+                        draft.selectedTargetProblemID = problem.problemID
+                        draft.activeSection = .type
+                        refreshDefaultsForCurrentType()
+                    } label: {
+                        selectionRow(
+                            title: problem.label,
+                            subtitle: problem.status.rawValue.capitalized,
+                            selected: draft.selectedTargetProblemID == problem.problemID,
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(12)
@@ -541,9 +593,16 @@ struct InterventionComposerSheet: View {
                         action: { submit(action) },
                         label: {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(action.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
+                                HStack(spacing: 6) {
+                                    Text(action.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    if action.isAccepted {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(TrainerLabTheme.success)
+                                    }
+                                }
                                 if let subtitle = action.subtitle, !subtitle.isEmpty {
                                     Text(subtitle)
                                         .font(.caption)
@@ -558,15 +617,15 @@ struct InterventionComposerSheet: View {
                                     Text(disabledReason)
                                         .font(.caption2)
                                         .foregroundStyle(TrainerLabTheme.warning)
-                                } else if let validationStatus = action.validationStatus {
-                                    Text(SimulationEventRegistry.humanizedLabel(validationStatus))
+                                } else if action.isAccepted {
+                                    Text("Applied")
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(TrainerLabTheme.success)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
-                            .background(Color.white.opacity(0.04))
+                            .background(action.isAccepted ? TrainerLabTheme.success.opacity(0.07) : Color.white.opacity(0.04))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         },
                     )
