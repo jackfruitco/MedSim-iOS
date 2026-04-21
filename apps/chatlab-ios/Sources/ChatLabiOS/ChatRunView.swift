@@ -1253,8 +1253,8 @@ private enum ChatMarkdownRenderer {
         return try? AttributedString(
             markdown: source,
             options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .full
-            )
+                interpretedSyntax: .full,
+            ),
         )
     }
 }
