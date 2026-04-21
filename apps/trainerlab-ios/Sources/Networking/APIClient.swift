@@ -230,6 +230,27 @@ public enum SystemAPI {
     }
 }
 
+public enum FeedbackAPI {
+    public static func categories() -> Endpoint {
+        Endpoint(
+            path: "/api/v1/feedback/categories/",
+            requiresAuth: false,
+            requiresAccountContext: false,
+        )
+    }
+
+    public static func create(body: Data, headers: [String: String]) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/feedback/",
+            method: .post,
+            body: body,
+            headers: headers,
+            requiresAuth: true,
+            requiresAccountContext: false,
+        )
+    }
+}
+
 public enum TrainerLabAPI {
     public static func accessMe() -> Endpoint {
         Endpoint(path: "/api/v1/trainerlab/access/me/")

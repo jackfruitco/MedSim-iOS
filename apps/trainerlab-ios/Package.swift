@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "Presets", targets: ["Presets"]),
         .library(name: "RunConsole", targets: ["RunConsole"]),
         .library(name: "Summary", targets: ["Summary"]),
+        .library(name: "FeedbackFeature", targets: ["FeedbackFeature"]),
         .library(name: "Networking", targets: ["Networking"]),
         .library(name: "Realtime", targets: ["Realtime"]),
         .library(name: "Persistence", targets: ["Persistence"]),
@@ -56,6 +57,8 @@ let package = Package(
                 "BuildInfoService.swift",
                 "DecodingDiagnostics.swift",
                 "EnvironmentStore.swift",
+                "FeedbackModels.swift",
+                "FeedbackService.swift",
                 "MutableBaseURLProvider.swift",
                 "TrainerLabService.swift",
             ],
@@ -100,6 +103,7 @@ let package = Package(
                 "SharedModels",
                 "Sessions",
                 "DesignSystem",
+                "FeedbackFeature",
             ],
         ),
         .target(
@@ -108,6 +112,15 @@ let package = Package(
                 "SharedModels",
                 "Networking",
                 "DesignSystem",
+                "FeedbackFeature",
+            ],
+        ),
+        .target(
+            name: "FeedbackFeature",
+            dependencies: [
+                "Networking",
+                "DesignSystem",
+                "SharedModels",
             ],
         ),
         .testTarget(
@@ -137,6 +150,10 @@ let package = Package(
         .testTarget(
             name: "SummaryTests",
             dependencies: ["Summary", "Networking", "SharedModels"],
+        ),
+        .testTarget(
+            name: "FeedbackFeatureTests",
+            dependencies: ["FeedbackFeature", "Networking", "SharedModels"],
         ),
         .testTarget(
             name: "AuthTests",

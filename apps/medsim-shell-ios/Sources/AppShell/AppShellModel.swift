@@ -39,6 +39,8 @@ public final class AppShellModel: ObservableObject {
     public let accountSessionStore: AccountSessionStore
     public let billingService: AppleBillingService
     public let buildInfoStore: BuildInfoStore
+    public let feedbackService: FeedbackServiceProtocol
+    public let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     public let sessionHubViewModel: SessionHubViewModel
     public let presetsViewModel: PresetsViewModel
 
@@ -78,6 +80,15 @@ public final class AppShellModel: ObservableObject {
             },
         )
         self.apiClient = apiClient
+
+        let feedbackHeaderProvider = FeedbackRequestHeaderProvider(
+            sessionID: UUID().uuidString.lowercased(),
+        )
+        self.feedbackHeaderProvider = feedbackHeaderProvider
+        feedbackService = FeedbackService(
+            apiClient: apiClient,
+            headerProvider: feedbackHeaderProvider,
+        )
 
         let trainerService = TrainerLabService(apiClient: apiClient)
         self.trainerService = trainerService

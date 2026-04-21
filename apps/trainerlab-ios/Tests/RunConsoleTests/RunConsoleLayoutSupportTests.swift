@@ -173,11 +173,11 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
         XCTAssertEqual(
             RunConsoleControlsCatalog.quickControls.map(\.title),
-            ["Intervention", "Event", "Annotation", "Steer", "Tick AI", "Tick Vitals"],
+            ["Intervention", "Event", "Annotation", "Send Feedback", "Steer", "Tick AI", "Tick Vitals"],
         )
         XCTAssertEqual(
             RunConsoleControlsCatalog.quickControls.map(\.systemImage),
-            ["plus.app", "plus.app", "note.text.badge.plus", "wand.and.sparkles", "timer", "heart.text.square"],
+            ["plus.app", "plus.app", "note.text.badge.plus", "bubble.left.and.text.bubble.right", "wand.and.sparkles", "timer", "heart.text.square"],
         )
     }
 

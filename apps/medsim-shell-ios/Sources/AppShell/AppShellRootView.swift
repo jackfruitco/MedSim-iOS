@@ -1,6 +1,7 @@
 import Auth
 import ChatLabiOS
 import DesignSystem
+import FeedbackFeature
 import Networking
 import Presets
 import RunConsole
@@ -19,6 +20,8 @@ public struct AppShellRootView: View {
     @State private var showEnvironment = false
     @State private var showAccountBilling = false
     @State private var selectedApp: InternalApp?
+    @State private var activeFeedbackContext: FeedbackLaunchContext?
+    @State private var feedbackSuccessMessage: String?
 
     public init() {}
 
@@ -36,6 +39,8 @@ public struct AppShellRootView: View {
                             makeToolsStore: { simulationID in
                                 model.makeChatToolsStore(simulationID: simulationID)
                             },
+                            feedbackService: model.feedbackService,
+                            feedbackHeaderProvider: model.feedbackHeaderProvider,
                             mediaLoader: model.makeChatMediaLoader(),
                             onExit: {
                                 self.selectedApp = nil
@@ -67,12 +72,25 @@ public struct AppShellRootView: View {
                         onOpenAccountBilling: {
                             showAccountBilling = true
                         },
+                        onOpenFeedback: {
+                            activeFeedbackContext = FeedbackLaunchContext(
+                                scope: .general,
+                                sourceScreen: "main_menu",
+                            )
+                        },
                         onSignOut: {
                             selectedApp = nil
                             showAccountBilling = false
                             Task { await model.authViewModel.signOut() }
                         },
                     )
+                    .safeAreaInset(edge: .top) {
+                        if let feedbackSuccessMessage {
+                            FeedbackSuccessBanner(message: feedbackSuccessMessage)
+                                .padding(.horizontal, 24)
+                                .padding(.top, 12)
+                        }
+                    }
                 }
             } else {
                 AuthGateView(
@@ -99,18 +117,40 @@ public struct AppShellRootView: View {
             AccountBillingSheet(
                 accountStore: model.accountSessionStore,
                 billingService: model.billingService,
+                feedbackService: model.feedbackService,
+                feedbackHeaderProvider: model.feedbackHeaderProvider,
                 onAccountSwitched: {
                     model.resetScopedWorkspaceState()
+                },
+            )
+        }
+        .sheet(item: $activeFeedbackContext) { context in
+            FeedbackFormView(
+                viewModel: FeedbackViewModel(
+                    service: model.feedbackService,
+                    headerProvider: model.feedbackHeaderProvider,
+                    launchContext: context,
+                ),
+                onSubmitted: {
+                    feedbackSuccessMessage = "Thanks for the feedback."
                 },
             )
         }
         .task {
             await model.authViewModel.restoreSessionIfAvailable()
         }
+        .task(id: feedbackSuccessMessage) {
+            guard feedbackSuccessMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled {
+                feedbackSuccessMessage = nil
+            }
+        }
         .onChange(of: model.authViewModel.isAuthenticated) { _, isAuthenticated in
             if !isAuthenticated {
                 selectedApp = nil
                 showAccountBilling = false
+                activeFeedbackContext = nil
             }
         }
     }
@@ -212,7 +252,11 @@ private struct TrainerLabWorkspace: View {
         }
         .sheet(isPresented: $showSummary) {
             if let session = selectedSession {
-                RunSummaryView(viewModel: model.makeSummaryViewModel(simulationID: session.simulationID))
+                RunSummaryView(
+                    viewModel: model.makeSummaryViewModel(simulationID: session.simulationID),
+                    feedbackService: model.feedbackService,
+                    feedbackHeaderProvider: model.feedbackHeaderProvider,
+                )
             } else {
                 Text("No session selected")
             }
@@ -242,8 +286,14 @@ private struct RunConsoleScreen: View {
     }
 
     var body: some View {
-        RunConsoleView(store: store, onBack: onBack, onOpenSummary: onOpenSummary)
-            .appShellOrientationLock(.iPadLandscape)
+        RunConsoleView(
+            store: store,
+            feedbackService: model.feedbackService,
+            feedbackHeaderProvider: model.feedbackHeaderProvider,
+            onBack: onBack,
+            onOpenSummary: onOpenSummary,
+        )
+        .appShellOrientationLock(.iPadLandscape)
     }
 }
 
@@ -266,6 +316,7 @@ private struct MainMenuView: View {
     let onOpenTrainerLab: () -> Void
     let onOpenChatLab: () -> Void
     let onOpenAccountBilling: () -> Void
+    let onOpenFeedback: () -> Void
     let onSignOut: () -> Void
 
     var body: some View {
@@ -324,6 +375,9 @@ private struct MainMenuView: View {
 
                 Button("Account & Billing", action: onOpenAccountBilling)
                     .buttonStyle(.borderedProminent)
+
+                Button("Send Feedback", action: onOpenFeedback)
+                    .buttonStyle(.bordered)
 
                 if let accessMessage, !accessMessage.isEmpty {
                     Text(accessMessage)
@@ -387,9 +441,13 @@ private struct MainMenuView: View {
 private struct AccountBillingSheet: View {
     @ObservedObject var accountStore: AccountSessionStore
     @ObservedObject var billingService: AppleBillingService
+    let feedbackService: FeedbackServiceProtocol
+    let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     let onAccountSwitched: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var activeFeedbackContext: FeedbackLaunchContext?
+    @State private var feedbackSuccessMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -511,6 +569,15 @@ private struct AccountBillingSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                Section("Support") {
+                    Button("Send Feedback") {
+                        activeFeedbackContext = FeedbackLaunchContext(
+                            scope: .general,
+                            sourceScreen: "account_billing",
+                        )
+                    }
+                }
             }
             .navigationTitle("Account & Billing")
             .toolbar {
@@ -520,9 +587,35 @@ private struct AccountBillingSheet: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top) {
+                if let feedbackSuccessMessage {
+                    FeedbackSuccessBanner(message: feedbackSuccessMessage)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
+            }
         }
         .task {
             await billingService.loadProductsIfNeeded()
+        }
+        .sheet(item: $activeFeedbackContext) { context in
+            FeedbackFormView(
+                viewModel: FeedbackViewModel(
+                    service: feedbackService,
+                    headerProvider: feedbackHeaderProvider,
+                    launchContext: context,
+                ),
+                onSubmitted: {
+                    feedbackSuccessMessage = "Thanks for the feedback."
+                },
+            )
+        }
+        .task(id: feedbackSuccessMessage) {
+            guard feedbackSuccessMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled {
+                feedbackSuccessMessage = nil
+            }
         }
     }
 }

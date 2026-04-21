@@ -92,6 +92,7 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
     case intervention
     case event
     case annotation
+    case sendFeedback
     case steer
     case tickAI
     case tickVitals
@@ -108,6 +109,8 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
             "Event"
         case .annotation:
             "Annotation"
+        case .sendFeedback:
+            "Send Feedback"
         case .steer:
             "Steer"
         case .tickAI:
@@ -123,6 +126,8 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
             "plus.app"
         case .annotation:
             "note.text.badge.plus"
+        case .sendFeedback:
+            "bubble.left.and.text.bubble.right"
         case .steer:
             "wand.and.sparkles"
         case .tickAI:

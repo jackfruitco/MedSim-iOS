@@ -1,16 +1,28 @@
 import DesignSystem
+import FeedbackFeature
+import Networking
 import SharedModels
 import SwiftUI
 
 public struct RunSummaryView: View {
     @ObservedObject private var viewModel: RunSummaryViewModel
+    private let feedbackService: FeedbackServiceProtocol?
+    private let feedbackHeaderProvider: FeedbackRequestHeaderProviding?
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var expandedSections = Set<RunSummarySection>()
     @State private var lastLayoutMode: RunSummaryLayoutMode?
+    @State private var activeFeedbackContext: FeedbackLaunchContext?
+    @State private var feedbackSuccessMessage: String?
 
-    public init(viewModel: RunSummaryViewModel) {
+    public init(
+        viewModel: RunSummaryViewModel,
+        feedbackService: FeedbackServiceProtocol? = nil,
+        feedbackHeaderProvider: FeedbackRequestHeaderProviding? = nil,
+    ) {
         self.viewModel = viewModel
+        self.feedbackService = feedbackService
+        self.feedbackHeaderProvider = feedbackHeaderProvider
     }
 
     public var body: some View {
@@ -22,8 +34,19 @@ public struct RunSummaryView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: layoutMode == .pad ? 18 : 14) {
-                    Text("Run Summary")
-                        .font(layoutMode == .pad ? .largeTitle.bold() : .title.bold())
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("Run Summary")
+                            .font(layoutMode == .pad ? .largeTitle.bold() : .title.bold())
+
+                        Spacer(minLength: 12)
+
+                        if feedbackService != nil, feedbackHeaderProvider != nil {
+                            Button("Send Feedback") {
+                                activeFeedbackContext = feedbackLaunchContext()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
 
                     if viewModel.isLoading {
                         ProgressView()
@@ -77,6 +100,45 @@ public struct RunSummaryView: View {
         .task {
             await viewModel.load()
         }
+        .sheet(item: $activeFeedbackContext) { context in
+            if let feedbackService, let feedbackHeaderProvider {
+                FeedbackFormView(
+                    viewModel: FeedbackViewModel(
+                        service: feedbackService,
+                        headerProvider: feedbackHeaderProvider,
+                        launchContext: context,
+                    ),
+                    onSubmitted: {
+                        feedbackSuccessMessage = "Feedback sent."
+                    },
+                )
+            }
+        }
+        .overlay(alignment: .top) {
+            if let feedbackSuccessMessage {
+                FeedbackSuccessBanner(message: feedbackSuccessMessage)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
+        }
+        .task(id: feedbackSuccessMessage) {
+            guard feedbackSuccessMessage != nil else { return }
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if !Task.isCancelled {
+                feedbackSuccessMessage = nil
+            }
+        }
+    }
+
+    private func feedbackLaunchContext() -> FeedbackLaunchContext {
+        FeedbackLaunchContext(
+            scope: .simulation,
+            sourceScreen: "trainer_run_summary",
+            simulationID: viewModel.simulationID,
+            labType: .trainerlab,
+            simulationDisplayName: "Simulation #\(viewModel.simulationID)",
+            simulationStatus: viewModel.summary?.status,
+        )
     }
 
     private func summaryMetrics(_ summary: RunSummary, layoutMode: RunSummaryLayoutMode) -> some View {
