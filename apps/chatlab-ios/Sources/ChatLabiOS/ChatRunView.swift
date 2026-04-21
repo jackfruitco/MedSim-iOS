@@ -1102,10 +1102,9 @@ private struct ChatBubble: View {
         if !item.content.isEmpty, prefersInlineFooter {
             inlineFooterText
         } else {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
                 if !item.content.isEmpty {
-                    Text(item.content)
-                        .font(.body)
+                    messageBody
                 }
                 if !item.mediaList.isEmpty {
                     mediaStrip
@@ -1158,8 +1157,17 @@ private struct ChatBubble: View {
         return parts.joined(separator: " ")
     }
 
+    private var markdownContent: AttributedString? {
+        ChatMarkdownRenderer.render(item.content)
+    }
+
+    private var usesMarkdownRendering: Bool {
+        markdownContent != nil
+    }
+
     private var prefersInlineFooter: Bool {
-        ChatBubbleFooterLayout.prefersInline(
+        guard !usesMarkdownRendering else { return false }
+        return ChatBubbleFooterLayout.prefersInline(
             in: .init(
                 content: item.content,
                 metadataText: metadataText,
@@ -1169,6 +1177,18 @@ private struct ChatBubble: View {
                 hasRetryAction: item.isFromSelf && item.deliveryStatus == .failed && item.retryable,
             ),
         )
+    }
+
+    @ViewBuilder
+    private var messageBody: some View {
+        if let markdownContent {
+            Text(markdownContent)
+                .textSelection(.enabled)
+        } else {
+            Text(item.content)
+                .font(.body)
+                .textSelection(.enabled)
+        }
     }
 
     private var mediaStrip: some View {
@@ -1224,6 +1244,29 @@ private struct ChatBubble: View {
         case .failed:
             .red
         }
+    }
+}
+
+private enum ChatMarkdownRenderer {
+    static func render(_ source: String) -> AttributedString? {
+        guard source.containsMarkdownSyntaxHint else { return nil }
+        return try? AttributedString(
+            markdown: source,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .full
+            )
+        )
+    }
+}
+
+private extension String {
+    var containsMarkdownSyntaxHint: Bool {
+        contains("**")
+            || contains("### ")
+            || contains("\n- ")
+            || hasPrefix("- ")
+            || contains("\n1. ")
+            || hasPrefix("1. ")
     }
 }
 
