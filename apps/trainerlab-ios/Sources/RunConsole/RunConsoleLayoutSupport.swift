@@ -487,7 +487,7 @@ enum PatientDiagramSelection: Equatable {
     case pulse(PulseAnnotation)
 }
 
-private struct PatientPaneAccordionState: Equatable {
+struct PatientPaneAccordionState: Equatable {
     var pinnedDiagram = false
     var openSection: PatientPaneSection = .diagram
 
@@ -535,14 +535,27 @@ private struct PatientPaneAccordionState: Equatable {
         if pinnedDiagram {
             // The diagram header stays inert while pinned; only the pin button changes pin state.
             guard section != .diagram else { return }
-            if openSection != section {
+            if openSection == section {
+                // Tapping the active secondary section collapses it and unpins the diagram.
+                pinnedDiagram = false
+                openSection = .diagram
+            } else {
                 openSection = section
             }
             return
         }
 
-        if openSection != section {
+        if openSection == section {
+            // Tapping the already-open section collapses it. Diagram is the ground state.
+            if section != .diagram {
+                openSection = .diagram
+            }
+        } else {
             openSection = section
+            // Opening any secondary section auto-pins the diagram so both remain visible.
+            if section != .diagram {
+                pinnedDiagram = true
+            }
         }
     }
 
@@ -570,6 +583,7 @@ struct PatientDiagramPanel: View {
     let problems: [ProblemAnnotation]
     let recommendations: [RecommendedInterventionItem]
     let pulses: [PulseAnnotation]
+    let dictionary: [InterventionGroup]
     let pendingInterventionProblemIDs: Set<Int>
     let canMutate: Bool
     let layoutMode: RunConsoleLayoutMode
@@ -869,14 +883,19 @@ struct PatientDiagramPanel: View {
     }
 
     private func recommendationCard(_ recommendation: RecommendedInterventionItem) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let accepted = InterventionMenuContext.isRecommendationAccepted(recommendation, dictionary: dictionary, interventions: interventions)
+        return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 8) {
                 Text(recommendation.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                if let targetProblem = linkedProblemLabel(for: recommendation) {
+                if accepted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(TrainerLabTheme.success)
+                } else if let targetProblem = linkedProblemLabel(for: recommendation) {
                     Text(targetProblem)
                         .font(.caption2.bold())
                         .foregroundStyle(TrainerLabTheme.accentBlue)
@@ -891,7 +910,11 @@ struct PatientDiagramPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let validationStatus = recommendation.validationStatus, !validationStatus.isEmpty {
+            if accepted {
+                Text("Applied")
+                    .font(.caption2.bold())
+                    .foregroundStyle(TrainerLabTheme.success)
+            } else if let validationStatus = recommendation.validationStatus, !validationStatus.isEmpty {
                 Text(validationStatus.replacingOccurrences(of: "_", with: " ").capitalized)
                     .font(.caption2.bold())
                     .foregroundStyle(TrainerLabTheme.warning)
@@ -899,7 +922,7 @@ struct PatientDiagramPanel: View {
         }
         .padding(layoutMode == .compact ? 8 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
+        .background(accepted ? TrainerLabTheme.success.opacity(0.07) : Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

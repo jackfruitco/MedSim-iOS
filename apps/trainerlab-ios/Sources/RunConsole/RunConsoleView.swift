@@ -525,6 +525,7 @@ public struct RunConsoleView: View {
             problems: store.state.problemAnnotations,
             recommendations: store.state.recommendedInterventions,
             pulses: store.state.pulseAnnotations,
+            dictionary: store.interventionDictionary,
             pendingInterventionProblemIDs: store.pendingInterventionProblemIDs,
             canMutate: canMutate,
             layoutMode: layoutMode,
