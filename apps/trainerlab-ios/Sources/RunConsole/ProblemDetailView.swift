@@ -14,7 +14,6 @@ struct ProblemDetailView: View {
     let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
     let onEdit: (InterventionComposerPrefill) -> Void
 
-    @State private var submittingIDs: Set<Int> = []
     @Environment(\.dismiss) private var dismiss
 
     private var filteredRecommendations: [RecommendedInterventionItem] {
@@ -47,7 +46,7 @@ struct ProblemDetailView: View {
                 .padding()
             }
             .navigationTitle(problem.label)
-            .modifier(InterventionComposerInlineTitleModifier())
+            .modifier(InlineNavigationTitleModifier())
             .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -81,13 +80,7 @@ struct ProblemDetailView: View {
 
             metadataGrid
         }
-        .padding(14)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
-        )
+        .trainerCardStyle(background: Color.white.opacity(0.05))
     }
 
     private var statusBadge: some View {
@@ -114,7 +107,7 @@ struct ProblemDetailView: View {
             if let cause = linkedCause {
                 metadataCell(label: "Cause", value: cause.primaryLabel)
             } else if let causeKind = problem.causeKind {
-                metadataCell(label: "Cause Type", value: causeKind.replacingOccurrences(of: "_", with: " ").capitalized)
+                metadataCell(label: "Cause Type", value: SimulationEventRegistry.humanizedLabel(causeKind))
             }
             if problem.isAnatomic, let loc = problem.locationCode {
                 metadataCell(label: "Location", value: InterventionDisplayText.normalizedSiteCode(loc))
@@ -141,26 +134,21 @@ struct ProblemDetailView: View {
     // MARK: - Recommendations
 
     private var recommendationsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let context = menuContext
+        return VStack(alignment: .leading, spacing: 10) {
             Text("Recommended Interventions")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
-            if menuContext.recommendedActions.isEmpty {
+            if context.recommendedActions.isEmpty {
                 emptyRecommendationsView
             } else {
-                ForEach(menuContext.recommendedActions) { action in
+                ForEach(context.recommendedActions) { action in
                     recommendationRow(action)
                 }
             }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
-        )
+        .trainerCardStyle(background: Color.white.opacity(0.05))
     }
 
     private var emptyRecommendationsView: some View {
@@ -172,68 +160,52 @@ struct ProblemDetailView: View {
     }
 
     private func recommendationRow(_ action: RecommendedInterventionAction) -> some View {
-        let isSubmitting = submittingIDs.contains(action.id)
-        return HStack(alignment: .top, spacing: 10) {
-            submitButton(action, isSubmitting: isSubmitting)
-            editButton(action, isSubmitting: isSubmitting)
+        HStack(alignment: .top, spacing: 10) {
+            submitButton(action)
+            editButton(action)
         }
     }
 
-    private func submitButton(_ action: RecommendedInterventionAction, isSubmitting: Bool) -> some View {
+    private func submitButton(_ action: RecommendedInterventionAction) -> some View {
         Button {
-            guard !isSubmitting, action.isEnabled, canMutate else { return }
+            guard action.isEnabled, canMutate else { return }
             performSubmit(action)
         } label: {
-            ZStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(action.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(!action.isEnabled || !canMutate || isSubmitting ? .secondary : .primary)
-                    if let subtitle = action.subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
-                        Text(siteSummary)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(TrainerLabTheme.accentBlue)
-                    }
-                    if let disabledReason = action.disabledReason {
-                        Text(disabledReason)
-                            .font(.caption2)
-                            .foregroundStyle(TrainerLabTheme.warning)
-                    } else if let validationStatus = action.validationStatus {
-                        Text(SimulationEventRegistry.humanizedLabel(validationStatus))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(action.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(!action.isEnabled || !canMutate ? .secondary : .primary)
+                if let subtitle = action.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .opacity(isSubmitting ? 0.4 : 1.0)
-
-                if isSubmitting {
-                    ProgressView()
-                        .controlSize(.small)
+                if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
+                    Text(siteSummary)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(TrainerLabTheme.accentBlue)
+                }
+                if let disabledReason = action.disabledReason {
+                    Text(disabledReason)
+                        .font(.caption2)
+                        .foregroundStyle(TrainerLabTheme.warning)
+                } else if let validationStatus = action.validationStatus {
+                    Text(SimulationEventRegistry.humanizedLabel(validationStatus))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .frame(maxWidth: .infinity)
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(
-                        isSubmitting ? TrainerLabTheme.accentBlue.opacity(0.4) : Color.clear,
-                        lineWidth: 1,
-                    ),
-            )
         }
         .buttonStyle(.plain)
-        .disabled(!action.isEnabled || !canMutate || isSubmitting)
+        .disabled(!action.isEnabled || !canMutate)
     }
 
-    private func editButton(_ action: RecommendedInterventionAction, isSubmitting: Bool) -> some View {
+    private func editButton(_ action: RecommendedInterventionAction) -> some View {
         Button {
             onEdit(action.prefill)
             dismiss()
@@ -246,13 +218,11 @@ struct ProblemDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(isSubmitting)
         .accessibilityLabel("Edit \(action.title)")
     }
 
     private func performSubmit(_ action: RecommendedInterventionAction) {
         guard let siteCode = action.prefill.siteCode else { return }
-        submittingIDs.insert(action.id)
         onSubmit(
             action.prefill.interventionType,
             siteCode,

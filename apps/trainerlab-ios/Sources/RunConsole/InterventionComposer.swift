@@ -485,7 +485,7 @@ struct InterventionComposerSheet: View {
                 .padding()
             }
             .navigationTitle("Add Intervention")
-            .modifier(InterventionComposerInlineTitleModifier())
+            .modifier(InlineNavigationTitleModifier())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -899,7 +899,7 @@ struct InterventionComposerSheet: View {
     }
 }
 
-struct InterventionComposerInlineTitleModifier: ViewModifier {
+struct InlineNavigationTitleModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
             content.navigationBarTitleDisplayMode(.inline)

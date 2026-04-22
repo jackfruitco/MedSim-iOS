@@ -540,6 +540,7 @@ public struct RunConsoleView: View {
                 quickActionInjury = injury
             },
             onSelectProblem: { problem in
+                guard canIntervene else { return }
                 selectedProblem = problem
             },
             onUpdateProblemStatus: { problem, status in
@@ -1594,13 +1595,9 @@ public struct RunConsoleView: View {
             initialPrefill: interventionEditPrefill,
             canMutate: canIntervene,
         ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
-            store.addIntervention(
-                interventionType: type,
-                siteCode: siteCode,
-                targetProblemID: targetProblemID,
-                status: status,
-                effectiveness: effectiveness,
-                notes: notes,
+            submitIntervention(
+                type: type, siteCode: siteCode, targetProblemID: targetProblemID,
+                status: status, effectiveness: effectiveness, notes: notes,
                 tourniquetApplicationMode: tourniquetApplicationMode,
             )
             showInterventionSheet = false
@@ -1617,19 +1614,35 @@ public struct RunConsoleView: View {
             dictionary: store.interventionDictionary,
             canMutate: canIntervene,
             onSubmit: { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
-                store.addIntervention(
-                    interventionType: type,
-                    siteCode: siteCode,
-                    targetProblemID: targetProblemID,
-                    status: status,
-                    effectiveness: effectiveness,
-                    notes: notes,
+                submitIntervention(
+                    type: type, siteCode: siteCode, targetProblemID: targetProblemID,
+                    status: status, effectiveness: effectiveness, notes: notes,
                     tourniquetApplicationMode: tourniquetApplicationMode,
                 )
             },
             onEdit: { prefill in
                 interventionEditPrefill = prefill
             },
+        )
+    }
+
+    private func submitIntervention(
+        type: String,
+        siteCode: String,
+        targetProblemID: Int?,
+        status: InterventionStatus,
+        effectiveness: InterventionEffectiveness,
+        notes: String,
+        tourniquetApplicationMode: TourniquetApplicationMode?,
+    ) {
+        store.addIntervention(
+            interventionType: type,
+            siteCode: siteCode,
+            targetProblemID: targetProblemID,
+            status: status,
+            effectiveness: effectiveness,
+            notes: notes,
+            tourniquetApplicationMode: tourniquetApplicationMode,
         )
     }
 
@@ -1657,7 +1670,9 @@ public struct RunConsoleView: View {
 
     private func openInterventionSheetIfEditPending() {
         guard interventionEditPrefill != nil else { return }
-        showInterventionSheet = true
+        DispatchQueue.main.async {
+            showInterventionSheet = true
+        }
     }
 
     // MARK: - Steer sheet
