@@ -3,7 +3,6 @@ import SharedModels
 import XCTest
 
 final class ProblemDetailViewTests: XCTestCase {
-
     // MARK: - Recommendation Filtering
 
     func testRecommendationsFilteredToProblemID() {
@@ -51,11 +50,10 @@ final class ProblemDetailViewTests: XCTestCase {
 
         let nilProblemID: Int? = nil
         // Guarded path (correct): guard let fires → returns []
-        let guarded: [RecommendedInterventionItem]
-        if let id = nilProblemID {
-            guarded = recs.filter { $0.targetProblemID == id }
+        let guarded: [RecommendedInterventionItem] = if let id = nilProblemID {
+            recs.filter { $0.targetProblemID == id }
         } else {
-            guarded = []
+            []
         }
         XCTAssertTrue(guarded.isEmpty)
 
