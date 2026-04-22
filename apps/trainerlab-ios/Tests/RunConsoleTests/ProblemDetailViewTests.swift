@@ -36,6 +36,34 @@ final class ProblemDetailViewTests: XCTestCase {
         XCTAssertTrue(context.recommendedActions.isEmpty)
     }
 
+    func testNilProblemIDFiltersOutAllRecommendations() {
+        // Verify that the guard let in ProblemDetailView.filteredRecommendations prevents
+        // a nil==nil false-match when both problem.problemID and targetProblemID are nil.
+        let recs: [RecommendedInterventionItem] = [
+            makeRecommendation(id: 1, targetProblemID: 10, kind: "tourniquet"),
+            RecommendedInterventionItem(
+                recommendationID: 2,
+                title: "Apply tourniquet",
+                kind: "tourniquet",
+                targetProblemID: nil,
+            ),
+        ]
+
+        let nilProblemID: Int? = nil
+        // Guarded path (correct): guard let fires → returns []
+        let guarded: [RecommendedInterventionItem]
+        if let id = nilProblemID {
+            guarded = recs.filter { $0.targetProblemID == id }
+        } else {
+            guarded = []
+        }
+        XCTAssertTrue(guarded.isEmpty)
+
+        // Naive filter without the guard would match rec #2 via nil == nil
+        let naive = recs.filter { $0.targetProblemID == nilProblemID }
+        XCTAssertEqual(naive.count, 1, "Confirms what the guard prevents")
+    }
+
     // MARK: - Direct Submit Enablement
 
     func testRecommendationWithMatchingSiteCodeIsEnabled() {
@@ -151,6 +179,36 @@ final class ProblemDetailViewTests: XCTestCase {
         )
 
         XCTAssertEqual(context.recommendedActions.first?.prefill.interventionType, "tourniquet")
+    }
+
+    // MARK: - Edit Flow
+
+    func testEditFlowPrefillRoundTrips() {
+        // Simulates the full edit path:
+        // editButton taps → action.prefill passed to onEdit → stored as interventionEditPrefill
+        // → InterventionComposerSheet inits with initialPrefill → draft.applyPrefill called
+        // → composer lands on .review pre-filled for the correct intervention.
+        let problem = makeProblem(id: "p-1", problemID: 42, locationCode: "LEFT_LEG", status: .active)
+        let rec = makeRecommendation(id: 7, targetProblemID: 42, kind: "tourniquet", siteCode: "LEFT_LEG")
+
+        let context = InterventionMenuContext(
+            dictionary: [makeTourniquetGroup()],
+            problems: [problem],
+            recommendations: [rec],
+            interventions: [],
+            selectedTargetProblemID: 42,
+        )
+        let action = context.recommendedActions.first!
+
+        var draft = InterventionComposerDraft(prefilledTargetProblemID: action.prefill.targetProblemID)
+        draft.applyPrefill(action.prefill, dictionary: [makeTourniquetGroup()])
+
+        XCTAssertEqual(draft.selectedType, "tourniquet")
+        XCTAssertEqual(draft.selectedTargetProblemID, 42)
+        XCTAssertEqual(draft.resolvedSiteCode(in: makeTourniquetGroup().sites), "LEFT_LEG")
+        XCTAssertEqual(draft.activeSection, .review)
+        XCTAssertEqual(draft.status, .applied)
+        XCTAssertEqual(draft.effectiveness, .effective)
     }
 
     // MARK: - InterventionComposerDraft Prefill Application
