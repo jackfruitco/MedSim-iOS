@@ -244,7 +244,7 @@ struct InterventionMenuContext {
 
             let isAccepted = Self.isRecommendationAccepted(
                 recommendation,
-                interventionType: interventionType,
+                dictionary: dictionary,
                 interventions: interventions,
             )
 
@@ -319,15 +319,45 @@ struct InterventionMenuContext {
         }
     }
 
+    // Returns all candidate intervention-type tokens for a recommendation, deduped and
+    // order-preserved, with the dictionary-resolved type first.
+    static func recommendationCandidateTypes(
+        for recommendation: RecommendedInterventionItem,
+        dictionary: [InterventionGroup],
+    ) -> [String] {
+        let rawCandidates = [
+            recommendation.normalizedKind,
+            recommendation.kind,
+            recommendation.normalizedCode,
+            recommendation.code,
+        ].compactMap { candidate -> String? in
+            guard let candidate, !candidate.isEmpty else { return nil }
+            return candidate
+        }
+        var seen = Set<String>()
+        var result: [String] = []
+        if let resolved = rawCandidates.first(where: { candidate in
+            dictionary.contains(where: { $0.interventionType == candidate })
+        }) {
+            result.append(resolved)
+            seen.insert(resolved)
+        }
+        for candidate in rawCandidates where seen.insert(candidate).inserted {
+            result.append(candidate)
+        }
+        return result
+    }
+
     // Returns true only when an already-submitted intervention matches this specific
     // recommendation by type AND target problem — not merely by target problem alone.
     static func isRecommendationAccepted(
         _ recommendation: RecommendedInterventionItem,
-        interventionType: String,
+        dictionary: [InterventionGroup],
         interventions: [InterventionAnnotation],
     ) -> Bool {
-        interventions.contains { intervention in
-            intervention.interventionType == interventionType
+        let candidates = recommendationCandidateTypes(for: recommendation, dictionary: dictionary)
+        return interventions.contains { intervention in
+            candidates.contains(intervention.interventionType)
                 && intervention.targetProblemID == recommendation.targetProblemID
         }
     }

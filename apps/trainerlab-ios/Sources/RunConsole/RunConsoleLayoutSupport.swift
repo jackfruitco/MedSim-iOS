@@ -583,6 +583,7 @@ struct PatientDiagramPanel: View {
     let problems: [ProblemAnnotation]
     let recommendations: [RecommendedInterventionItem]
     let pulses: [PulseAnnotation]
+    let dictionary: [InterventionGroup]
     let pendingInterventionProblemIDs: Set<Int>
     let canMutate: Bool
     let layoutMode: RunConsoleLayoutMode
@@ -882,7 +883,7 @@ struct PatientDiagramPanel: View {
     }
 
     private func recommendationCard(_ recommendation: RecommendedInterventionItem) -> some View {
-        let accepted = isRecommendationAccepted(recommendation)
+        let accepted = InterventionMenuContext.isRecommendationAccepted(recommendation, dictionary: dictionary, interventions: interventions)
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 8) {
                 Text(recommendation.title)
@@ -923,20 +924,6 @@ struct PatientDiagramPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(accepted ? TrainerLabTheme.success.opacity(0.07) : Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func isRecommendationAccepted(_ recommendation: RecommendedInterventionItem) -> Bool {
-        let candidates = [
-            recommendation.normalizedKind,
-            recommendation.kind,
-            recommendation.normalizedCode,
-            recommendation.code,
-        ].compactMap { $0?.isEmpty == false ? $0 : nil }
-
-        return interventions.contains { intervention in
-            candidates.contains(intervention.interventionType)
-                && intervention.targetProblemID == recommendation.targetProblemID
-        }
     }
 
     // MARK: - Body Diagram

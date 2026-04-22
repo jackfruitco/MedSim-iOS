@@ -555,7 +555,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         let accepted = InterventionMenuContext.isRecommendationAccepted(
             rec,
-            interventionType: "tourniquet",
+            dictionary: makeDictionary(["tourniquet"]),
             interventions: [],
         )
 
@@ -570,7 +570,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         let accepted = InterventionMenuContext.isRecommendationAccepted(
             rec,
-            interventionType: "tourniquet",
+            dictionary: makeDictionary(["tourniquet"]),
             interventions: [intervention],
         )
 
@@ -586,7 +586,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         let accepted = InterventionMenuContext.isRecommendationAccepted(
             rec,
-            interventionType: "tourniquet",
+            dictionary: makeDictionary(["tourniquet"]),
             interventions: [intervention],
         )
 
@@ -602,7 +602,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         let accepted = InterventionMenuContext.isRecommendationAccepted(
             rec,
-            interventionType: "tourniquet",
+            dictionary: makeDictionary(["tourniquet"]),
             interventions: [intervention],
         )
 
@@ -621,12 +621,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         let interventions = [
             makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date()),
         ]
+        let dictionary = makeDictionary(["tourniquet", "pressure_dressing"])
 
         let tourniquetAccepted = InterventionMenuContext.isRecommendationAccepted(
-            recTourniquet, interventionType: "tourniquet", interventions: interventions,
+            recTourniquet, dictionary: dictionary, interventions: interventions,
         )
         let dressingAccepted = InterventionMenuContext.isRecommendationAccepted(
-            recDressing, interventionType: "pressure_dressing", interventions: interventions,
+            recDressing, dictionary: dictionary, interventions: interventions,
         )
 
         XCTAssertTrue(tourniquetAccepted, "Tourniquet recommendation must be accepted since a tourniquet was applied")
@@ -645,12 +646,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         let interventions = [
             makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date()),
         ]
+        let dictionary = makeDictionary(["tourniquet"])
 
         XCTAssertTrue(
-            InterventionMenuContext.isRecommendationAccepted(recProblem10, interventionType: "tourniquet", interventions: interventions),
+            InterventionMenuContext.isRecommendationAccepted(recProblem10, dictionary: dictionary, interventions: interventions),
         )
         XCTAssertFalse(
-            InterventionMenuContext.isRecommendationAccepted(recProblem20, interventionType: "tourniquet", interventions: interventions),
+            InterventionMenuContext.isRecommendationAccepted(recProblem20, dictionary: dictionary, interventions: interventions),
             "Recommendation for problem 20 must remain pending — intervention targeted problem 10",
         )
     }
@@ -666,11 +668,139 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         ]
 
         let accepted = InterventionMenuContext.isRecommendationAccepted(
-            rec, interventionType: "iv_access", interventions: interventions,
+            rec, dictionary: makeDictionary(["iv_access"]), interventions: interventions,
         )
 
         XCTAssertTrue(accepted, "IV access recommendation must be accepted since an iv_access intervention for the same problem exists")
     }
+
+    // MARK: - Recommendation Candidate Types (normalization)
+
+    func testRecommendationCandidateTypesDictionaryResolvedTypeComesFirst() {
+        // normalizedKind is not in the dictionary; kind is — kind must be the resolved type and come first.
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: "tourniquet",
+            targetProblemID: 10,
+            normalizedKind: "tourniquet_v2",
+        )
+        let dictionary = makeDictionary(["tourniquet"])
+        let candidates = InterventionMenuContext.recommendationCandidateTypes(for: rec, dictionary: dictionary)
+        XCTAssertEqual(candidates.first, "tourniquet", "Dictionary-resolved type must be the first candidate")
+        XCTAssertTrue(candidates.contains("tourniquet_v2"), "Raw candidates must still be included after the resolved type")
+    }
+
+    func testRecommendationCandidateTypesDeduplicatesResolvedAndRaw() {
+        // normalizedKind matches the dictionary → resolved. kind is the same string → no duplicate.
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: "tourniquet",
+            targetProblemID: 10,
+            normalizedKind: "tourniquet",
+        )
+        let dictionary = makeDictionary(["tourniquet"])
+        let candidates = InterventionMenuContext.recommendationCandidateTypes(for: rec, dictionary: dictionary)
+        XCTAssertEqual(candidates.filter { $0 == "tourniquet" }.count, 1, "Duplicate candidates must be collapsed to one entry")
+    }
+
+    func testRecommendationCandidateTypesEmptyWhenAllFieldsNil() {
+        let rec = RecommendedInterventionItem(recommendationID: 1, title: "Unknown")
+        let candidates = InterventionMenuContext.recommendationCandidateTypes(for: rec, dictionary: [])
+        XCTAssertTrue(candidates.isEmpty)
+    }
+
+    func testRecommendationAcceptanceMatchesByNormalizedKindOnly() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: nil,
+            targetProblemID: 10,
+            normalizedKind: "tourniquet",
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: makeDictionary(["tourniquet"]), interventions: [intervention]),
+            "normalizedKind-only recommendation must be accepted when a matching intervention exists",
+        )
+    }
+
+    func testRecommendationAcceptanceMatchesByKindWhenNormalizedKindAbsent() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: "tourniquet",
+            targetProblemID: 10,
+            normalizedKind: nil,
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: makeDictionary(["tourniquet"]), interventions: [intervention]),
+            "kind-only recommendation must be accepted when a matching intervention exists",
+        )
+    }
+
+    func testRecommendationAcceptanceMatchesByNormalizedCodeFallback() {
+        // normalizedCode is the only populated field; it is not in the dictionary,
+        // but the submitted intervention uses that same token as its interventionType.
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: nil,
+            targetProblemID: 10,
+            normalizedKind: nil,
+            normalizedCode: "tourniquet",
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: [], interventions: [intervention]),
+            "normalizedCode fallback must match when no dictionary entry exists",
+        )
+    }
+
+    func testRecommendationAcceptanceMatchesByCodeFallback() {
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            code: "tourniquet",
+            kind: nil,
+            targetProblemID: 10,
+            normalizedKind: nil,
+            normalizedCode: nil,
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: [], interventions: [intervention]),
+            "code-only recommendation must be accepted via raw-candidate fallback",
+        )
+    }
+
+    func testRecommendationAcceptanceMultipleCandidatesOnlyOneMatchesInterventionType() {
+        // normalizedKind is "tourniquet" (in dictionary), kind is "tourniquet_legacy" (not in dictionary).
+        // The submitted intervention uses "tourniquet". Only normalizedKind should match.
+        let rec = RecommendedInterventionItem(
+            recommendationID: 1,
+            title: "Tourniquet",
+            kind: "tourniquet_legacy",
+            targetProblemID: 10,
+            normalizedKind: "tourniquet",
+        )
+        let intervention = makeInterventionAnnotation(id: "int-1", type: "tourniquet", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: makeDictionary(["tourniquet"]), interventions: [intervention]),
+        )
+        // An intervention using the legacy token must also match via raw candidates.
+        let legacyIntervention = makeInterventionAnnotation(id: "int-2", type: "tourniquet_legacy", siteCode: "LEFT_LEG", targetProblemID: 10, updatedAt: Date())
+        XCTAssertTrue(
+            InterventionMenuContext.isRecommendationAccepted(rec, dictionary: makeDictionary(["tourniquet"]), interventions: [legacyIntervention]),
+            "Raw candidate fallback must also accept a legacy-token intervention",
+        )
+    }
+}
+
+private func makeDictionary(_ types: [String]) -> [InterventionGroup] {
+    types.map { InterventionGroup(interventionType: $0, label: $0, sites: []) }
 }
 
 private func makeInterventionAnnotation(
