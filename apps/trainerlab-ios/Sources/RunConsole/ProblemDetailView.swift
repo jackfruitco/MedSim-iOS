@@ -18,7 +18,8 @@ struct ProblemDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var filteredRecommendations: [RecommendedInterventionItem] {
-        allRecommendations.filter { $0.targetProblemID == problem.problemID }
+        guard let problemID = problem.problemID else { return [] }
+        return allRecommendations.filter { $0.targetProblemID == problemID }
     }
 
     private var menuContext: InterventionMenuContext {
@@ -46,7 +47,7 @@ struct ProblemDetailView: View {
                 .padding()
             }
             .navigationTitle(problem.label)
-            .navigationBarTitleDisplayMode(.inline)
+            .modifier(InterventionComposerInlineTitleModifier())
             .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

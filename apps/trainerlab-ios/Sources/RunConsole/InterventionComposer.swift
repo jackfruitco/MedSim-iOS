@@ -899,7 +899,7 @@ struct InterventionComposerSheet: View {
     }
 }
 
-private struct InterventionComposerInlineTitleModifier: ViewModifier {
+struct InterventionComposerInlineTitleModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
             content.navigationBarTitleDisplayMode(.inline)
