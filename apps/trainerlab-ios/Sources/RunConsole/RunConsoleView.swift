@@ -1629,11 +1629,11 @@ public struct RunConsoleView: View {
     private func submitIntervention(
         type: String,
         siteCode: String,
-        targetProblemID: Int?,
-        status: InterventionStatus,
-        effectiveness: InterventionEffectiveness,
-        notes: String,
-        tourniquetApplicationMode: TourniquetApplicationMode?,
+        targetProblemID: Int? = nil,
+        status: InterventionStatus = .applied,
+        effectiveness: InterventionEffectiveness = .effective,
+        notes: String = "",
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
     ) {
         store.addIntervention(
             interventionType: type,

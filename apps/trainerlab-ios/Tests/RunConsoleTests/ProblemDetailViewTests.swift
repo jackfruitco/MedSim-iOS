@@ -135,7 +135,7 @@ final class ProblemDetailViewTests: XCTestCase {
 
     // MARK: - Prefill Mapping
 
-    func testPrefillCarriesTargetProblemID() {
+    func testPrefillCarriesTargetProblemID() throws {
         let problem = makeProblem(id: "p-1", problemID: 42, locationCode: "RIGHT_LEG", status: .active)
         let rec = makeRecommendation(id: 5, targetProblemID: 42, kind: "tourniquet", siteCode: "RIGHT_LEG")
 
@@ -147,7 +147,7 @@ final class ProblemDetailViewTests: XCTestCase {
             selectedTargetProblemID: 42,
         )
 
-        let action = context.recommendedActions.first!
+        let action = try XCTUnwrap(context.recommendedActions.first)
         XCTAssertEqual(action.prefill.targetProblemID, 42)
         XCTAssertEqual(action.prefill.interventionType, "tourniquet")
         XCTAssertEqual(action.prefill.siteCode, "RIGHT_LEG")
@@ -181,7 +181,7 @@ final class ProblemDetailViewTests: XCTestCase {
 
     // MARK: - Edit Flow
 
-    func testEditFlowPrefillRoundTrips() {
+    func testEditFlowPrefillRoundTrips() throws {
         // Simulates the full edit path:
         // editButton taps → action.prefill passed to onEdit → stored as interventionEditPrefill
         // → InterventionComposerSheet inits with initialPrefill → draft.applyPrefill called
@@ -196,7 +196,7 @@ final class ProblemDetailViewTests: XCTestCase {
             interventions: [],
             selectedTargetProblemID: 42,
         )
-        let action = context.recommendedActions.first!
+        let action = try XCTUnwrap(context.recommendedActions.first)
 
         var draft = InterventionComposerDraft(prefilledTargetProblemID: action.prefill.targetProblemID)
         draft.applyPrefill(action.prefill, dictionary: [makeTourniquetGroup()])
