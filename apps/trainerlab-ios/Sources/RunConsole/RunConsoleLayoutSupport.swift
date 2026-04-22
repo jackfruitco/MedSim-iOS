@@ -589,6 +589,7 @@ struct PatientDiagramPanel: View {
     let layoutMode: RunConsoleLayoutMode
     let compactMetrics: RunConsoleCompactMetrics
     var onSelectInjury: ((InjuryAnnotation) -> Void)?
+    var onSelectProblem: ((ProblemAnnotation) -> Void)?
     var onUpdateProblemStatus: ((ProblemAnnotation, ProblemLifecycleState) -> Void)?
 
     @State private var selected: PatientDiagramSelection?
@@ -1019,7 +1020,13 @@ struct PatientDiagramPanel: View {
             ForEach(Array(colocatedProblems.enumerated()), id: \.element.id) { idx, problem in
                 problemBadge(problem)
                     .offset(x: CGFloat(idx) * 6, y: 12 + CGFloat(idx) * 4)
-                    .onTapGesture { selected = .problem(problem) }
+                    .onTapGesture {
+                        if let onSelectProblem {
+                            onSelectProblem(problem)
+                        } else {
+                            selected = .problem(problem)
+                        }
+                    }
             }
         }
         .position(x: cx, y: cy)
@@ -1064,7 +1071,13 @@ struct PatientDiagramPanel: View {
         .modifier(PulsingModifier(active: problem.isUncontrolled))
         .shadow(color: problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.6) : .clear, radius: 4)
         .position(x: cx, y: cy)
-        .onTapGesture { selected = .problem(problem) }
+        .onTapGesture {
+            if let onSelectProblem {
+                onSelectProblem(problem)
+            } else {
+                selected = .problem(problem)
+            }
+        }
     }
 
     private func pulseMarker(_ pulse: PulseAnnotation, size: CGSize) -> some View {
@@ -1198,8 +1211,15 @@ struct PatientDiagramPanel: View {
                 .background(
                     Capsule().fill(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.15) : TrainerLabTheme.success.opacity(0.15)),
                 )
+            if onSelectProblem != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelectProblem?(problem) }
     }
 
     private func interventionRow(_ intervention: InterventionAnnotation) -> some View {

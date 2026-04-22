@@ -470,6 +470,7 @@ struct InterventionComposerSheet: View {
         recommendations: [RecommendedInterventionItem],
         interventions: [InterventionAnnotation],
         prefilledTargetProblemID: Int?,
+        initialPrefill: InterventionComposerPrefill? = nil,
         canMutate: Bool,
         onSubmit: @escaping (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void,
     ) {
@@ -480,7 +481,13 @@ struct InterventionComposerSheet: View {
         self.prefilledTargetProblemID = prefilledTargetProblemID
         self.canMutate = canMutate
         self.onSubmit = onSubmit
-        _draft = State(initialValue: InterventionComposerDraft(prefilledTargetProblemID: prefilledTargetProblemID))
+        var initialDraft = InterventionComposerDraft(
+            prefilledTargetProblemID: prefilledTargetProblemID ?? initialPrefill?.targetProblemID,
+        )
+        if let initialPrefill {
+            initialDraft.applyPrefill(initialPrefill, dictionary: dictionary)
+        }
+        _draft = State(initialValue: initialDraft)
     }
 
     private var context: InterventionMenuContext {
@@ -529,7 +536,7 @@ struct InterventionComposerSheet: View {
                 .padding()
             }
             .navigationTitle("Add Intervention")
-            .modifier(InterventionComposerInlineTitleModifier())
+            .modifier(InlineNavigationTitleModifier())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -981,7 +988,7 @@ struct InterventionComposerSheet: View {
     }
 }
 
-private struct InterventionComposerInlineTitleModifier: ViewModifier {
+struct InlineNavigationTitleModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
             content.navigationBarTitleDisplayMode(.inline)

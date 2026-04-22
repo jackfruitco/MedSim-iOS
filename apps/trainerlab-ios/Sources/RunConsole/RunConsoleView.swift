@@ -22,6 +22,8 @@ public struct RunConsoleView: View {
     @State private var feedbackSuccessMessage: String?
 
     @State private var quickActionInjury: InjuryAnnotation?
+    @State private var selectedProblem: ProblemAnnotation?
+    @State private var interventionEditPrefill: InterventionComposerPrefill?
 
     @State private var selectedTimelineFilter: RunConsoleTimelineFilter = .all
 
@@ -123,6 +125,10 @@ public struct RunConsoleView: View {
         .sheet(item: $quickActionInjury, onDismiss: resetInterventionSheet) { injury in
             quickActionSheet(for: injury)
                 .presentationDetents([.fraction(0.55)])
+        }
+        .sheet(item: $selectedProblem, onDismiss: openInterventionSheetIfEditPending) { problem in
+            problemDetailSheet(for: problem)
+                .presentationDetents([.large])
         }
         .sheet(isPresented: $showEventSheet) {
             eventSheet
@@ -533,6 +539,10 @@ public struct RunConsoleView: View {
             onSelectInjury: { injury in
                 guard canIntervene else { return }
                 quickActionInjury = injury
+            },
+            onSelectProblem: { problem in
+                guard canIntervene else { return }
+                selectedProblem = problem
             },
             onUpdateProblemStatus: { problem, status in
                 if let problemID = problem.problemID {
@@ -1583,19 +1593,58 @@ public struct RunConsoleView: View {
             recommendations: store.state.recommendedInterventions,
             interventions: store.state.interventionAnnotations,
             prefilledTargetProblemID: interventionTargetProblemID,
+            initialPrefill: interventionEditPrefill,
             canMutate: canIntervene,
         ) { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
-            store.addIntervention(
-                interventionType: type,
-                siteCode: siteCode,
-                targetProblemID: targetProblemID,
-                status: status,
-                effectiveness: effectiveness,
-                notes: notes,
+            submitIntervention(
+                type: type, siteCode: siteCode, targetProblemID: targetProblemID,
+                status: status, effectiveness: effectiveness, notes: notes,
                 tourniquetApplicationMode: tourniquetApplicationMode,
             )
             showInterventionSheet = false
         }
+    }
+
+    private func problemDetailSheet(for problem: ProblemAnnotation) -> some View {
+        ProblemDetailView(
+            problem: problem,
+            allRecommendations: store.state.recommendedInterventions,
+            allProblems: store.state.problemAnnotations,
+            allCauses: store.hydratedCauses,
+            interventions: store.state.interventionAnnotations,
+            dictionary: store.interventionDictionary,
+            canMutate: canIntervene,
+            onSubmit: { type, siteCode, targetProblemID, status, effectiveness, notes, tourniquetApplicationMode in
+                submitIntervention(
+                    type: type, siteCode: siteCode, targetProblemID: targetProblemID,
+                    status: status, effectiveness: effectiveness, notes: notes,
+                    tourniquetApplicationMode: tourniquetApplicationMode,
+                )
+            },
+            onEdit: { prefill in
+                interventionEditPrefill = prefill
+            },
+        )
+    }
+
+    private func submitIntervention(
+        type: String,
+        siteCode: String,
+        targetProblemID: Int? = nil,
+        status: InterventionStatus = .applied,
+        effectiveness: InterventionEffectiveness = .effective,
+        notes: String = "",
+        tourniquetApplicationMode: TourniquetApplicationMode? = nil,
+    ) {
+        store.addIntervention(
+            interventionType: type,
+            siteCode: siteCode,
+            targetProblemID: targetProblemID,
+            status: status,
+            effectiveness: effectiveness,
+            notes: notes,
+            tourniquetApplicationMode: tourniquetApplicationMode,
+        )
     }
 
     private func quickActionSheet(for injury: InjuryAnnotation) -> some View {
@@ -1617,6 +1666,14 @@ public struct RunConsoleView: View {
 
     private func resetInterventionSheet() {
         interventionTargetProblemID = nil
+        interventionEditPrefill = nil
+    }
+
+    private func openInterventionSheetIfEditPending() {
+        guard interventionEditPrefill != nil else { return }
+        DispatchQueue.main.async {
+            showInterventionSheet = true
+        }
     }
 
     // MARK: - Steer sheet

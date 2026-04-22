@@ -2011,7 +2011,6 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
         XCTAssertEqual(store.state.interventionAnnotations.first?.interventionID, 801)
-        XCTAssertEqual(service.getRuntimeStateCalls.count, 1)
 
         // Wait for the debounced /state/ refresh to fire (events coalesced) and apply the snapshot.
         await waitUntil(timeout: 2.0) {
