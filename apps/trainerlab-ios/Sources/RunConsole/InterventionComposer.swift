@@ -319,8 +319,8 @@ struct InterventionMenuContext {
         }
     }
 
-    // Returns all candidate intervention-type tokens for a recommendation, deduped and
-    // order-preserved, with the dictionary-resolved type first.
+    /// Returns all candidate intervention-type tokens for a recommendation, deduped and
+    /// order-preserved, with the dictionary-resolved type first.
     static func recommendationCandidateTypes(
         for recommendation: RecommendedInterventionItem,
         dictionary: [InterventionGroup],
@@ -348,8 +348,8 @@ struct InterventionMenuContext {
         return result
     }
 
-    // Returns true only when an already-submitted intervention matches this specific
-    // recommendation by type AND target problem — not merely by target problem alone.
+    /// Returns true only when an already-submitted intervention matches this specific
+    /// recommendation by type AND target problem — not merely by target problem alone.
     static func isRecommendationAccepted(
         _ recommendation: RecommendedInterventionItem,
         dictionary: [InterventionGroup],

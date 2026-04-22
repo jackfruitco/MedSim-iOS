@@ -702,7 +702,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         )
         let dictionary = makeDictionary(["tourniquet"])
         let candidates = InterventionMenuContext.recommendationCandidateTypes(for: rec, dictionary: dictionary)
-        XCTAssertEqual(candidates.filter { $0 == "tourniquet" }.count, 1, "Duplicate candidates must be collapsed to one entry")
+        XCTAssertEqual(candidates.count(where: { $0 == "tourniquet" }), 1, "Duplicate candidates must be collapsed to one entry")
     }
 
     func testRecommendationCandidateTypesEmptyWhenAllFieldsNil() {
