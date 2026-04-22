@@ -2405,7 +2405,7 @@ public final class RunSessionStore: ObservableObject {
             problem.problemID.map { ($0, problem) }
         })
 
-        if snapshot.presence.causes || snapshot.presence.problems {
+        if snapshot.presence.causes || (snapshot.presence.problems && !hydratedCauses.isEmpty) {
             state.causeAnnotations = hydratedCauses.compactMap { cause in
                 makeCauseAnnotation(from: cause, fallbackProblem: cause.causeID.flatMap { causeID in
                     hydratedProblems.first(where: { $0.causeID == causeID })
@@ -2975,16 +2975,16 @@ public final class RunSessionStore: ObservableObject {
 
         for candidate in candidates {
             let normalized = candidate.uppercased()
-            if InjuryZoneMap.table[normalized] != nil {
+            if InjuryZoneMap.table[normalized] != nil || InterventionSiteMap.table[normalized] != nil {
                 return normalized
             }
             let collapsed = normalized.replacingOccurrences(of: " ", with: "_")
-            if InjuryZoneMap.table[collapsed] != nil {
+            if InjuryZoneMap.table[collapsed] != nil || InterventionSiteMap.table[collapsed] != nil {
                 return collapsed
             }
         }
 
-        return candidates.first.map { $0.uppercased() }
+        return candidates.first.map { $0.uppercased().replacingOccurrences(of: " ", with: "_") }
     }
 }
 

@@ -824,6 +824,10 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
         XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
         XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
+        XCTAssertEqual(
+            store.state.causeAnnotations.first?.causeID, 11,
+            "cause annotations must survive a sparse refresh that omits the causes key",
+        )
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
         XCTAssertEqual(store.state.interventionAnnotations.first?.siteCode, "LEFT_ARM")
         XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
@@ -2469,6 +2473,276 @@ final class RunSessionStoreTests: XCTestCase {
         // returned an empty page (state.eventCursor == nil).
         XCTAssertEqual(realtime.connectCalls.count, 1)
         XCTAssertEqual(realtime.connectCalls.first?.cursor, "snap-cursor-99")
+    }
+
+    // MARK: - Patient diagram hydration regression tests
+
+    /// Verifies Bug 1 fix: a problems-only partial snapshot must NOT wipe `causeAnnotations`
+    /// when `hydratedCauses` is already populated from a prior snapshot.
+    func testProblemsOnlySnapshotDoesNotWipeExistingCauseAnnotations() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            // First snapshot: both causes and problems present → annotations populated.
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                causes: [[
+                    "id": 11,
+                    "kind": "injury",
+                    "title": "Blast Injury",
+                    "injury_location": "LEFT_ARM",
+                ]],
+                problems: [[
+                    "problem_id": 21,
+                    "title": "Hemorrhagic Shock",
+                    "status": "active",
+                    "cause_id": 11,
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+            )),
+            // Second snapshot: problems key only (no causes key) — partial/tick-driven update.
+            .success(decodeRuntimeStatePayload([
+                "simulation_id": 420,
+                "session_id": 420,
+                "status": "running",
+                "scenario_snapshot": [
+                    "problems": [[
+                        "problem_id": 21,
+                        "title": "Hemorrhagic Shock",
+                        "status": "active",
+                        "cause_id": 11,
+                        "anatomical_location": "LEFT_ARM",
+                    ] as [String: Any]],
+                ],
+                "runtime_snapshot": [
+                    "status": "running",
+                    "state_revision": 2,
+                    "active_elapsed_seconds": 0,
+                    "tick_interval_seconds": 15,
+                    "pending_runtime_reasons": [],
+                    "currently_processing_reasons": [],
+                    "last_runtime_error": "",
+                    "control_plane_debug": [:],
+                    "request_metadata": [:],
+                    "latest_event_cursor": NSNull(),
+                ],
+                "event_timeline": ["events": [], "total_events": 0],
+                "metadata": makeRuntimeMetadataPayload(stateRevision: 2),
+            ])),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            store.state.causeAnnotations.first?.causeID == 11
+        }
+
+        // Trigger a second snapshot fetch (problems-only payload).
+        realtime.emit(event: EventEnvelope(
+            eventID: "tick-1",
+            eventType: "state.updated",
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [:],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+        }
+
+        XCTAssertEqual(
+            store.state.causeAnnotations.first?.causeID, 11,
+            "cause annotations must survive a problems-only snapshot when causes are already loaded",
+        )
+    }
+
+    /// Verifies that the Bug 1 fix does not over-correct: when no causes have been loaded yet,
+    /// a problems-only snapshot must NOT synthesise phantom cause annotations.
+    func testProblemsOnlySnapshotWhenNoCausesLoadedDoesNotCreatePhantomAnnotations() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            // First snapshot: problems only (causes key absent).
+            .success(decodeRuntimeStatePayload([
+                "simulation_id": 420,
+                "session_id": 420,
+                "status": "running",
+                "scenario_snapshot": [
+                    "problems": [[
+                        "problem_id": 21,
+                        "title": "Hemorrhagic Shock",
+                        "status": "active",
+                        "cause_id": 11,
+                        "anatomical_location": "LEFT_ARM",
+                    ] as [String: Any]],
+                ],
+                "runtime_snapshot": [
+                    "status": "running",
+                    "state_revision": 1,
+                    "active_elapsed_seconds": 0,
+                    "tick_interval_seconds": 15,
+                    "pending_runtime_reasons": [],
+                    "currently_processing_reasons": [],
+                    "last_runtime_error": "",
+                    "control_plane_debug": [:],
+                    "request_metadata": [:],
+                    "latest_event_cursor": NSNull(),
+                ],
+                "event_timeline": ["events": [], "total_events": 0],
+                "metadata": makeRuntimeMetadataPayload(stateRevision: 1),
+            ])),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        XCTAssertTrue(
+            store.state.causeAnnotations.isEmpty,
+            "no cause annotations should appear when no causes have been loaded",
+        )
+    }
+
+    /// Verifies that cause annotations are populated after a debounced snapshot triggered by live
+    /// injury/problem events — the focused single-cause variant of the cross-family test.
+    func testCauseAnnotationsSurviveLiveEventPlusDebouncedSnapshotRefresh() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            // First: empty snapshot — no causes or problems yet.
+            .success(makeRuntimeState(status: "running", stateRevision: 1)),
+            // Second (debounced): authoritative snapshot with cause 501.
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 2,
+                causes: [[
+                    "id": 501,
+                    "kind": "injury",
+                    "title": "Gunshot wound",
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+                problems: [[
+                    "problem_id": 601,
+                    "title": "External hemorrhage",
+                    "status": "active",
+                    "cause_id": 501,
+                    "anatomical_location": "LEFT_ARM",
+                ]],
+            )),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running, runStartedAt: Date()))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        // Emit injury and problem events to trigger debounced refresh.
+        realtime.emit(event: EventEnvelope(
+            eventID: "injury-501",
+            eventType: SimulationEventType.patientInjuryCreated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "cause_id": .number(501),
+                "title": .string("Gunshot wound"),
+                "anatomical_location": .string("LEFT_ARM"),
+                "kind": .string("injury"),
+            ],
+        ))
+        realtime.emit(event: EventEnvelope(
+            eventID: "problem-601",
+            eventType: SimulationEventType.patientProblemUpdated,
+            createdAt: Date(),
+            correlationID: nil,
+            payload: [
+                "problem_id": .number(601),
+                "title": .string("External hemorrhage"),
+                "status": .string("active"),
+                "cause_id": .number(501),
+                "anatomical_location": .string("LEFT_ARM"),
+            ],
+        ))
+
+        await waitUntil(timeout: 2.0) {
+            service.getRuntimeStateCalls.count == 2
+        }
+
+        XCTAssertEqual(
+            store.state.causeAnnotations.first?.causeID, 501,
+            "cause annotations must be populated after a debounced snapshot refresh",
+        )
+        XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
+    }
+
+    /// Verifies Bug 2 fix: a cause with a space-separated location string ("left arm") must
+    /// resolve to the underscore form ("LEFT_ARM") and appear as a diagram annotation.
+    func testSpaceNormalizedLocationCodeResolvesToDiagramZone() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running",
+                stateRevision: 1,
+                causes: [[
+                    "id": 77,
+                    "kind": "injury",
+                    "title": "Shrapnel wound",
+                    // Space-separated, lowercase — the form that previously caused silent drop.
+                    "anatomical_location": "left arm",
+                ]],
+                problems: [[
+                    "problem_id": 88,
+                    "title": "Penetrating trauma",
+                    "status": "active",
+                    "cause_id": 77,
+                    "anatomical_location": "left arm",
+                ]],
+            )),
+        ]
+
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+
+        await waitUntil(timeout: 1.5) {
+            service.getRuntimeStateCalls.count == 1
+        }
+
+        XCTAssertFalse(
+            store.state.causeAnnotations.isEmpty,
+            "cause with space-separated location 'left arm' must resolve to LEFT_ARM and appear as a diagram annotation",
+        )
+        XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 77)
     }
 
     private func makeSession(
