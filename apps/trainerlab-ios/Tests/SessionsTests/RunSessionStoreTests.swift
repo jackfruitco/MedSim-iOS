@@ -824,8 +824,10 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
         XCTAssertEqual(store.aiInstructorIntent?.summary, "Escalate respiratory distress")
         XCTAssertEqual(store.hydratedCauses.first?.causeID, 11)
-        XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 11,
-            "cause annotations must survive a sparse refresh that omits the causes key")
+        XCTAssertEqual(
+            store.state.causeAnnotations.first?.causeID, 11,
+            "cause annotations must survive a sparse refresh that omits the causes key",
+        )
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
         XCTAssertEqual(store.state.interventionAnnotations.first?.siteCode, "LEFT_ARM")
         XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
@@ -2558,7 +2560,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertEqual(
             store.state.causeAnnotations.first?.causeID, 11,
-            "cause annotations must survive a problems-only snapshot when causes are already loaded"
+            "cause annotations must survive a problems-only snapshot when causes are already loaded",
         )
     }
 
@@ -2614,7 +2616,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertTrue(
             store.state.causeAnnotations.isEmpty,
-            "no cause annotations should appear when no causes have been loaded"
+            "no cause annotations should appear when no causes have been loaded",
         )
     }
 
@@ -2692,7 +2694,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertEqual(
             store.state.causeAnnotations.first?.causeID, 501,
-            "cause annotations must be populated after a debounced snapshot refresh"
+            "cause annotations must be populated after a debounced snapshot refresh",
         )
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 601)
     }
@@ -2738,7 +2740,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         XCTAssertFalse(
             store.state.causeAnnotations.isEmpty,
-            "cause with space-separated location 'left arm' must resolve to LEFT_ARM and appear as a diagram annotation"
+            "cause with space-separated location 'left arm' must resolve to LEFT_ARM and appear as a diagram annotation",
         )
         XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 77)
     }
