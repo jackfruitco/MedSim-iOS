@@ -2747,7 +2747,7 @@ final class RunSessionStoreTests: XCTestCase {
 
     func testRefreshConsole_callsLoadRuntimeStateAndRefreshSession() async throws {
         let service = MockTrainerLabService()
-        service.getRuntimeStateResult = .success(try makeRuntimeState(status: "running", stateRevision: 1))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 1))
         service.getSessionResult = .success(makeSession(status: .running))
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
