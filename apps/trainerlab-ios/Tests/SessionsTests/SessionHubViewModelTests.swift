@@ -247,6 +247,10 @@ private final class MockHubRealtimeClient: TrainerLabHubRealtimeClientProtocol, 
         eventContinuation.yield(event)
     }
 
+    func emit(state: RealtimeTransportState) {
+        stateContinuation.yield(state)
+    }
+
     func emit(failure: TrainerLabHubRealtimeFailure) {
         failureContinuation.yield(failure)
     }
@@ -427,6 +431,54 @@ final class SessionHubViewModelTests: XCTestCase {
         XCTAssertNil(realtime.connectCalls.last?.cursor)
         XCTAssertEqual(realtime.connectCalls.last?.replay, false)
         XCTAssertEqual(viewModel.sessions.first?.status, .paused)
+        viewModel.stopLiveUpdates()
+    }
+
+    func testDecodeFailurePreservesCursorReloadsAndReconnectsWithCursor() async {
+        let service = MockSessionHubService()
+        service.listSessionsResults = [
+            page(items: [session(simulationID: 420, status: .running)]),
+            page(items: [session(simulationID: 420, status: .paused)]),
+        ]
+        let realtime = MockHubRealtimeClient()
+        let viewModel = SessionHubViewModel(service: service, hubRealtimeClient: realtime)
+        await viewModel.loadSessions()
+        await viewModel.startLiveUpdates()
+        realtime.emit(event: hubEvent(eventID: "hub-1", simulationID: 420, status: .running))
+        await waitUntil {
+            viewModel.lastEventCursor == "hub-1"
+        }
+
+        realtime.emit(failure: .decodeFailed)
+
+        await waitUntil {
+            service.listSessionsCalls.count == 2 && realtime.connectCalls.count == 2
+        }
+
+        XCTAssertEqual(viewModel.lastEventCursor, "hub-1")
+        XCTAssertEqual(realtime.connectCalls.last?.cursor, "hub-1")
+        XCTAssertEqual(realtime.connectCalls.last?.replay, false)
+        XCTAssertEqual(viewModel.sessions.first?.status, .paused)
+        viewModel.stopLiveUpdates()
+    }
+
+    func testTransportStateReconnectingMarksRealtimeDisconnected() async {
+        let realtime = MockHubRealtimeClient()
+        let viewModel = SessionHubViewModel(
+            service: MockSessionHubService(),
+            hubRealtimeClient: realtime,
+        )
+
+        await viewModel.startLiveUpdates()
+        await waitUntil {
+            viewModel.isRealtimeConnected
+        }
+
+        realtime.emit(state: .reconnecting(1))
+
+        await waitUntil {
+            !viewModel.isRealtimeConnected
+        }
         viewModel.stopLiveUpdates()
     }
 

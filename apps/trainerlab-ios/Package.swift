@@ -133,7 +133,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RealtimeTests",
-            dependencies: ["Realtime", "SharedModels"],
+            dependencies: ["Realtime", "SharedModels", "Networking", "Persistence"],
         ),
         .testTarget(
             name: "SharedModelsTests",

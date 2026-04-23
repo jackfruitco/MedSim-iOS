@@ -222,25 +222,26 @@ public final class SessionHubViewModel: ObservableObject {
         switch state {
         case .connectedSSE:
             isRealtimeConnected = true
-        case .disconnected:
+        case .disconnected, .connecting, .polling, .reconnecting:
             isRealtimeConnected = false
-        case .connecting, .polling, .reconnecting:
-            break
         }
     }
 
     private func handleRealtimeFailure(_ failure: TrainerLabHubRealtimeFailure) async {
         guard isLiveUpdatesActive else { return }
-        lastEventCursor = nil
+        let reconnectCursor: String?
         switch failure {
         case .staleCursor:
+            lastEventCursor = nil
             await reloadAuthoritativeSessions(reason: "hub.stale_cursor")
+            reconnectCursor = nil
         case .decodeFailed:
+            reconnectCursor = lastEventCursor
             await reloadAuthoritativeSessions(reason: "hub.decode_failed")
         }
 
         guard isLiveUpdatesActive, let hubRealtimeClient else { return }
-        await hubRealtimeClient.connect(cursor: nil, replay: false)
+        await hubRealtimeClient.connect(cursor: reconnectCursor, replay: false)
     }
 
     private func runPendingAuthoritativeReloadIfNeeded() {

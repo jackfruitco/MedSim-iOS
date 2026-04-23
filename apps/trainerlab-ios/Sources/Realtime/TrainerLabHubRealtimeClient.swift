@@ -199,6 +199,16 @@ public final class TrainerLabHubRealtimeClient: TrainerLabHubRealtimeClientProto
                         }
                     }
 
+                    if currentEventType == "heartbeat" {
+                        await freshness.markSignal()
+                        continuation.yield(.keepAlive)
+                    } else if !dataLines.isEmpty {
+                        let payload = dataLines.joined(separator: "\n")
+                        let event = try parseEvent(dataString: payload)
+                        await freshness.markSignal()
+                        continuation.yield(.event(event))
+                    }
+
                     if await freshness.didTriggerStale() {
                         continuation.finish(throwing: URLError(.timedOut))
                     } else {
