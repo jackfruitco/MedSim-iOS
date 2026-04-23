@@ -213,6 +213,11 @@ public struct RunConsoleView: View {
                 leftPatientPane(layoutMode: .regular, compactMetrics: .standard)
                     .frame(minWidth: 420, idealWidth: 440, maxWidth: 520, maxHeight: .infinity, alignment: .top)
 
+                // Pull-to-refresh is intentionally omitted here. This ScrollView covers the right
+                // column only; leftPatientPane has its own independent ScrollView and the info-panel
+                // tab strip has a horizontal ScrollView. Adding .refreshable to a partial-column
+                // container creates ambiguous gesture targets. Wire store.refreshConsole() here once
+                // the regular layout has a single full-screen scroll surface.
                 ScrollView {
                     VStack(spacing: 10) {
                         combinedInfoPanel
@@ -250,6 +255,9 @@ public struct RunConsoleView: View {
                 bottomLogPane(layoutMode: .compact)
             }
             .padding(10)
+        }
+        .refreshable {
+            await store.refreshConsole()
         }
         .scrollIndicators(.hidden)
     }

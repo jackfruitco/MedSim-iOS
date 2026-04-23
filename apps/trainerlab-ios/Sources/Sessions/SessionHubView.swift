@@ -48,6 +48,9 @@ public struct SessionHubView: View {
                 .padding(layoutMode == .pad ? 24 : 16)
                 .frame(maxWidth: .infinity)
             }
+            .refreshable {
+                await viewModel.loadSessions()
+            }
             .background(TrainerLabTheme.setupBackground.ignoresSafeArea())
         }
         .task {

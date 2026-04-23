@@ -46,6 +46,9 @@ public struct ChatLabHomeView: View {
                 .padding(layoutMode == .pad ? 24 : 16)
                 .frame(maxWidth: .infinity)
             }
+            .refreshable {
+                await store.refresh()
+            }
             .background(Color.secondary.opacity(0.04).ignoresSafeArea())
             .navigationTitle("ChatLab")
             .sheet(isPresented: $showCreateSheet) {

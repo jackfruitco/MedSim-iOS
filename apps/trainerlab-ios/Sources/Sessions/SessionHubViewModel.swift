@@ -42,6 +42,7 @@ public final class SessionHubViewModel: ObservableObject {
     }
 
     public func loadSessions() async {
+        guard !isLoading else { return }
         isLoading = true
         presentableError = nil
         nextCursor = nil

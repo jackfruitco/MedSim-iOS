@@ -521,6 +521,11 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
+    public func refreshConsole() async {
+        await loadRuntimeState(reason: "pull-to-refresh")
+        await refreshSession()
+    }
+
     public func retryInitialSimulation() {
         guard let simulationID = state.session?.simulationID else { return }
 

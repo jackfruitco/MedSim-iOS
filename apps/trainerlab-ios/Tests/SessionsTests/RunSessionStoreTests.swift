@@ -2745,6 +2745,24 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 77)
     }
 
+    func testRefreshConsole_callsLoadRuntimeStateAndRefreshSession() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 1))
+        service.getSessionResult = .success(makeSession(status: .running))
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: realtime,
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .running))
+
+        await store.refreshConsole()
+
+        XCTAssertEqual(service.getRuntimeStateCalls, [420])
+        XCTAssertEqual(service.getSessionCalls, [420])
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
         scenarioSpec: [String: JSONValue] = [:],
