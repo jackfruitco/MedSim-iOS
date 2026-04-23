@@ -38,7 +38,7 @@ public struct SessionHubView: View {
 
                     if let error = viewModel.presentableError {
                         InlineAppErrorView(error: error, actionLabel: "Retry") {
-                            Task { await viewModel.loadSessions() }
+                            Task { await viewModel.reloadAuthoritativeSessions(reason: "retry") }
                         }
                     }
 
@@ -55,6 +55,13 @@ public struct SessionHubView: View {
         }
         .task {
             await viewModel.loadSessions()
+            await viewModel.startLiveUpdates()
+        }
+        .refreshable {
+            await viewModel.reloadAuthoritativeSessions(reason: "pull_to_refresh")
+        }
+        .onDisappear {
+            viewModel.stopLiveUpdates()
         }
     }
 

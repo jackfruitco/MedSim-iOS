@@ -131,8 +131,14 @@ public final class AppShellModel: ObservableObject {
 
         let authService = AuthService(apiClient: apiClient, tokenProvider: tokenStore)
         authViewModel = AuthViewModel(authService: authService, sessionBootstrapper: accountSessionStore)
+        let hubRealtimeClient = TrainerLabHubRealtimeClient(
+            baseURLProvider: { mutableBaseURLProvider.currentURL() },
+            tokenProvider: tokenStore,
+            accountContextProvider: selectedAccountContext,
+        )
         sessionHubViewModel = SessionHubViewModel(
             service: trainerService,
+            hubRealtimeClient: hubRealtimeClient,
             accountUUIDProvider: { [weak accountSessionStore] in accountSessionStore?.selectedAccountUUID },
         )
         presetsViewModel = PresetsViewModel(
