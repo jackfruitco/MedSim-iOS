@@ -1,5 +1,6 @@
 import Foundation
 import Networking
+import Realtime
 import SharedModels
 
 @MainActor
@@ -9,15 +10,28 @@ public final class SessionHubViewModel: ObservableObject {
     @Published public private(set) var isLoadingMore = false
     @Published public private(set) var hasMore = false
     @Published public private(set) var presentableError: PresentableAppError?
+    @Published public private(set) var isRealtimeConnected = false
     @Published public var searchQuery: String = ""
 
     private var nextCursor: String?
+    public private(set) var lastEventCursor: String?
     private let service: TrainerLabServiceProtocol
+    private let hubRealtimeClient: TrainerLabHubRealtimeClientProtocol?
     private let accountUUIDProvider: () -> String?
     private var searchDebounceTask: Task<Void, Never>?
+    private var hubEventTask: Task<Void, Never>?
+    private var hubTransportTask: Task<Void, Never>?
+    private var hubFailureTask: Task<Void, Never>?
+    private var isLiveUpdatesActive = false
+    private var pendingAuthoritativeReloadReason: String?
 
-    public init(service: TrainerLabServiceProtocol, accountUUIDProvider: @escaping () -> String? = { nil }) {
+    public init(
+        service: TrainerLabServiceProtocol,
+        hubRealtimeClient: TrainerLabHubRealtimeClientProtocol? = nil,
+        accountUUIDProvider: @escaping () -> String? = { nil },
+    ) {
         self.service = service
+        self.hubRealtimeClient = hubRealtimeClient
         self.accountUUIDProvider = accountUUIDProvider
     }
 
@@ -26,8 +40,10 @@ public final class SessionHubViewModel: ObservableObject {
     }
 
     public func resetForAccountChange() {
+        stopLiveUpdates()
         sessions = []
         nextCursor = nil
+        lastEventCursor = nil
         hasMore = false
         presentableError = nil
     }
@@ -42,6 +58,20 @@ public final class SessionHubViewModel: ObservableObject {
     }
 
     public func loadSessions() async {
+        guard !isLoading, !isLoadingMore else { return }
+        await performAuthoritativeReload(reason: "manual")
+    }
+
+    public func reloadAuthoritativeSessions(reason: String) async {
+        if isLoadingMore {
+            pendingAuthoritativeReloadReason = reason
+            return
+        }
+        guard !isLoading else { return }
+        await performAuthoritativeReload(reason: reason)
+    }
+
+    private func performAuthoritativeReload(reason _: String) async {
         isLoading = true
         presentableError = nil
         nextCursor = nil
@@ -59,9 +89,12 @@ public final class SessionHubViewModel: ObservableObject {
     }
 
     public func loadMoreSessions() async {
-        guard hasMore, let cursor = nextCursor, !isLoadingMore else { return }
+        guard hasMore, let cursor = nextCursor, !isLoadingMore, !isLoading else { return }
         isLoadingMore = true
-        defer { isLoadingMore = false }
+        defer {
+            isLoadingMore = false
+            runPendingAuthoritativeReloadIfNeeded()
+        }
 
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
@@ -72,6 +105,93 @@ public final class SessionHubViewModel: ObservableObject {
         } catch {
             presentableError = AppErrorPresenter.present(error)
         }
+    }
+
+    public func startLiveUpdates() async {
+        guard !isLiveUpdatesActive, let hubRealtimeClient else { return }
+
+        isLiveUpdatesActive = true
+
+        hubEventTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in hubRealtimeClient.events {
+                await self.handleHubEvent(event)
+            }
+        }
+
+        hubTransportTask = Task { [weak self] in
+            guard let self else { return }
+            for await state in hubRealtimeClient.transportStates {
+                self.handleTransportState(state)
+            }
+        }
+
+        hubFailureTask = Task { [weak self] in
+            guard let self else { return }
+            for await failure in hubRealtimeClient.failures {
+                await self.handleRealtimeFailure(failure)
+            }
+        }
+
+        await hubRealtimeClient.connect(cursor: lastEventCursor, replay: false)
+    }
+
+    public func stopLiveUpdates() {
+        isLiveUpdatesActive = false
+        hubEventTask?.cancel()
+        hubTransportTask?.cancel()
+        hubFailureTask?.cancel()
+        hubEventTask = nil
+        hubTransportTask = nil
+        hubFailureTask = nil
+        hubRealtimeClient?.disconnect()
+        isRealtimeConnected = false
+    }
+
+    public func handleHubEvent(_ event: TrainerLabHubEvent) async {
+        guard isLiveUpdatesActive else { return }
+        lastEventCursor = event.eventID
+
+        guard let index = sessions.firstIndex(where: { $0.simulationID == event.simulationID }) else {
+            await reloadAuthoritativeSessions(reason: "hub.unknown_session")
+            return
+        }
+
+        guard let nextStatus = event.effectiveStatus else {
+            await reloadAuthoritativeSessions(reason: "hub.missing_status")
+            return
+        }
+
+        sessions[index] = applyHubSessionUpdate(session: sessions[index], status: nextStatus, event: event)
+    }
+
+    public func applyHubSessionUpdate(
+        session: TrainerSessionDTO,
+        status: TrainerSessionStatus,
+        event: TrainerLabHubEvent,
+    ) -> TrainerSessionDTO {
+        let isTerminal = status == .completed || status == .failed
+        let modifiedAt = [session.modifiedAt, event.updatedAt, event.createdAt]
+            .compactMap(\.self)
+            .max() ?? session.modifiedAt
+
+        return TrainerSessionDTO(
+            simulationID: session.simulationID,
+            status: status,
+            scenarioSpec: session.scenarioSpec,
+            runtimeState: session.runtimeState,
+            initialDirectives: session.initialDirectives,
+            tickIntervalSeconds: session.tickIntervalSeconds,
+            runStartedAt: session.runStartedAt,
+            runPausedAt: session.runPausedAt,
+            runCompletedAt: session.runCompletedAt,
+            lastAITickAt: session.lastAITickAt,
+            createdAt: session.createdAt,
+            modifiedAt: modifiedAt,
+            terminalReasonCode: isTerminal ? event.terminalReasonCode ?? session.terminalReasonCode : nil,
+            terminalReasonText: isTerminal ? event.terminalReasonText ?? session.terminalReasonText : nil,
+            retryable: isTerminal ? event.retryable ?? session.retryable : nil,
+        )
     }
 
     public func createSession() async {
@@ -95,6 +215,39 @@ public final class SessionHubViewModel: ObservableObject {
             sessions.insert(session, at: 0)
         } catch {
             presentableError = AppErrorPresenter.present(error)
+        }
+    }
+
+    private func handleTransportState(_ state: RealtimeTransportState) {
+        switch state {
+        case .connectedSSE:
+            isRealtimeConnected = true
+        case .disconnected:
+            isRealtimeConnected = false
+        case .connecting, .polling, .reconnecting:
+            break
+        }
+    }
+
+    private func handleRealtimeFailure(_ failure: TrainerLabHubRealtimeFailure) async {
+        guard isLiveUpdatesActive else { return }
+        lastEventCursor = nil
+        switch failure {
+        case .staleCursor:
+            await reloadAuthoritativeSessions(reason: "hub.stale_cursor")
+        case .decodeFailed:
+            await reloadAuthoritativeSessions(reason: "hub.decode_failed")
+        }
+
+        guard isLiveUpdatesActive, let hubRealtimeClient else { return }
+        await hubRealtimeClient.connect(cursor: nil, replay: false)
+    }
+
+    private func runPendingAuthoritativeReloadIfNeeded() {
+        guard let reason = pendingAuthoritativeReloadReason else { return }
+        pendingAuthoritativeReloadReason = nil
+        Task { [weak self] in
+            await self?.reloadAuthoritativeSessions(reason: reason)
         }
     }
 

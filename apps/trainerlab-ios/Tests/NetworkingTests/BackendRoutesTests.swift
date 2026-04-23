@@ -136,6 +136,19 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(trainerRequest.value(forHTTPHeaderField: "Authorization"), "Bearer trainer-token")
         XCTAssertNotNil(trainerRequest.value(forHTTPHeaderField: "X-Correlation-ID"))
 
+        let hubRequest = try TrainerLabAPI
+            .hubEventStream(cursor: "hub-9", replay: true)
+            .makeURLRequest(
+                baseURL: trainerBaseURL,
+                accessToken: "trainer-token",
+                accountUUID: "acct-12",
+            )
+
+        XCTAssertEqual(hubRequest.url?.absoluteString, "https://example.com/api/v1/trainerlab/events/stream/?cursor=hub-9&replay=true&account_uuid=acct-12")
+        XCTAssertEqual(hubRequest.httpMethod, "GET")
+        XCTAssertEqual(hubRequest.value(forHTTPHeaderField: "Accept"), "text/event-stream")
+        XCTAssertEqual(hubRequest.value(forHTTPHeaderField: "Authorization"), "Bearer trainer-token")
+
         let chatBaseURL = try XCTUnwrap(URL(string: "https://example.com"))
         let chatRequest = try ChatLabAPI
             .realtimeSocket()

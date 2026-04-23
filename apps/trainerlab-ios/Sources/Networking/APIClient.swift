@@ -342,6 +342,20 @@ public enum TrainerLabAPI {
         )
     }
 
+    public static func hubEventStream(cursor: String?, replay: Bool) -> EventStreamRoute {
+        var query: [URLQueryItem] = []
+        if let cursor {
+            query.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        if replay {
+            query.append(URLQueryItem(name: "replay", value: "true"))
+        }
+        return EventStreamRoute(
+            path: "/api/v1/trainerlab/events/stream/",
+            query: query,
+        )
+    }
+
     public static func runSummary(simulationID: Int) -> Endpoint {
         Endpoint(path: "/api/v1/trainerlab/simulations/\(simulationID)/summary/")
     }
