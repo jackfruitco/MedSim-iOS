@@ -285,7 +285,7 @@ private enum HubStreamError: Error {
     case decodeFailed
 }
 
-private enum HubSSEStreamItem: Sendable {
+private enum HubSSEStreamItem {
     case event(TrainerLabHubEvent)
     case keepAlive
 }

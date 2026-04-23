@@ -12,6 +12,8 @@ private enum SessionHubMockError: Error {
 private final class MockSessionHubService: TrainerLabServiceProtocol, @unchecked Sendable {
     var listSessionsCalls: [(limit: Int, cursor: String?, status: String?, query: String?)] = []
     var listSessionsResults: [PaginatedResponse<TrainerSessionDTO>] = []
+    var listSessionsResult = PaginatedResponse<TrainerSessionDTO>(items: [], nextCursor: nil, hasMore: false)
+    var listSessionsError: Error?
     var listSessionsDelayNanoseconds: UInt64 = 0
 
     func listSessions(limit: Int, cursor: String?, status: String?, query: String?) async throws -> PaginatedResponse<TrainerSessionDTO> {
@@ -19,54 +21,182 @@ private final class MockSessionHubService: TrainerLabServiceProtocol, @unchecked
         if listSessionsDelayNanoseconds > 0 {
             try? await Task.sleep(nanoseconds: listSessionsDelayNanoseconds)
         }
+        if let listSessionsError {
+            throw listSessionsError
+        }
         if !listSessionsResults.isEmpty {
             return listSessionsResults.removeFirst()
         }
-        return PaginatedResponse(items: [], nextCursor: nil, hasMore: false)
+        return listSessionsResult
     }
 
-    func accessMe() async throws -> LabAccess { throw SessionHubMockError.unused }
-    func createSession(request _: TrainerSessionCreateRequest, idempotencyKey _: String) async throws -> TrainerSessionDTO { throw SessionHubMockError.unused }
-    func getSession(simulationID _: Int) async throws -> TrainerSessionDTO { throw SessionHubMockError.unused }
-    func retryInitialSimulation(simulationID _: Int) async throws -> TrainerSessionDTO { throw SessionHubMockError.unused }
-    func getRuntimeState(simulationID _: Int) async throws -> TrainerRestViewModelDTO { throw SessionHubMockError.unused }
-    func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut { throw SessionHubMockError.unused }
-    func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO { throw SessionHubMockError.unused }
-    func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func triggerVitalsTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<EventEnvelope> { throw SessionHubMockError.unused }
-    func getRunSummary(simulationID _: Int) async throws -> RunSummary { throw SessionHubMockError.unused }
-    func adjustSimulation(simulationID _: Int, request _: SimulationAdjustRequest, idempotencyKey _: String) async throws -> SimulationAdjustAck { throw SessionHubMockError.unused }
-    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func injectInjuryEvent(simulationID _: Int, request _: InjuryEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func injectIllnessEvent(simulationID _: Int, request _: IllnessEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createProblem(simulationID _: Int, request _: ProblemCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createAssessmentFinding(simulationID _: Int, request _: AssessmentFindingCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createDiagnosticResult(simulationID _: Int, request _: DiagnosticResultCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createResourceState(simulationID _: Int, request _: ResourceStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createDispositionState(simulationID _: Int, request _: DispositionStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func injectVitalEvent(simulationID _: Int, request _: VitalEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func injectInterventionEvent(simulationID _: Int, request _: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func listPresets(limit _: Int, cursor _: String?) async throws -> PaginatedResponse<ScenarioInstruction> { throw SessionHubMockError.unused }
-    func createPreset(request _: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction { throw SessionHubMockError.unused }
-    func getPreset(presetID _: Int) async throws -> ScenarioInstruction { throw SessionHubMockError.unused }
-    func updatePreset(presetID _: Int, request _: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction { throw SessionHubMockError.unused }
-    func deletePreset(presetID _: Int) async throws { throw SessionHubMockError.unused }
-    func duplicatePreset(presetID _: Int) async throws -> ScenarioInstruction { throw SessionHubMockError.unused }
-    func sharePreset(presetID _: Int, request _: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission { throw SessionHubMockError.unused }
-    func unsharePreset(presetID _: Int, request _: ScenarioInstructionUnshareRequest) async throws { throw SessionHubMockError.unused }
-    func applyPreset(presetID _: Int, request _: ScenarioInstructionApplyRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func injuryDictionary() async throws -> InjuryDictionary { throw SessionHubMockError.unused }
-    func interventionDictionary() async throws -> [InterventionGroup] { throw SessionHubMockError.unused }
-    func listAccounts(query _: String, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<AccountListUser> { throw SessionHubMockError.unused }
-    func updateProblemStatus(simulationID _: Int, problemID _: Int, request _: ProblemStatusUpdateRequest, idempotencyKey _: String) async throws -> ProblemStatusOut { throw SessionHubMockError.unused }
-    func createNoteEvent(simulationID _: Int, request _: SimulationNoteCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck { throw SessionHubMockError.unused }
-    func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut { throw SessionHubMockError.unused }
-    func listAnnotations(simulationID _: Int) async throws -> [AnnotationOut] { throw SessionHubMockError.unused }
-    func updateScenarioBrief(simulationID _: Int, request _: ScenarioBriefUpdateRequest, idempotencyKey _: String) async throws -> ScenarioBriefOut { throw SessionHubMockError.unused }
-    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO { throw SessionHubMockError.unused }
-    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO { throw SessionHubMockError.unused }
-    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws { throw SessionHubMockError.unused }
+    func accessMe() async throws -> LabAccess {
+        throw SessionHubMockError.unused
+    }
+
+    func createSession(request _: TrainerSessionCreateRequest, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func retryInitialSimulation(simulationID _: Int) async throws -> TrainerSessionDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func getRuntimeState(simulationID _: Int) async throws -> TrainerRestViewModelDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func getControlPlaneDebug(simulationID _: Int) async throws -> ControlPlaneDebugOut {
+        throw SessionHubMockError.unused
+    }
+
+    func runCommand(simulationID _: Int, command _: RunCommand, idempotencyKey _: String) async throws -> TrainerSessionDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func triggerRunTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func triggerVitalsTick(simulationID _: Int, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func listEvents(simulationID _: Int, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<EventEnvelope> {
+        throw SessionHubMockError.unused
+    }
+
+    func getRunSummary(simulationID _: Int) async throws -> RunSummary {
+        throw SessionHubMockError.unused
+    }
+
+    func adjustSimulation(simulationID _: Int, request _: SimulationAdjustRequest, idempotencyKey _: String) async throws -> SimulationAdjustAck {
+        throw SessionHubMockError.unused
+    }
+
+    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func injectInjuryEvent(simulationID _: Int, request _: InjuryEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func injectIllnessEvent(simulationID _: Int, request _: IllnessEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createProblem(simulationID _: Int, request _: ProblemCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createAssessmentFinding(simulationID _: Int, request _: AssessmentFindingCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createDiagnosticResult(simulationID _: Int, request _: DiagnosticResultCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createResourceState(simulationID _: Int, request _: ResourceStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createDispositionState(simulationID _: Int, request _: DispositionStateCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func injectVitalEvent(simulationID _: Int, request _: VitalEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func injectInterventionEvent(simulationID _: Int, request _: InterventionEventRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func listPresets(limit _: Int, cursor _: String?) async throws -> PaginatedResponse<ScenarioInstruction> {
+        throw SessionHubMockError.unused
+    }
+
+    func createPreset(request _: ScenarioInstructionCreateRequest) async throws -> ScenarioInstruction {
+        throw SessionHubMockError.unused
+    }
+
+    func getPreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw SessionHubMockError.unused
+    }
+
+    func updatePreset(presetID _: Int, request _: ScenarioInstructionUpdateRequest) async throws -> ScenarioInstruction {
+        throw SessionHubMockError.unused
+    }
+
+    func deletePreset(presetID _: Int) async throws {
+        throw SessionHubMockError.unused
+    }
+
+    func duplicatePreset(presetID _: Int) async throws -> ScenarioInstruction {
+        throw SessionHubMockError.unused
+    }
+
+    func sharePreset(presetID _: Int, request _: ScenarioInstructionShareRequest) async throws -> ScenarioInstructionPermission {
+        throw SessionHubMockError.unused
+    }
+
+    func unsharePreset(presetID _: Int, request _: ScenarioInstructionUnshareRequest) async throws {
+        throw SessionHubMockError.unused
+    }
+
+    func applyPreset(presetID _: Int, request _: ScenarioInstructionApplyRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func injuryDictionary() async throws -> InjuryDictionary {
+        throw SessionHubMockError.unused
+    }
+
+    func interventionDictionary() async throws -> [InterventionGroup] {
+        throw SessionHubMockError.unused
+    }
+
+    func listAccounts(query _: String, cursor _: String?, limit _: Int) async throws -> PaginatedResponse<AccountListUser> {
+        throw SessionHubMockError.unused
+    }
+
+    func updateProblemStatus(simulationID _: Int, problemID _: Int, request _: ProblemStatusUpdateRequest, idempotencyKey _: String) async throws -> ProblemStatusOut {
+        throw SessionHubMockError.unused
+    }
+
+    func createNoteEvent(simulationID _: Int, request _: SimulationNoteCreateRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+        throw SessionHubMockError.unused
+    }
+
+    func createAnnotation(simulationID _: Int, request _: AnnotationCreateRequest, idempotencyKey _: String) async throws -> AnnotationOut {
+        throw SessionHubMockError.unused
+    }
+
+    func listAnnotations(simulationID _: Int) async throws -> [AnnotationOut] {
+        throw SessionHubMockError.unused
+    }
+
+    func updateScenarioBrief(simulationID _: Int, request _: ScenarioBriefUpdateRequest, idempotencyKey _: String) async throws -> ScenarioBriefOut {
+        throw SessionHubMockError.unused
+    }
+
+    func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
+        throw SessionHubMockError.unused
+    }
+
+    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {
+        throw SessionHubMockError.unused
+    }
 }
 
 private final class MockHubRealtimeClient: TrainerLabHubRealtimeClientProtocol, @unchecked Sendable {
@@ -124,6 +254,70 @@ private final class MockHubRealtimeClient: TrainerLabHubRealtimeClientProtocol, 
 
 @MainActor
 final class SessionHubViewModelTests: XCTestCase {
+    func testLoadSessionsPopulatesSessions() async {
+        let service = MockSessionHubService()
+        let loaded = session(simulationID: 99, status: .seeded)
+        service.listSessionsResult = page(items: [loaded])
+        let viewModel = SessionHubViewModel(service: service)
+
+        await viewModel.loadSessions()
+
+        XCTAssertEqual(viewModel.sessions.count, 1)
+        XCTAssertEqual(viewModel.sessions.first?.simulationID, loaded.simulationID)
+        XCTAssertEqual(service.listSessionsCalls.count, 1)
+    }
+
+    func testLoadSessionsReplacesStaleData() async {
+        let service = MockSessionHubService()
+        service.listSessionsResults = [
+            page(items: [session(simulationID: 1, status: .seeded)]),
+            page(items: [session(simulationID: 2, status: .running)]),
+        ]
+        let viewModel = SessionHubViewModel(service: service)
+
+        await viewModel.loadSessions()
+        XCTAssertEqual(viewModel.sessions.first?.simulationID, 1)
+
+        await viewModel.loadSessions()
+
+        XCTAssertEqual(viewModel.sessions.count, 1)
+        XCTAssertEqual(viewModel.sessions.first?.simulationID, 2)
+    }
+
+    func testLoadSessionsIsLoadingFalseAfterSuccess() async {
+        let service = MockSessionHubService()
+        let viewModel = SessionHubViewModel(service: service)
+
+        await viewModel.loadSessions()
+
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    func testLoadSessionsSetsErrorOnFailure() async {
+        let service = MockSessionHubService()
+        service.listSessionsError = NSError(domain: "test", code: 42)
+        let viewModel = SessionHubViewModel(service: service)
+
+        await viewModel.loadSessions()
+
+        XCTAssertNotNil(viewModel.presentableError)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    func testLoadSessionsClearsErrorBeforeRetry() async {
+        let service = MockSessionHubService()
+        service.listSessionsError = NSError(domain: "test", code: 1)
+        let viewModel = SessionHubViewModel(service: service)
+        await viewModel.loadSessions()
+        XCTAssertNotNil(viewModel.presentableError)
+
+        service.listSessionsError = nil
+        service.listSessionsResult = page(items: [])
+        await viewModel.loadSessions()
+
+        XCTAssertNil(viewModel.presentableError)
+    }
+
     func testStartLiveUpdatesConnectsHubStreamOnce() async {
         let realtime = MockHubRealtimeClient()
         let viewModel = SessionHubViewModel(

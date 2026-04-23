@@ -76,6 +76,7 @@ public final class ChatLabHomeStore: ObservableObject {
     }
 
     public func refresh() async {
+        guard !isLoading, !isLoadingMore else { return }
         do {
             let page = try await service.listSimulations(
                 limit: 20,

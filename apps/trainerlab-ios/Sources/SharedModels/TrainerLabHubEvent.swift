@@ -235,7 +235,8 @@ public struct TrainerLabHubEvent: Decodable, Equatable, Identifiable, Sendable {
                 return value
             }
             if let value = try? container.decodeIfPresent(String.self, forKey: codingKey),
-               let date = parseISO8601(value) {
+               let date = parseISO8601(value)
+            {
                 return date
             }
             if case let .string(value)? = payload?[key], let date = parseISO8601(value) {

@@ -115,21 +115,21 @@ public final class SessionHubViewModel: ObservableObject {
         hubEventTask = Task { [weak self] in
             guard let self else { return }
             for await event in hubRealtimeClient.events {
-                await self.handleHubEvent(event)
+                await handleHubEvent(event)
             }
         }
 
         hubTransportTask = Task { [weak self] in
             guard let self else { return }
             for await state in hubRealtimeClient.transportStates {
-                self.handleTransportState(state)
+                handleTransportState(state)
             }
         }
 
         hubFailureTask = Task { [weak self] in
             guard let self else { return }
             for await failure in hubRealtimeClient.failures {
-                await self.handleRealtimeFailure(failure)
+                await handleRealtimeFailure(failure)
             }
         }
 
