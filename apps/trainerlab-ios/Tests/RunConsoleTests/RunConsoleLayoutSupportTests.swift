@@ -415,6 +415,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
     // MARK: - Patient State Grouping
 
+    @MainActor
     func testCauseProblemGroupingPlacesLinkedProblemsUnderMatchingCause() {
         let cause = makeRuntimeCause(causeID: 10, kind: "gunshot", location: "left_lower_leg")
         let linked = makeProblem(id: "p1", problemID: 1, label: "Hemorrhage", status: .active, causeID: 10)
@@ -436,6 +437,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(systemic.map(\.id), ["p2"])
     }
 
+    @MainActor
     func testSystemicProblemsIncludeUnlinkedAnatomicAndNonAnatomicProblems() {
         let cause = makeRuntimeCause(causeID: 5, kind: "blast", location: "right_chest")
         let linked = makeProblem(id: "p1", problemID: 1, label: "Pneumothorax", status: .active, causeID: 5, isAnatomic: true)
@@ -451,6 +453,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(systemic.map(\.id), ["p2", "p3"])
     }
 
+    @MainActor
     func testProblemOrderingPlacesActiveBeforeControlledAndResolved() {
         let resolved = makeProblem(id: "p3", problemID: 3, label: "Resolved", status: .resolved)
         let controlled = makeProblem(id: "p2", problemID: 2, label: "Controlled", status: .controlled)
@@ -460,11 +463,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.id), ["p1", "p2", "p3"])
     }
 
+    @MainActor
     func testCauseDisplayTitleUsesHumanReadableFormat() {
         let cause = makeRuntimeCause(causeID: 11, kind: "gunshot", location: "left_lower_leg")
         XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
     }
 
+    @MainActor
     func testHumanizeLabelTitleCasesNormalWordsAndOnlyPreservesKnownAcronyms() {
         XCTAssertEqual(PatientDiagramPanel.humanizeLabel("left_lower_leg"), "Left Lower Leg")
         XCTAssertEqual(PatientDiagramPanel.humanizeLabel("right_chest"), "Right Chest")
@@ -839,6 +844,12 @@ private func makeRuntimeCause(causeID: Int, kind: String, location: String) -> R
       "anatomical_location": "\(location)"
     }
     """
-    let data = payload.data(using: .utf8)!
-    return try! JSONDecoder().decode(RuntimeCauseState.self, from: data)
+    let data = Data(payload.utf8)
+
+    do {
+        return try JSONDecoder().decode(RuntimeCauseState.self, from: data)
+    } catch {
+        XCTFail("Failed to decode RuntimeCauseState fixture: \(error)")
+        fatalError("RuntimeCauseState fixture decoding failed")
+    }
 }

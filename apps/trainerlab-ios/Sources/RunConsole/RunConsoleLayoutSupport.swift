@@ -563,7 +563,6 @@ struct PatientDiagramPanel: View {
             .clipShape(Capsule())
     }
 
-    @ViewBuilder
     private func staticSection(
         title: String,
         systemImage: String,
@@ -611,7 +610,7 @@ struct PatientDiagramPanel: View {
                         ),
                     )
                 }
-                if causeProblemGroups.isEmpty && systemicProblems.isEmpty {
+                if causeProblemGroups.isEmpty, systemicProblems.isEmpty {
                     Text("No current problems.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1135,11 +1134,10 @@ struct PatientDiagramPanel: View {
         injuries: [InjuryAnnotation],
         problems: [ProblemAnnotation],
     ) -> [ProblemAnnotation] {
-        let visibleCauseIDs = Set(
-            (allCauses.isEmpty ? injuries.compactMap(\.causeID) : allCauses.compactMap(\.causeID))
-                .map { $0 },
+        let visibleCauseIDs: Set<Int> = Set(
+            allCauses.isEmpty ? injuries.compactMap(\.causeID) : allCauses.compactMap(\.causeID),
         )
-        let linkedProblemIDs = Set(
+        let linkedProblemIDs: Set<String> = Set(
             problems.compactMap { problem in
                 guard let causeID = problem.causeID, visibleCauseIDs.contains(causeID) else { return nil }
                 return problem.id
@@ -1186,7 +1184,7 @@ struct PatientDiagramPanel: View {
     }
 
     static func humanizeLabel(_ raw: String) -> String {
-        let acronymAllowlist: Set<String> = ["gsw", "iv", "io", "ac", "loc", "avpu", "cpr"]
+        let acronymAllowlist = Set(["gsw", "iv", "io", "ac", "loc", "avpu", "cpr"])
         return raw
             .replacingOccurrences(of: "_", with: " ")
             .split(separator: " ")
