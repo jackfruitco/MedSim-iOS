@@ -413,75 +413,67 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(InterventionDisplayText.normalizedSiteCode("RIGHT_CHEST"), "Right Chest")
     }
 
-    // MARK: - PatientPane Accordion
+    // MARK: - Patient State Grouping
 
-    func testPatientPaneAccordionOpenSecondaryPinsDiagram() {
-        var state = PatientPaneAccordionState()
-        let sections: [PatientPaneSection] = [.diagram, .causes, .problems]
+    @MainActor
+    func testCauseProblemGroupingPlacesLinkedProblemsUnderMatchingCause() {
+        let cause = makeRuntimeCause(causeID: 10, kind: "gunshot", location: "left_lower_leg")
+        let linked = makeProblem(id: "p1", problemID: 1, label: "Hemorrhage", status: .active, causeID: 10)
+        let unlinked = makeProblem(id: "p2", problemID: 2, label: "Pain", status: .active, causeID: nil)
 
-        state.toggleSection(.causes, availableSections: sections)
+        let groups = PatientDiagramPanel.buildCauseProblemGroups(
+            allCauses: [cause],
+            injuries: [],
+            problems: [linked, unlinked],
+        )
+        let systemic = PatientDiagramPanel.buildSystemicProblems(
+            allCauses: [cause],
+            injuries: [],
+            problems: [linked, unlinked],
+        )
 
-        XCTAssertTrue(state.pinnedDiagram, "Opening a secondary section should auto-pin the diagram")
-        XCTAssertEqual(state.openSection, .causes)
-        XCTAssertTrue(state.isExpanded(.diagram), "Diagram must remain visible when a secondary section opens")
-        XCTAssertTrue(state.isExpanded(.causes))
-        XCTAssertFalse(state.isExpanded(.problems))
+        XCTAssertEqual(groups.count, 1)
+        XCTAssertEqual(groups.first?.problems.map(\.id), ["p1"])
+        XCTAssertEqual(systemic.map(\.id), ["p2"])
     }
 
-    func testPatientPaneAccordionRepeatTapCollapsesPinnedSection() {
-        var state = PatientPaneAccordionState()
-        let sections: [PatientPaneSection] = [.diagram, .causes, .problems]
+    @MainActor
+    func testSystemicProblemsIncludeUnlinkedAnatomicAndNonAnatomicProblems() {
+        let cause = makeRuntimeCause(causeID: 5, kind: "blast", location: "right_chest")
+        let linked = makeProblem(id: "p1", problemID: 1, label: "Pneumothorax", status: .active, causeID: 5, isAnatomic: true)
+        let unlinkedAnatomic = makeProblem(id: "p2", problemID: 2, label: "Bleeding", status: .active, causeID: nil, isAnatomic: true)
+        let nonAnatomic = makeProblem(id: "p3", problemID: 3, label: "Heat Stress", status: .controlled, causeID: nil, isAnatomic: false)
 
-        state.toggleSection(.causes, availableSections: sections)
-        XCTAssertTrue(state.pinnedDiagram)
-        XCTAssertEqual(state.openSection, .causes)
+        let systemic = PatientDiagramPanel.buildSystemicProblems(
+            allCauses: [cause],
+            injuries: [],
+            problems: [linked, unlinkedAnatomic, nonAnatomic],
+        )
 
-        state.toggleSection(.causes, availableSections: sections)
-
-        XCTAssertFalse(state.pinnedDiagram, "Tapping the active secondary section should unpin and collapse")
-        XCTAssertEqual(state.openSection, .diagram, "After collapse the diagram should be the open section")
-        XCTAssertTrue(state.isExpanded(.diagram))
-        XCTAssertFalse(state.isExpanded(.causes))
+        XCTAssertEqual(systemic.map(\.id), ["p2", "p3"])
     }
 
-    func testPatientPaneAccordionSwitchBetweenSectionsKeepsDiagramPinned() {
-        var state = PatientPaneAccordionState()
-        let sections: [PatientPaneSection] = [.diagram, .causes, .problems, .recommendations]
+    @MainActor
+    func testProblemOrderingPlacesActiveBeforeControlledAndResolved() {
+        let resolved = makeProblem(id: "p3", problemID: 3, label: "Resolved", status: .resolved)
+        let controlled = makeProblem(id: "p2", problemID: 2, label: "Controlled", status: .controlled)
+        let active = makeProblem(id: "p1", problemID: 1, label: "Active", status: .active)
 
-        state.toggleSection(.causes, availableSections: sections)
-        XCTAssertTrue(state.pinnedDiagram)
-        XCTAssertEqual(state.openSection, .causes)
-
-        state.toggleSection(.problems, availableSections: sections)
-
-        XCTAssertTrue(state.pinnedDiagram, "Diagram should stay pinned when switching between secondary sections")
-        XCTAssertEqual(state.openSection, .problems)
-        XCTAssertTrue(state.isExpanded(.diagram))
-        XCTAssertFalse(state.isExpanded(.causes))
-        XCTAssertTrue(state.isExpanded(.problems))
+        let sorted = PatientDiagramPanel.sortedProblems([resolved, controlled, active])
+        XCTAssertEqual(sorted.map(\.id), ["p1", "p2", "p3"])
     }
 
-    func testPatientPaneAccordionDiagramOnlyWhenNoSecondary() {
-        var state = PatientPaneAccordionState()
-        let sections: [PatientPaneSection] = [.diagram]
-
-        // Tapping diagram when it is the only section is a no-op.
-        state.toggleSection(.diagram, availableSections: sections)
-
-        XCTAssertFalse(state.pinnedDiagram)
-        XCTAssertEqual(state.openSection, .diagram)
-        XCTAssertTrue(state.isExpanded(.diagram))
+    @MainActor
+    func testCauseDisplayTitleUsesHumanReadableFormat() {
+        let cause = makeRuntimeCause(causeID: 11, kind: "gunshot", location: "left_lower_leg")
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
     }
 
-    func testPatientPaneAccordionUnavailableSectionIsIgnored() {
-        var state = PatientPaneAccordionState()
-        let sections: [PatientPaneSection] = [.diagram, .causes]
-
-        // .problems is not in the available list; toggle should be a no-op.
-        state.toggleSection(.problems, availableSections: sections)
-
-        XCTAssertFalse(state.pinnedDiagram)
-        XCTAssertEqual(state.openSection, .diagram)
+    @MainActor
+    func testHumanizeLabelTitleCasesNormalWordsAndOnlyPreservesKnownAcronyms() {
+        XCTAssertEqual(PatientDiagramPanel.humanizeLabel("left_lower_leg"), "Left Lower Leg")
+        XCTAssertEqual(PatientDiagramPanel.humanizeLabel("right_chest"), "Right Chest")
+        XCTAssertEqual(PatientDiagramPanel.humanizeLabel("gsw_left_leg"), "GSW Left Leg")
     }
 
     // MARK: - Target Problem Chooser Collapse
@@ -797,6 +789,95 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             "Raw candidate fallback must also accept a legacy-token intervention",
         )
     }
+
+    func testDisplayPointFrontRightSidedAnatomyRendersOnPatientRightPanelSide() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.2,
+            y: 0.5,
+            side: .front,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 40, accuracy: 0.001)
+        XCTAssertEqual(point.y, 150, accuracy: 0.001)
+    }
+
+    func testDisplayPointFrontLeftSidedAnatomyRendersOnPatientLeftPanelSide() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.8,
+            y: 0.4,
+            side: .front,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 160, accuracy: 0.001)
+        XCTAssertEqual(point.y, 120, accuracy: 0.001)
+    }
+
+    func testDisplayPointBackLateralityStaysConsistentWithConvention() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.25,
+            y: 0.3,
+            side: .back,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 50, accuracy: 0.001)
+        XCTAssertEqual(point.y, 90, accuracy: 0.001)
+    }
+
+    func testAnatomicalLocationLabelNormalizesRepresentativeCases() {
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .front, zoneCode: "RIGHT_CHEST"),
+            "Right Chest",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .front, zoneCode: "LEFT_FOREARM"),
+            "Left Forearm",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .back, zoneCode: "RIGHT_CALF"),
+            "Posterior Right Calf",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .back, zoneCode: "LEFT_SHOULDER"),
+            "Posterior Left Shoulder",
+        )
+    }
+
+    func testOrientationLabelsUsePatientLateralityForFrontView() {
+        let frontLabels = RunConsolePatientDiagramSupport.orientationLabels(for: .front)
+
+        XCTAssertEqual(frontLabels.leading, "Patient Right")
+        XCTAssertEqual(frontLabels.trailing, "Patient Left")
+    }
+
+    func testOrientationLabelsUsePatientLateralityForBackView() {
+        let backLabels = RunConsolePatientDiagramSupport.orientationLabels(for: .back)
+
+        XCTAssertEqual(backLabels.leading, "Patient Left")
+        XCTAssertEqual(backLabels.trailing, "Patient Right")
+    }
+
+    func testNormalizedLateralityLabelReadsTokenWhenAvailable() {
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "RIGHT_CHEST"),
+            "Right",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: "LEFT_SHOULDER"),
+            "Left",
+        )
+    }
+
+    func testNormalizedLateralityLabelDoesNotInferFromPanelSideOnly() {
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "CHEST"),
+        )
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: nil),
+        )
+    }
 }
 
 private func makeDictionary(_ types: [String]) -> [InterventionGroup] {
@@ -823,4 +904,41 @@ private func makeInterventionAnnotation(
         status: InterventionStatus.applied.rawValue,
         updatedAt: updatedAt,
     )
+}
+
+private func makeProblem(
+    id: String,
+    problemID: Int,
+    label: String,
+    status: ProblemLifecycleState,
+    causeID: Int? = nil,
+    isAnatomic: Bool = false,
+) -> ProblemAnnotation {
+    ProblemAnnotation(
+        id: id,
+        problemID: problemID,
+        title: label,
+        displayName: label,
+        isAnatomic: isAnatomic,
+        status: status,
+        causeID: causeID,
+    )
+}
+
+private func makeRuntimeCause(causeID: Int, kind: String, location: String) -> RuntimeCauseState {
+    let payload = """
+    {
+      "id": \(causeID),
+      "kind": "\(kind)",
+      "anatomical_location": "\(location)"
+    }
+    """
+    let data = Data(payload.utf8)
+
+    do {
+        return try JSONDecoder().decode(RuntimeCauseState.self, from: data)
+    } catch {
+        XCTFail("Failed to decode RuntimeCauseState fixture: \(error)")
+        fatalError("RuntimeCauseState fixture decoding failed")
+    }
 }
