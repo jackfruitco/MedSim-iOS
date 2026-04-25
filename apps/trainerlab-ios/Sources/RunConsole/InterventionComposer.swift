@@ -1091,151 +1091,151 @@ private struct TacticalNavigationBarModifier: ViewModifier {
 }
 
 #if DEBUG
-private enum InterventionComposerPreviewFixture {
-    static let dictionary: [InterventionGroup] = [
-        InterventionGroup(
-            interventionType: "tourniquet",
-            label: "Tourniquet",
-            sites: [
-                InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-                InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
-                InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
-            ],
-        ),
-        InterventionGroup(
-            interventionType: "pressure_dressing",
-            label: "Pressure Dressing",
-            sites: [
-                InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
-                InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
-            ],
-        ),
-        InterventionGroup(
-            interventionType: "iv_access",
-            label: "IV Access",
-            sites: [
-                InterventionSite(code: "IV-RIGHT-AC", label: "Right Antecubital"),
-                InterventionSite(code: "IV-LEFT-AC", label: "Left Antecubital"),
-            ],
-        ),
-        InterventionGroup(
-            interventionType: "fluid_resuscitation",
-            label: "Fluid Resuscitation",
-            sites: [
-                InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
-                InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
-            ],
-        ),
-        InterventionGroup(
-            interventionType: "blood_transfusion",
-            label: "Blood Transfusion / WBCT",
-            sites: [
-                InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
-                InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
-            ],
-        ),
-    ]
+    private enum InterventionComposerPreviewFixture {
+        static let dictionary: [InterventionGroup] = [
+            InterventionGroup(
+                interventionType: "tourniquet",
+                label: "Tourniquet",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                    InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
+                    InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "pressure_dressing",
+                label: "Pressure Dressing",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "iv_access",
+                label: "IV Access",
+                sites: [
+                    InterventionSite(code: "IV-RIGHT-AC", label: "Right Antecubital"),
+                    InterventionSite(code: "IV-LEFT-AC", label: "Left Antecubital"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "fluid_resuscitation",
+                label: "Fluid Resuscitation",
+                sites: [
+                    InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
+                    InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "blood_transfusion",
+                label: "Blood Transfusion / WBCT",
+                sites: [
+                    InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
+                    InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
+                ],
+            ),
+        ]
 
-    static let problems: [ProblemAnnotation] = [
-        ProblemAnnotation(
-            id: "problem-hemorrhage",
-            problemID: 41,
-            title: "Massive hemorrhage",
-            description: "Left lower leg bleeding",
-            isAnatomic: true,
-            locationCode: "LEFT_LEG",
-            side: .front,
-            x: 0.38,
-            y: 0.72,
-            status: .active,
-            recommendedInterventionIDs: [7, 8],
-        ),
-        ProblemAnnotation(
-            id: "problem-airway",
-            problemID: 42,
-            title: "Airway compromise",
-            description: "Needs reassessment after initial intervention",
-            isAnatomic: false,
-            status: .controlled,
-        ),
-    ]
+        static let problems: [ProblemAnnotation] = [
+            ProblemAnnotation(
+                id: "problem-hemorrhage",
+                problemID: 41,
+                title: "Massive hemorrhage",
+                description: "Left lower leg bleeding",
+                isAnatomic: true,
+                locationCode: "LEFT_LEG",
+                side: .front,
+                x: 0.38,
+                y: 0.72,
+                status: .active,
+                recommendedInterventionIDs: [7, 8],
+            ),
+            ProblemAnnotation(
+                id: "problem-airway",
+                problemID: 42,
+                title: "Airway compromise",
+                description: "Needs reassessment after initial intervention",
+                isAnatomic: false,
+                status: .controlled,
+            ),
+        ]
 
-    static let recommendations: [RecommendedInterventionItem] = [
-        RecommendedInterventionItem(
-            recommendationID: 7,
-            title: "Apply tourniquet",
-            kind: "tourniquet",
-            targetProblemID: 41,
-            validationStatus: "recommended",
-            rationale: "Uncontrolled extremity hemorrhage requires rapid hemorrhage control.",
-            priority: 1,
-        ),
-        RecommendedInterventionItem(
-            recommendationID: 8,
-            title: "Start blood transfusion",
-            kind: "blood_transfusion",
-            targetProblemID: 41,
-            validationStatus: "blocked",
-            rationale: "Consider whole blood after vascular access is established.",
-            priority: 2,
-        ),
-    ]
+        static let recommendations: [RecommendedInterventionItem] = [
+            RecommendedInterventionItem(
+                recommendationID: 7,
+                title: "Apply tourniquet",
+                kind: "tourniquet",
+                targetProblemID: 41,
+                validationStatus: "recommended",
+                rationale: "Uncontrolled extremity hemorrhage requires rapid hemorrhage control.",
+                priority: 1,
+            ),
+            RecommendedInterventionItem(
+                recommendationID: 8,
+                title: "Start blood transfusion",
+                kind: "blood_transfusion",
+                targetProblemID: 41,
+                validationStatus: "blocked",
+                rationale: "Consider whole blood after vascular access is established.",
+                priority: 2,
+            ),
+        ]
 
-    static let interventions: [InterventionAnnotation] = [
-        InterventionAnnotation(
-            id: "intervention-tourniquet",
-            interventionID: 99,
-            interventionType: "tourniquet",
-            title: "Tourniquet",
-            siteCode: "LEFT_LEG",
-            siteLabel: "Left Leg",
-            targetProblemID: 41,
-            side: .front,
-            x: 0.38,
-            y: 0.72,
-            effectiveness: InterventionEffectiveness.effective.rawValue,
-            status: InterventionStatus.applied.rawValue,
-        ),
-    ]
+        static let interventions: [InterventionAnnotation] = [
+            InterventionAnnotation(
+                id: "intervention-tourniquet",
+                interventionID: 99,
+                interventionType: "tourniquet",
+                title: "Tourniquet",
+                siteCode: "LEFT_LEG",
+                siteLabel: "Left Leg",
+                targetProblemID: 41,
+                side: .front,
+                x: 0.38,
+                y: 0.72,
+                effectiveness: InterventionEffectiveness.effective.rawValue,
+                status: InterventionStatus.applied.rawValue,
+            ),
+        ]
 
-    @MainActor
-    static func sheet(canMutate: Bool = true) -> some View {
-        InterventionComposerSheet(
-            dictionary: dictionary,
-            problems: problems,
-            recommendations: recommendations,
-            interventions: interventions,
-            prefilledTargetProblemID: 41,
-            canMutate: canMutate,
-        ) { _, _, _, _, _, _, _ in }
+        @MainActor
+        static func sheet(canMutate: Bool = true) -> some View {
+            InterventionComposerSheet(
+                dictionary: dictionary,
+                problems: problems,
+                recommendations: recommendations,
+                interventions: interventions,
+                prefilledTargetProblemID: 41,
+                canMutate: canMutate,
+            ) { _, _, _, _, _, _, _ in }
+        }
     }
-}
 
-#Preview("Composer - Light") {
-    InterventionComposerPreviewFixture.sheet()
-        .environment(\.colorScheme, .light)
-}
+    #Preview("Composer - Light") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .light)
+    }
 
-#Preview("Composer - Dark") {
-    InterventionComposerPreviewFixture.sheet()
-        .environment(\.colorScheme, .dark)
-}
+    #Preview("Composer - Dark") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+    }
 
-#Preview("Composer - Increased Contrast") {
-    InterventionComposerPreviewFixture.sheet()
-        .environment(\.colorScheme, .dark)
-}
+    #Preview("Composer - Increased Contrast") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+    }
 
-#Preview("Composer - Large Type") {
-    InterventionComposerPreviewFixture.sheet()
-        .environment(\.colorScheme, .dark)
-        .environment(\.dynamicTypeSize, .accessibility3)
-}
+    #Preview("Composer - Large Type") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+            .environment(\.dynamicTypeSize, .accessibility3)
+    }
 
-#Preview("Composer - Compact iPhone") {
-    InterventionComposerPreviewFixture.sheet()
-        .environment(\.colorScheme, .dark)
-        .frame(width: 360, height: 780)
-}
+    #Preview("Composer - Compact iPhone") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+            .frame(width: 360, height: 780)
+    }
 #endif
