@@ -797,6 +797,95 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
             "Raw candidate fallback must also accept a legacy-token intervention",
         )
     }
+
+    func testDisplayPointFrontRightSidedAnatomyRendersOnPatientRightPanelSide() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.2,
+            y: 0.5,
+            side: .front,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 40, accuracy: 0.001)
+        XCTAssertEqual(point.y, 150, accuracy: 0.001)
+    }
+
+    func testDisplayPointFrontLeftSidedAnatomyRendersOnPatientLeftPanelSide() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.8,
+            y: 0.4,
+            side: .front,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 160, accuracy: 0.001)
+        XCTAssertEqual(point.y, 120, accuracy: 0.001)
+    }
+
+    func testDisplayPointBackLateralityStaysConsistentWithConvention() {
+        let point = RunConsolePatientDiagramSupport.displayPoint(
+            x: 0.25,
+            y: 0.3,
+            side: .back,
+            size: CGSize(width: 200, height: 300),
+        )
+
+        XCTAssertEqual(point.x, 50, accuracy: 0.001)
+        XCTAssertEqual(point.y, 90, accuracy: 0.001)
+    }
+
+    func testAnatomicalLocationLabelNormalizesRepresentativeCases() {
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .front, zoneCode: "RIGHT_CHEST"),
+            "Right Chest",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .front, zoneCode: "LEFT_FOREARM"),
+            "Left Forearm",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .back, zoneCode: "RIGHT_CALF"),
+            "Posterior Right Calf",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.anatomicalLocationLabel(side: .back, zoneCode: "LEFT_SHOULDER"),
+            "Posterior Left Shoulder",
+        )
+    }
+
+    func testOrientationLabelsUsePatientLateralityForFrontView() {
+        let frontLabels = RunConsolePatientDiagramSupport.orientationLabels(for: .front)
+
+        XCTAssertEqual(frontLabels.leading, "Patient Right")
+        XCTAssertEqual(frontLabels.trailing, "Patient Left")
+    }
+
+    func testOrientationLabelsUsePatientLateralityForBackView() {
+        let backLabels = RunConsolePatientDiagramSupport.orientationLabels(for: .back)
+
+        XCTAssertEqual(backLabels.leading, "Patient Left")
+        XCTAssertEqual(backLabels.trailing, "Patient Right")
+    }
+
+    func testNormalizedLateralityLabelReadsTokenWhenAvailable() {
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "RIGHT_CHEST"),
+            "Right",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: "LEFT_SHOULDER"),
+            "Left",
+        )
+    }
+
+    func testNormalizedLateralityLabelDoesNotInferFromPanelSideOnly() {
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "CHEST"),
+        )
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: nil),
+        )
+    }
 }
 
 private func makeDictionary(_ types: [String]) -> [InterventionGroup] {
