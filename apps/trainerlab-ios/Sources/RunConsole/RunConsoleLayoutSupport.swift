@@ -910,8 +910,8 @@ struct PatientDiagramPanel: View {
     private func problemRow(_ problem: ProblemAnnotation) -> some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
-            Text(problem.label)
-                .font(.caption2.weight(.semibold))
+                Text(problem.label)
+                    .font(.caption2.weight(.semibold))
                     .lineLimit(2)
                 if let anatomicalLabel = anatomicalLocationLabel(for: problem) {
                     Text(anatomicalLabel)
@@ -1315,9 +1315,9 @@ enum RunConsolePatientDiagramSupport {
         }
     }
 
-    // Coordinates are rendered in patient-anatomy orientation, not viewer selfie orientation.
-    // If older payloads are discovered to be viewer-mirrored, change displayOrientationConvention
-    // (or side-specific logic) instead of introducing ad hoc flips in marker views.
+    /// Coordinates are rendered in patient-anatomy orientation, not viewer selfie orientation.
+    /// If older payloads are discovered to be viewer-mirrored, change displayOrientationConvention
+    /// (or side-specific logic) instead of introducing ad hoc flips in marker views.
     static func displayPoint(
         x: CGFloat,
         y: CGFloat,
@@ -1325,12 +1325,11 @@ enum RunConsolePatientDiagramSupport {
         size: CGSize,
         convention: BodyDisplayOrientationConvention = displayOrientationConvention,
     ) -> CGPoint {
-        let normalizedX: CGFloat
-        switch convention {
+        let normalizedX: CGFloat = switch convention {
         case .patientAnatomical:
-            normalizedX = x
+            x
         case .viewerMirrored:
-            normalizedX = side == .front ? 1 - x : x
+            side == .front ? 1 - x : x
         }
 
         return CGPoint(x: normalizedX * size.width, y: y * size.height)
@@ -1351,13 +1350,12 @@ enum RunConsolePatientDiagramSupport {
         }
         let region = regionTokens.isEmpty ? nil : regionTokens.map(\.capitalized).joined(separator: " ")
 
-        let plane: String?
-        if tokens.contains("POSTERIOR") || tokens.contains("BACK") || side == .back {
-            plane = "Posterior"
+        let plane: String? = if tokens.contains("POSTERIOR") || tokens.contains("BACK") || side == .back {
+            "Posterior"
         } else if tokens.contains("ANTERIOR") || tokens.contains("FRONT") {
-            plane = "Anterior"
+            "Anterior"
         } else {
-            plane = nil
+            nil
         }
 
         var parts: [String] = []
