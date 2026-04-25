@@ -910,8 +910,8 @@ struct PatientDiagramPanel: View {
     private func problemRow(_ problem: ProblemAnnotation) -> some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(problem.label)
-                    .font(.caption.weight(.semibold))
+            Text(problem.label)
+                .font(.caption2.weight(.semibold))
                     .lineLimit(2)
                 if let anatomicalLabel = anatomicalLocationLabel(for: problem) {
                     Text(anatomicalLabel)
