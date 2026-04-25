@@ -862,6 +862,26 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(backLabels.leading, "Patient Right")
         XCTAssertEqual(backLabels.trailing, "Patient Left")
     }
+
+    func testNormalizedLateralityLabelReadsTokenWhenAvailable() {
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "RIGHT_CHEST"),
+            "Right",
+        )
+        XCTAssertEqual(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: "LEFT_SHOULDER"),
+            "Left",
+        )
+    }
+
+    func testNormalizedLateralityLabelDoesNotInferFromPanelSideOnly() {
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .front, zoneCode: "CHEST"),
+        )
+        XCTAssertNil(
+            RunConsolePatientDiagramSupport.normalizedLateralityLabel(side: .back, zoneCode: nil),
+        )
+    }
 }
 
 private func makeDictionary(_ types: [String]) -> [InterventionGroup] {

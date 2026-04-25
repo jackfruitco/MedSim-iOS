@@ -1610,8 +1610,7 @@ enum RunConsolePatientDiagramSupport {
             .uppercased()
 
         let tokens = cleaned.split(separator: "_").map(String.init)
-        let sideToken = tokens.first(where: { $0 == "LEFT" || $0 == "RIGHT" })
-        let resolvedSide = sideToken?.capitalized
+        let resolvedSide = normalizedLateralityLabel(side: side, zoneCode: zoneCode)
 
         let regionTokens = tokens.filter {
             !["LEFT", "RIGHT", "FRONT", "BACK", "ANTERIOR", "POSTERIOR"].contains($0)
@@ -1636,6 +1635,19 @@ enum RunConsolePatientDiagramSupport {
             return cleaned.replacingOccurrences(of: "_", with: " ").capitalized
         }
         return parts.joined(separator: " ")
+    }
+
+    static func normalizedLateralityLabel(side: InjuryZoneSide?, zoneCode: String?) -> String? {
+        _ = side
+        let cleaned = zoneCode?
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+            .uppercased() ?? ""
+        let tokens = cleaned.split(separator: "_").map(String.init)
+
+        if tokens.contains("RIGHT") { return "Right" }
+        if tokens.contains("LEFT") { return "Left" }
+        return nil
     }
 }
 
