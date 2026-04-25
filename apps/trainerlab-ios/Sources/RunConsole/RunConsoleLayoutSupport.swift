@@ -597,11 +597,6 @@ struct PatientDiagramPanel: View {
 
     private let displayConvention: BodyDisplayOrientationConvention = RunConsolePatientDiagramSupport.displayOrientationConvention
 
-<<<<<<< ours
-    private let displayConvention: BodyDisplayOrientationConvention = RunConsolePatientDiagramSupport.displayOrientationConvention
-
-=======
->>>>>>> theirs
     var body: some View {
         VStack(spacing: containerSpacing) {
             accordionSections
@@ -1167,11 +1162,6 @@ struct PatientDiagramPanel: View {
 
     // MARK: - Row Views
 
-<<<<<<< Updated upstream
-=======
-<<<<<<< ours
-=======
->>>>>>> Stashed changes
     private func injuryRow(_ injury: InjuryAnnotation) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "x.circle.fill")
@@ -1215,10 +1205,6 @@ struct PatientDiagramPanel: View {
         .padding(.vertical, 3)
     }
 
-<<<<<<< Updated upstream
-=======
->>>>>>> theirs
->>>>>>> Stashed changes
     private func problemRow(_ problem: ProblemAnnotation) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "circle.circle.fill")
@@ -1232,13 +1218,6 @@ struct PatientDiagramPanel: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(problem.label)
-<<<<<<< Updated upstream
-=======
-<<<<<<< ours
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(2)
-=======
->>>>>>> Stashed changes
                     .font(.caption2.bold())
                     .lineLimit(1)
                 if let anatomicalLabel = anatomicalLocationLabel(for: problem) {
@@ -1254,10 +1233,6 @@ struct PatientDiagramPanel: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-<<<<<<< Updated upstream
-=======
->>>>>>> theirs
->>>>>>> Stashed changes
             }
             Spacer()
             if let problemID = problem.problemID, pendingInterventionProblemIDs.contains(problemID) {
@@ -1674,171 +1649,8 @@ enum RunConsolePatientDiagramSupport {
         if tokens.contains("LEFT") { return "Left" }
         return nil
     }
-<<<<<<< ours
 }
 
-// MARK: - Body Silhouettes
-
-private struct BodySilhouetteShape: Shape {
-    let side: InjuryZoneSide
-
-    func path(in rect: CGRect) -> Path {
-        switch side {
-        case .front:
-            AnteriorBodyShape().path(in: rect)
-        case .back:
-            PosteriorBodyShape().path(in: rect)
-        }
-    }
-
-    private var shouldShowDiagramLegend: Bool {
-        !(layoutMode == .compact && compactMetrics.cardPadding <= 8)
-    }
-
-    private var diagramLegend: some View {
-        HStack(spacing: 10) {
-            legendItem(icon: "x.circle.fill", color: TrainerLabTheme.danger, label: "Cause/Injury")
-            legendItem(icon: "circle.circle.fill", color: TrainerLabTheme.warning, label: "Problem")
-            legendItem(icon: "plus.circle.fill", color: TrainerLabTheme.accentBlue, label: "Intervention")
-            legendItem(icon: "circle.dotted.circle", color: .cyan, label: "Pulse")
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-    }
-
-    private func legendItem(icon: String, color: Color, label: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text(label)
-        }
-    }
-
-    private func displayPoint(x: Double, y: Double, for side: InjuryZoneSide, in size: CGSize) -> CGPoint {
-        RunConsolePatientDiagramSupport.displayPoint(
-            x: CGFloat(x),
-            y: CGFloat(y),
-            side: side,
-            size: size,
-            convention: displayConvention,
-        )
-    }
-
-    private func anatomicalLocationLabel(for problem: ProblemAnnotation) -> String? {
-        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
-            side: problem.side,
-            zoneCode: problem.locationCode,
-        )
-    }
-
-    private func anatomicalLocationLabel(for injury: InjuryAnnotation) -> String? {
-        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
-            side: injury.side,
-            zoneCode: injury.locationCode,
-        )
-    }
-
-    private func anatomicalLocationLabel(for intervention: InterventionAnnotation) -> String? {
-        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
-            side: intervention.side,
-            zoneCode: intervention.siteCode,
-        )
-    }
-}
-
-enum BodyDisplayOrientationConvention {
-    case patientAnatomical
-    case viewerMirrored
-}
-
-<<<<<<< Updated upstream
-private struct BodyOrientationLabels: View {
-    let leadingText: String
-    let trailingText: String
-
-=======
-enum RunConsolePatientDiagramSupport {
-    static let displayOrientationConvention: BodyDisplayOrientationConvention = .patientAnatomical
-
-    static func orientationLabels(for _: InjuryZoneSide) -> (leading: String, trailing: String) {
-        ("Patient Right", "Patient Left")
-    }
-
-    // Coordinates are rendered in patient-anatomy orientation, not viewer selfie orientation.
-    // If older payloads are discovered to be viewer-mirrored, change displayOrientationConvention
-    // (or side-specific logic) instead of introducing ad hoc flips in marker views.
-    static func displayPoint(
-        x: CGFloat,
-        y: CGFloat,
-        side: InjuryZoneSide,
-        size: CGSize,
-        convention: BodyDisplayOrientationConvention = displayOrientationConvention,
-    ) -> CGPoint {
-        let normalizedX: CGFloat
-        switch convention {
-        case .patientAnatomical:
-            normalizedX = x
-        case .viewerMirrored:
-            normalizedX = side == .front ? 1 - x : x
-        }
-
-        return CGPoint(x: normalizedX * size.width, y: y * size.height)
-    }
-
-    static func anatomicalLocationLabel(side: InjuryZoneSide?, zoneCode: String?) -> String? {
-        guard let zoneCode, !zoneCode.isEmpty else { return nil }
-        let cleaned = zoneCode
-            .replacingOccurrences(of: "-", with: "_")
-            .replacingOccurrences(of: " ", with: "_")
-            .uppercased()
-
-        let tokens = cleaned.split(separator: "_").map(String.init)
-        let resolvedSide = normalizedLateralityLabel(side: side, zoneCode: zoneCode)
-
-        let regionTokens = tokens.filter {
-            !["LEFT", "RIGHT", "FRONT", "BACK", "ANTERIOR", "POSTERIOR"].contains($0)
-        }
-        let region = regionTokens.isEmpty ? nil : regionTokens.map(\.capitalized).joined(separator: " ")
-
-        let plane: String?
-        if tokens.contains("POSTERIOR") || tokens.contains("BACK") || side == .back {
-            plane = "Posterior"
-        } else if tokens.contains("ANTERIOR") || tokens.contains("FRONT") {
-            plane = "Anterior"
-        } else {
-            plane = nil
-        }
-
-        var parts: [String] = []
-        if let plane { parts.append(plane) }
-        if let resolvedSide { parts.append(resolvedSide) }
-        if let region { parts.append(region) }
-
-        if parts.isEmpty {
-            return cleaned.replacingOccurrences(of: "_", with: " ").capitalized
-        }
-        return parts.joined(separator: " ")
-    }
-
-    static func normalizedLateralityLabel(side: InjuryZoneSide?, zoneCode: String?) -> String? {
-        _ = side
-        let cleaned = zoneCode?
-            .replacingOccurrences(of: "-", with: "_")
-            .replacingOccurrences(of: " ", with: "_")
-            .uppercased() ?? ""
-        let tokens = cleaned.split(separator: "_").map(String.init)
-
-        if tokens.contains("RIGHT") { return "Right" }
-        if tokens.contains("LEFT") { return "Left" }
-        return nil
-    }
-}
-
-=======
-}
-
->>>>>>> theirs
 // MARK: - Body Silhouettes
 
 private struct BodySilhouetteShape: Shape {
@@ -1858,10 +1670,6 @@ private struct BodyOrientationLabels: View {
     let leadingText: String
     let trailingText: String
 
-<<<<<<< ours
->>>>>>> Stashed changes
-=======
->>>>>>> theirs
     var body: some View {
         VStack {
             HStack {
