@@ -520,6 +520,34 @@ struct InterventionComposerSheet: View {
         return draft.resolvedSiteCode(in: context.availableSites(for: group)) != nil
     }
 
+    private var sectionSurface: Color {
+        TrainerLabTheme.tacticalSurface
+    }
+
+    private var rowSurface: Color {
+        TrainerLabTheme.tacticalSurfaceElevated
+    }
+
+    private var selectedRowSurface: Color {
+        TrainerLabTheme.accentBlue.opacity(0.20)
+    }
+
+    private var acceptedRowSurface: Color {
+        TrainerLabTheme.success.opacity(0.16)
+    }
+
+    private var subtleBorder: Color {
+        TrainerLabTheme.tacticalBorder
+    }
+
+    private var primaryText: Color {
+        .white.opacity(0.94)
+    }
+
+    private var secondaryText: Color {
+        .white.opacity(0.72)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -535,17 +563,23 @@ struct InterventionComposerSheet: View {
                 }
                 .padding()
             }
+            .scrollContentBackground(.hidden)
+            .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
             .navigationTitle("Add Intervention")
             .modifier(InlineNavigationTitleModifier())
+            .modifier(TacticalNavigationBarModifier())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .foregroundStyle(primaryText)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply", action: submitCurrentDraft)
+                        .foregroundStyle(canSubmit ? TrainerLabTheme.accentBlue : secondaryText)
                         .disabled(!canSubmit)
                 }
             }
+            .tint(TrainerLabTheme.accentBlue)
         }
     }
 
@@ -558,26 +592,26 @@ struct InterventionComposerSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Target Problem")
                             .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(secondaryText)
                         if draft.activeSection != .target {
                             if let id = draft.selectedTargetProblemID,
                                let problem = problems.first(where: { $0.problemID == id })
                             {
                                 Text(problem.label)
                                     .font(.caption)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(primaryText)
                                     .lineLimit(1)
                             } else {
                                 Text("General intervention")
                                     .font(.caption)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(primaryText)
                             }
                         }
                     }
                     Spacer()
                     Image(systemName: draft.activeSection == .target ? "chevron.up" : "chevron.down")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryText)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -614,15 +648,19 @@ struct InterventionComposerSheet: View {
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(sectionSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(subtleBorder, lineWidth: 1),
+        )
     }
 
     private var recommendedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Recommended")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryText)
 
             ForEach(context.recommendedActions) { action in
                 HStack(alignment: .top, spacing: 10) {
@@ -633,7 +671,7 @@ struct InterventionComposerSheet: View {
                                 HStack(spacing: 6) {
                                     Text(action.title)
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(primaryText)
                                     if action.isAccepted {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.caption.weight(.semibold))
@@ -643,31 +681,36 @@ struct InterventionComposerSheet: View {
                                 if let subtitle = action.subtitle, !subtitle.isEmpty {
                                     Text(subtitle)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(secondaryText)
                                 }
                                 if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
                                     Text(siteSummary)
-                                        .font(.caption2.weight(.semibold))
+                                        .font(.caption.weight(.semibold))
                                         .foregroundStyle(TrainerLabTheme.accentBlue)
                                 }
                                 if let disabledReason = action.disabledReason {
                                     Text(disabledReason)
-                                        .font(.caption2)
+                                        .font(.caption)
                                         .foregroundStyle(TrainerLabTheme.warning)
                                 } else if action.isAccepted {
                                     Text("Applied")
-                                        .font(.caption2)
+                                        .font(.caption)
                                         .foregroundStyle(TrainerLabTheme.success)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
-                            .background(action.isAccepted ? TrainerLabTheme.success.opacity(0.07) : Color.white.opacity(0.04))
+                            .background(action.isAccepted ? acceptedRowSurface : rowSurface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(action.isAccepted ? TrainerLabTheme.success.opacity(0.45) : subtleBorder, lineWidth: 1),
+                            )
                         },
                     )
                     .buttonStyle(.plain)
                     .disabled(!action.isEnabled || !canMutate)
+                    .opacity(action.isEnabled && canMutate ? 1 : 0.68)
 
                     Button {
                         draft.applyPrefill(action.prefill, dictionary: dictionary)
@@ -677,23 +720,31 @@ struct InterventionComposerSheet: View {
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(TrainerLabTheme.accentBlue)
                             .frame(width: 34, height: 34)
-                            .background(Color.white.opacity(0.06))
+                            .background(rowSurface)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(subtleBorder, lineWidth: 1),
+                            )
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(sectionSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(subtleBorder, lineWidth: 1),
+        )
     }
 
     private var fullFormSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Full Form")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryText)
 
             collapsibleSection(
                 title: "Intervention Type",
@@ -766,7 +817,7 @@ struct InterventionComposerSheet: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Status")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(secondaryText)
                                 chipGrid(
                                     items: InterventionStatus.allCases.map { ($0.rawValue.capitalized, $0) },
                                     selected: draft.status,
@@ -778,7 +829,7 @@ struct InterventionComposerSheet: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Effectiveness")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(secondaryText)
                                 chipGrid(
                                     items: InterventionEffectiveness.allCases.map { (SimulationEventRegistry.humanizedLabel($0.rawValue), $0) },
                                     selected: draft.effectiveness,
@@ -792,7 +843,7 @@ struct InterventionComposerSheet: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Application Mode")
                                     .font(.caption.bold())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(secondaryText)
                                 chipGrid(
                                     items: TourniquetApplicationMode.allCases.map { (SimulationEventRegistry.humanizedLabel($0.rawValue), $0) },
                                     selected: draft.tourniquetApplicationMode,
@@ -811,38 +862,58 @@ struct InterventionComposerSheet: View {
                 ) {
                     TextField("Optional notes", text: $draft.notes, axis: .vertical)
                         .lineLimit(2 ... 4)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(10)
+                        .foregroundStyle(primaryText)
+                        .background(rowSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(subtleBorder, lineWidth: 1),
+                        )
                 }
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(sectionSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(subtleBorder, lineWidth: 1),
+        )
     }
 
     private var disabledItemsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Unavailable Right Now")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryText)
 
             ForEach(context.disabledItems) { item in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.caption.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(primaryText)
                     Text(item.reason)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                        .foregroundStyle(secondaryText)
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.03))
+                .background(rowSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(subtleBorder, lineWidth: 1),
+                )
             }
         }
         .padding(12)
-        .background(Color.white.opacity(0.05))
+        .background(sectionSurface)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(subtleBorder, lineWidth: 1),
+        )
     }
 
     private func collapsibleSection(
@@ -862,18 +933,18 @@ struct InterventionComposerSheet: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
                             .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(secondaryText)
                         if let summary, draft.activeSection != section {
                             Text(summary)
                                 .font(.caption)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(primaryText)
                                 .lineLimit(2)
                         }
                     }
                     Spacer()
                     Image(systemName: draft.activeSection == section ? "chevron.up" : "chevron.down")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryText)
                 }
             }
             .buttonStyle(.plain)
@@ -901,13 +972,17 @@ struct InterventionComposerSheet: View {
     private func compactChip(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(selected ? .white : .primary)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(selected ? .white : primaryText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
                 .padding(.horizontal, 8)
-                .background(selected ? TrainerLabTheme.accentBlue : Color.secondary.opacity(0.12))
+                .background(selected ? TrainerLabTheme.accentBlue : rowSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(selected ? TrainerLabTheme.accentBlue : subtleBorder, lineWidth: 1),
+                )
         }
         .buttonStyle(.plain)
     }
@@ -917,10 +992,10 @@ struct InterventionComposerSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(primaryText)
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryText)
             }
             Spacer()
             if selected {
@@ -929,8 +1004,12 @@ struct InterventionComposerSheet: View {
             }
         }
         .padding(10)
-        .background(Color.white.opacity(selected ? 0.08 : 0.03))
+        .background(selected ? selectedRowSurface : rowSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(selected ? TrainerLabTheme.accentBlue.opacity(0.8) : subtleBorder, lineWidth: 1),
+        )
     }
 
     private func selectInterventionType(_ interventionType: String) {
@@ -997,3 +1076,166 @@ struct InlineNavigationTitleModifier: ViewModifier {
         #endif
     }
 }
+
+private struct TacticalNavigationBarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            content
+                .toolbarBackground(TrainerLabTheme.tacticalBackground, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+        #else
+            content
+        #endif
+    }
+}
+
+#if DEBUG
+    private enum InterventionComposerPreviewFixture {
+        static let dictionary: [InterventionGroup] = [
+            InterventionGroup(
+                interventionType: "tourniquet",
+                label: "Tourniquet",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                    InterventionSite(code: "RIGHT_ARM", label: "Right Arm"),
+                    InterventionSite(code: "LEFT_ARM", label: "Left Arm"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "pressure_dressing",
+                label: "Pressure Dressing",
+                sites: [
+                    InterventionSite(code: "RIGHT_LEG", label: "Right Leg"),
+                    InterventionSite(code: "LEFT_LEG", label: "Left Leg"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "iv_access",
+                label: "IV Access",
+                sites: [
+                    InterventionSite(code: "IV-RIGHT-AC", label: "Right Antecubital"),
+                    InterventionSite(code: "IV-LEFT-AC", label: "Left Antecubital"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "fluid_resuscitation",
+                label: "Fluid Resuscitation",
+                sites: [
+                    InterventionSite(code: "FR-IV-LINE", label: "IV Line"),
+                    InterventionSite(code: "FR-IO-LINE", label: "IO Line"),
+                ],
+            ),
+            InterventionGroup(
+                interventionType: "blood_transfusion",
+                label: "Blood Transfusion / WBCT",
+                sites: [
+                    InterventionSite(code: "BT-IV-LINE", label: "IV Line"),
+                    InterventionSite(code: "BT-IO-LINE", label: "IO Line"),
+                ],
+            ),
+        ]
+
+        static let problems: [ProblemAnnotation] = [
+            ProblemAnnotation(
+                id: "problem-hemorrhage",
+                problemID: 41,
+                title: "Massive hemorrhage",
+                description: "Left lower leg bleeding",
+                isAnatomic: true,
+                locationCode: "LEFT_LEG",
+                side: .front,
+                x: 0.38,
+                y: 0.72,
+                status: .active,
+                recommendedInterventionIDs: [7, 8],
+            ),
+            ProblemAnnotation(
+                id: "problem-airway",
+                problemID: 42,
+                title: "Airway compromise",
+                description: "Needs reassessment after initial intervention",
+                isAnatomic: false,
+                status: .controlled,
+            ),
+        ]
+
+        static let recommendations: [RecommendedInterventionItem] = [
+            RecommendedInterventionItem(
+                recommendationID: 7,
+                title: "Apply tourniquet",
+                kind: "tourniquet",
+                targetProblemID: 41,
+                validationStatus: "recommended",
+                rationale: "Uncontrolled extremity hemorrhage requires rapid hemorrhage control.",
+                priority: 1,
+            ),
+            RecommendedInterventionItem(
+                recommendationID: 8,
+                title: "Start blood transfusion",
+                kind: "blood_transfusion",
+                targetProblemID: 41,
+                validationStatus: "blocked",
+                rationale: "Consider whole blood after vascular access is established.",
+                priority: 2,
+            ),
+        ]
+
+        static let interventions: [InterventionAnnotation] = [
+            InterventionAnnotation(
+                id: "intervention-tourniquet",
+                interventionID: 99,
+                interventionType: "tourniquet",
+                title: "Tourniquet",
+                siteCode: "LEFT_LEG",
+                siteLabel: "Left Leg",
+                targetProblemID: 41,
+                side: .front,
+                x: 0.38,
+                y: 0.72,
+                effectiveness: InterventionEffectiveness.effective.rawValue,
+                status: InterventionStatus.applied.rawValue,
+            ),
+        ]
+
+        @MainActor
+        static func sheet(canMutate: Bool = true) -> some View {
+            InterventionComposerSheet(
+                dictionary: dictionary,
+                problems: problems,
+                recommendations: recommendations,
+                interventions: interventions,
+                prefilledTargetProblemID: 41,
+                canMutate: canMutate,
+            ) { _, _, _, _, _, _, _ in }
+        }
+    }
+
+    #Preview("Composer - Light") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .light)
+    }
+
+    #Preview("Composer - Dark") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+    }
+
+    #Preview("Composer - Increased Contrast") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+    }
+
+    #Preview("Composer - Large Type") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+            .environment(\.dynamicTypeSize, .accessibility3)
+    }
+
+    #Preview("Composer - Compact iPhone") {
+        InterventionComposerPreviewFixture.sheet()
+            .environment(\.colorScheme, .dark)
+            .frame(width: 360, height: 780)
+    }
+#endif
