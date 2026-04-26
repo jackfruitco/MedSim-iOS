@@ -36,6 +36,26 @@ struct ProblemDetailView: View {
         return allCauses.first { $0.causeID == causeID }
     }
 
+    private var sectionSurface: Color {
+        TrainerLabTheme.tacticalSurface
+    }
+
+    private var rowSurface: Color {
+        TrainerLabTheme.tacticalSurfaceElevated
+    }
+
+    private var subtleBorder: Color {
+        TrainerLabTheme.tacticalBorder
+    }
+
+    private var primaryText: Color {
+        .white.opacity(0.94)
+    }
+
+    private var secondaryText: Color {
+        .white.opacity(0.72)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -45,14 +65,18 @@ struct ProblemDetailView: View {
                 }
                 .padding()
             }
+            .scrollContentBackground(.hidden)
+            .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
             .navigationTitle(problem.label)
             .modifier(InlineNavigationTitleModifier())
-            .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
+            .modifier(ProblemDetailNavigationBarModifier())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .foregroundStyle(primaryText)
                 }
             }
+            .tint(TrainerLabTheme.accentBlue)
         }
     }
 
@@ -64,11 +88,11 @@ struct ProblemDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(problem.label)
                         .font(.headline)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(primaryText)
                     if let description = problem.description, !description.isEmpty {
                         Text(description)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(secondaryText)
                     }
                 }
                 Spacer(minLength: 8)
@@ -80,12 +104,12 @@ struct ProblemDetailView: View {
 
             metadataGrid
         }
-        .trainerCardStyle(background: Color.white.opacity(0.05))
+        .trainerCardStyle(background: sectionSurface)
     }
 
     private var statusBadge: some View {
         Text(problem.status.rawValue.uppercased())
-            .font(.caption2.bold())
+            .font(.caption.bold())
             .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -95,6 +119,10 @@ struct ProblemDetailView: View {
                         ? TrainerLabTheme.danger.opacity(0.15)
                         : TrainerLabTheme.success.opacity(0.15),
                 ),
+            )
+            .overlay(
+                Capsule()
+                    .stroke(problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.45) : TrainerLabTheme.success.opacity(0.45), lineWidth: 1),
             )
     }
 
@@ -118,17 +146,21 @@ struct ProblemDetailView: View {
     private func metadataCell(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary)
+                .font(.caption.bold())
+                .foregroundStyle(secondaryText)
             Text(value)
                 .font(.caption)
-                .foregroundStyle(.primary)
+                .foregroundStyle(primaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
-        .background(Color.white.opacity(0.04))
+        .background(rowSurface)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(subtleBorder, lineWidth: 1),
+        )
     }
 
     // MARK: - Recommendations
@@ -138,7 +170,7 @@ struct ProblemDetailView: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("Recommended Interventions")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondaryText)
 
             if context.recommendedActions.isEmpty {
                 emptyRecommendationsView
@@ -148,13 +180,13 @@ struct ProblemDetailView: View {
                 }
             }
         }
-        .trainerCardStyle(background: Color.white.opacity(0.05))
+        .trainerCardStyle(background: sectionSurface)
     }
 
     private var emptyRecommendationsView: some View {
         Text("No recommendations for this problem.")
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(secondaryText)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 12)
     }
@@ -174,35 +206,40 @@ struct ProblemDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(action.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(!action.isEnabled || !canMutate ? .secondary : .primary)
+                    .foregroundStyle(!action.isEnabled || !canMutate ? secondaryText : primaryText)
                 if let subtitle = action.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryText)
                 }
                 if let siteSummary = action.siteSummary, !siteSummary.isEmpty {
                     Text(siteSummary)
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(TrainerLabTheme.accentBlue)
                 }
                 if let disabledReason = action.disabledReason {
                     Text(disabledReason)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(TrainerLabTheme.warning)
                 } else if let validationStatus = action.validationStatus {
                     Text(SimulationEventRegistry.humanizedLabel(validationStatus))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                        .foregroundStyle(secondaryText)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(0.04))
+            .background(rowSurface)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(subtleBorder, lineWidth: 1),
+            )
         }
         .buttonStyle(.plain)
         .disabled(!action.isEnabled || !canMutate)
+        .opacity(action.isEnabled && canMutate ? 1 : 0.68)
     }
 
     private func editButton(_ action: RecommendedInterventionAction) -> some View {
@@ -214,8 +251,12 @@ struct ProblemDetailView: View {
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(TrainerLabTheme.accentBlue)
                 .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.06))
+                .background(rowSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(subtleBorder, lineWidth: 1),
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Edit \(action.title)")
@@ -233,5 +274,18 @@ struct ProblemDetailView: View {
             action.prefill.tourniquetApplicationMode,
         )
         dismiss()
+    }
+}
+
+private struct ProblemDetailNavigationBarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            content
+                .toolbarBackground(TrainerLabTheme.tacticalBackground, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+        #else
+            content
+        #endif
     }
 }
