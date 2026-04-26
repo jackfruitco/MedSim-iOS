@@ -2094,6 +2094,13 @@ public final class RunSessionStore: ObservableObject {
         let label = eventPrimaryLabel(from: event.payload) ?? "Problem"
         let status = ProblemLifecycleState(rawValue: jsonString(event.payload["status"]) ?? "active") ?? .active
         let severity = jsonString(event.payload["severity"])
+        let locationLabel = RuntimeLocationDisplay.locationText(
+            preferredLabel: jsonString(event.payload["anatomical_location_label"]),
+            rawLocation: jsonString(event.payload["anatomical_location"]),
+            fallbackRawLocation: jsonString(event.payload["injury_location"]),
+            lateralityLabel: jsonString(event.payload["laterality_label"]),
+            laterality: jsonString(event.payload["laterality"]),
+        )
         let locationCode = resolvedAnatomicLocationCode(
             primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
             fallback: jsonInt(event.payload["cause_id"]).flatMap { causeID in
@@ -2112,6 +2119,7 @@ public final class RunSessionStore: ObservableObject {
             description: jsonString(event.payload["description"]),
             isAnatomic: isAnatomic,
             locationCode: locationCode,
+            locationLabel: locationLabel,
             side: zone?.side,
             x: zone?.x,
             y: zone?.y,
@@ -2621,6 +2629,13 @@ public final class RunSessionStore: ObservableObject {
         causesByID: [Int: RuntimeCauseState],
     ) -> ProblemAnnotation {
         let linkedCause = problem.causeID.flatMap { causesByID[$0] }
+        let locationLabel = RuntimeLocationDisplay.locationText(
+            preferredLabel: problem.anatomicalLocationLabel,
+            rawLocation: problem.anatomicalLocation,
+            fallbackRawLocation: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
+            lateralityLabel: problem.lateralityLabel,
+            laterality: problem.laterality,
+        )
         let locationCode = resolvedAnatomicLocationCode(
             primary: problem.anatomicalLocation,
             fallback: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
@@ -2636,6 +2651,7 @@ public final class RunSessionStore: ObservableObject {
             description: problem.description,
             isAnatomic: zone != nil,
             locationCode: locationCode,
+            locationLabel: locationLabel,
             side: zone?.side,
             x: zone?.x,
             y: zone?.y,

@@ -378,6 +378,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "status": "active",
                 "cause_id": 11,
                 "anatomical_location": "LEFT_ARM",
+                "anatomical_location_label": "Left Arm",
             ]],
             vitals: [[
                 "vital_type": "heart_rate",
@@ -455,6 +456,8 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.pulseAnnotations.first?.location, "radial_left")
         XCTAssertEqual(store.state.causeAnnotations.first?.causeID, 11)
         XCTAssertEqual(store.state.problemAnnotations.first?.problemID, 21)
+        XCTAssertEqual(store.state.problemAnnotations.first?.locationCode, "LEFT_ARM")
+        XCTAssertEqual(store.state.problemAnnotations.first?.locationLabel, "Left Arm")
         XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Patrol medic called to blast injury.")
         XCTAssertEqual(store.patientStatus.narrative, "Increasing respiratory distress.")
         XCTAssertEqual(store.runtimeState?.runtimeSnapshot.aiPlan?.summary, "Escalate respiratory distress")

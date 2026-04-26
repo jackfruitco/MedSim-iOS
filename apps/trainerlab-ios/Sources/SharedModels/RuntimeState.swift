@@ -192,6 +192,7 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
     public let description: String?
     public let isAnatomic: Bool
     public let locationCode: String?
+    public let locationLabel: String?
     public let side: InjuryZoneSide?
     public let x: Double?
     public let y: Double?
@@ -212,6 +213,7 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
         description: String? = nil,
         isAnatomic: Bool,
         locationCode: String? = nil,
+        locationLabel: String? = nil,
         side: InjuryZoneSide? = nil,
         x: Double? = nil,
         y: Double? = nil,
@@ -231,6 +233,7 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
         self.description = description
         self.isAnatomic = isAnatomic
         self.locationCode = locationCode
+        self.locationLabel = locationLabel
         self.side = side
         self.x = x
         self.y = y
@@ -269,6 +272,64 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
 
     public var isHistorical: Bool {
         status == .resolved
+    }
+}
+
+public enum RuntimeLocationDisplay {
+    public static func locationText(
+        preferredLabel: String?,
+        secondaryLabel: String? = nil,
+        rawLocation: String?,
+        fallbackRawLocation: String? = nil,
+        lateralityLabel: String? = nil,
+        laterality: String? = nil,
+        includesLateralityWhenSeparate: Bool = false,
+    ) -> String? {
+        let location = nonEmpty(preferredLabel)
+            ?? nonEmpty(secondaryLabel)
+            ?? nonEmpty(rawLocation).map(humanizeLabel)
+            ?? nonEmpty(fallbackRawLocation).map(humanizeLabel)
+        let side = lateralityText(label: lateralityLabel, raw: laterality)
+
+        guard let location else { return side }
+        guard
+            includesLateralityWhenSeparate,
+            let side,
+            !locationContainsLaterality(location, side)
+        else { return location }
+        return "\(side) \(location)"
+    }
+
+    public static func lateralityText(label: String?, raw: String?) -> String? {
+        nonEmpty(label) ?? nonEmpty(raw).map(humanizeLabel)
+    }
+
+    public static func humanizeLabel(_ raw: String) -> String {
+        let acronymAllowlist = Set(["gsw", "iv", "io", "ac", "loc", "avpu", "cpr"])
+        return raw
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { token in
+                let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                let lower = trimmed.lowercased()
+                if acronymAllowlist.contains(lower) {
+                    return lower.uppercased()
+                }
+                return lower.prefix(1).uppercased() + lower.dropFirst()
+            }
+            .joined(separator: " ")
+    }
+
+    public static func nonEmpty(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    public static func locationContainsLaterality(_ location: String, _ laterality: String) -> Bool {
+        let normalizedLocation = location.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedLaterality = laterality.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return normalizedLocation.localizedCaseInsensitiveContains(normalizedLaterality)
     }
 }
 

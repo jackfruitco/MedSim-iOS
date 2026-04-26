@@ -951,8 +951,11 @@ public struct RuntimeCauseState: Codable, Sendable {
     public let severity: String?
     public let marchCategory: String?
     public let anatomicalLocation: String?
+    public let anatomicalLocationLabel: String?
     public let laterality: String?
+    public let lateralityLabel: String?
     public let injuryLocation: String?
+    public let injuryLocationLabel: String?
     public let injuryKind: String?
     public let status: String?
     public let source: String?
@@ -976,8 +979,11 @@ public struct RuntimeCauseState: Codable, Sendable {
         case severity
         case marchCategory = "march_category"
         case anatomicalLocation = "anatomical_location"
+        case anatomicalLocationLabel = "anatomical_location_label"
         case laterality
+        case lateralityLabel = "laterality_label"
         case injuryLocation = "injury_location"
+        case injuryLocationLabel = "injury_location_label"
         case injuryKind = "injury_kind"
         case status
         case source
@@ -999,8 +1005,11 @@ public struct RuntimeCauseState: Codable, Sendable {
         severity = try container.decodeIfPresent(String.self, forKey: .severity)
         marchCategory = try container.decodeIfPresent(String.self, forKey: .marchCategory)
         anatomicalLocation = try container.decodeIfPresent(String.self, forKey: .anatomicalLocation)
+        anatomicalLocationLabel = try container.decodeIfPresent(String.self, forKey: .anatomicalLocationLabel)
         laterality = try container.decodeIfPresent(String.self, forKey: .laterality)
+        lateralityLabel = try container.decodeIfPresent(String.self, forKey: .lateralityLabel)
         injuryLocation = try container.decodeIfPresent(String.self, forKey: .injuryLocation)
+        injuryLocationLabel = try container.decodeIfPresent(String.self, forKey: .injuryLocationLabel)
         injuryKind = try container.decodeIfPresent(String.self, forKey: .injuryKind)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         source = try container.decodeIfPresent(String.self, forKey: .source)
@@ -1021,8 +1030,11 @@ public struct RuntimeCauseState: Codable, Sendable {
         try container.encodeIfPresent(severity, forKey: .severity)
         try container.encodeIfPresent(marchCategory, forKey: .marchCategory)
         try container.encodeIfPresent(anatomicalLocation, forKey: .anatomicalLocation)
+        try container.encodeIfPresent(anatomicalLocationLabel, forKey: .anatomicalLocationLabel)
         try container.encodeIfPresent(laterality, forKey: .laterality)
+        try container.encodeIfPresent(lateralityLabel, forKey: .lateralityLabel)
         try container.encodeIfPresent(injuryLocation, forKey: .injuryLocation)
+        try container.encodeIfPresent(injuryLocationLabel, forKey: .injuryLocationLabel)
         try container.encodeIfPresent(injuryKind, forKey: .injuryKind)
         try container.encodeIfPresent(status, forKey: .status)
         try container.encodeIfPresent(source, forKey: .source)
@@ -1041,7 +1053,9 @@ public struct RuntimeProblemState: Codable, Sendable {
     public let severity: String?
     public let marchCategory: String?
     public let anatomicalLocation: String?
+    public let anatomicalLocationLabel: String?
     public let laterality: String?
+    public let lateralityLabel: String?
     public let status: ProblemLifecycleState?
     public let previousStatus: ProblemLifecycleState?
     public let treatedAt: Date?
@@ -1070,7 +1084,9 @@ public struct RuntimeProblemState: Codable, Sendable {
         case severity
         case marchCategory = "march_category"
         case anatomicalLocation = "anatomical_location"
+        case anatomicalLocationLabel = "anatomical_location_label"
         case laterality
+        case lateralityLabel = "laterality_label"
         case status
         case previousStatus = "previous_status"
         case treatedAt = "treated_at"
@@ -1097,7 +1113,9 @@ public struct RuntimeProblemState: Codable, Sendable {
         severity = try container.decodeIfPresent(String.self, forKey: .severity)
         marchCategory = try container.decodeIfPresent(String.self, forKey: .marchCategory)
         anatomicalLocation = try container.decodeIfPresent(String.self, forKey: .anatomicalLocation)
+        anatomicalLocationLabel = try container.decodeIfPresent(String.self, forKey: .anatomicalLocationLabel)
         laterality = try container.decodeIfPresent(String.self, forKey: .laterality)
+        lateralityLabel = try container.decodeIfPresent(String.self, forKey: .lateralityLabel)
         status = try container.decodeIfPresent(ProblemLifecycleState.self, forKey: .status)
         previousStatus = try container.decodeIfPresent(ProblemLifecycleState.self, forKey: .previousStatus)
         treatedAt = try container.decodeIfPresent(Date.self, forKey: .treatedAt)
@@ -1271,6 +1289,10 @@ public struct RuntimeAssessmentFindingState: Codable, Sendable {
     public let title: String?
     public let displayName: String?
     public let description: String?
+    public let anatomicalLocation: String?
+    public let anatomicalLocationLabel: String?
+    public let laterality: String?
+    public let lateralityLabel: String?
     public let status: String?
     public let metadata: [String: JSONValue]?
 
@@ -1281,6 +1303,10 @@ public struct RuntimeAssessmentFindingState: Codable, Sendable {
         case title
         case displayName = "display_name"
         case description
+        case anatomicalLocation = "anatomical_location"
+        case anatomicalLocationLabel = "anatomical_location_label"
+        case laterality
+        case lateralityLabel = "laterality_label"
         case status
         case metadata
     }
@@ -1293,6 +1319,10 @@ public struct RuntimeAssessmentFindingState: Codable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         description = try container.decodeIfPresent(String.self, forKey: .description)
+        anatomicalLocation = try container.decodeIfPresent(String.self, forKey: .anatomicalLocation)
+        anatomicalLocationLabel = try container.decodeIfPresent(String.self, forKey: .anatomicalLocationLabel)
+        laterality = try container.decodeIfPresent(String.self, forKey: .laterality)
+        lateralityLabel = try container.decodeIfPresent(String.self, forKey: .lateralityLabel)
         status = try container.decodeIfPresent(String.self, forKey: .status)
         metadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .metadata)
     }
