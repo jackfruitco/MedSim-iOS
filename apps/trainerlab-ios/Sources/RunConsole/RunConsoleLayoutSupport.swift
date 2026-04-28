@@ -1279,6 +1279,7 @@ struct PatientDiagramPanel: View {
             fallbackRawLocation: cause.injuryLocation,
             lateralityLabel: cause.lateralityLabel,
             laterality: cause.laterality,
+            includesLateralityWhenSeparate: true,
         )
     }
 
@@ -1295,6 +1296,7 @@ struct PatientDiagramPanel: View {
             fallbackRawLocation: nil,
             lateralityLabel: finding.lateralityLabel,
             laterality: finding.laterality,
+            includesLateralityWhenSeparate: true,
         )
     }
 

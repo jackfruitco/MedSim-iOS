@@ -2100,6 +2100,7 @@ public final class RunSessionStore: ObservableObject {
             fallbackRawLocation: jsonString(event.payload["injury_location"]),
             lateralityLabel: jsonString(event.payload["laterality_label"]),
             laterality: jsonString(event.payload["laterality"]),
+            includesLateralityWhenSeparate: true,
         )
         let locationCode = resolvedAnatomicLocationCode(
             primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
@@ -2635,6 +2636,7 @@ public final class RunSessionStore: ObservableObject {
             fallbackRawLocation: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
             lateralityLabel: problem.lateralityLabel,
             laterality: problem.laterality,
+            includesLateralityWhenSeparate: true,
         )
         let locationCode = resolvedAnatomicLocationCode(
             primary: problem.anatomicalLocation,

@@ -3,6 +3,77 @@ import SharedModels
 import XCTest
 
 final class RuntimePayloadLabelDecodingTests: XCTestCase {
+    func testRuntimeCauseStateDecodesAnatomyLateralityAndInjuryLocationLabels() throws {
+        let json = """
+        {
+          "id": 11,
+          "kind": "gunshot",
+          "anatomical_location": "chest",
+          "anatomical_location_label": "Chest",
+          "laterality": "left",
+          "laterality_label": "Left",
+          "injury_location": "LLL",
+          "injury_location_label": "Left Lower Leg"
+        }
+        """
+
+        let cause = try JSONDecoder().decode(RuntimeCauseState.self, from: Data(json.utf8))
+
+        XCTAssertEqual(cause.anatomicalLocation, "chest")
+        XCTAssertEqual(cause.anatomicalLocationLabel, "Chest")
+        XCTAssertEqual(cause.laterality, "left")
+        XCTAssertEqual(cause.lateralityLabel, "Left")
+        XCTAssertEqual(cause.injuryLocation, "LLL")
+        XCTAssertEqual(cause.injuryLocationLabel, "Left Lower Leg")
+    }
+
+    func testRuntimeCauseStateDecodesWithoutOptionalLabels() throws {
+        let json = """
+        {
+          "id": 11,
+          "kind": "gunshot",
+          "anatomical_location": "chest",
+          "laterality": "left",
+          "injury_location": "LLL"
+        }
+        """
+
+        let cause = try JSONDecoder().decode(RuntimeCauseState.self, from: Data(json.utf8))
+
+        XCTAssertEqual(cause.anatomicalLocation, "chest")
+        XCTAssertNil(cause.anatomicalLocationLabel)
+        XCTAssertEqual(cause.laterality, "left")
+        XCTAssertNil(cause.lateralityLabel)
+        XCTAssertEqual(cause.injuryLocation, "LLL")
+        XCTAssertNil(cause.injuryLocationLabel)
+    }
+
+    func testRuntimeLocationDisplayPrependsLateralityWhenSeparate() {
+        XCTAssertEqual(
+            RuntimeLocationDisplay.locationText(
+                preferredLabel: "Chest",
+                rawLocation: "chest",
+                lateralityLabel: "Left",
+                laterality: "left",
+                includesLateralityWhenSeparate: true,
+            ),
+            "Left Chest",
+        )
+    }
+
+    func testRuntimeLocationDisplayDoesNotDuplicateLateralityInLocationLabel() {
+        XCTAssertEqual(
+            RuntimeLocationDisplay.locationText(
+                preferredLabel: "Left Lower Leg",
+                rawLocation: "LLL",
+                lateralityLabel: "Left",
+                laterality: "left",
+                includesLateralityWhenSeparate: true,
+            ),
+            "Left Lower Leg",
+        )
+    }
+
     func testRuntimeProblemStateDecodesAnatomyAndLateralityLabels() throws {
         let json = """
         {

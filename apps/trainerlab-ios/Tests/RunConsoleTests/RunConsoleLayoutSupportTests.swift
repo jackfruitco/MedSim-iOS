@@ -508,6 +508,20 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     @MainActor
+    func testCauseDisplayTitleCombinesSeparateLateralityLabelAndLocationLabel() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "chest",
+            locationLabel: "Chest",
+            laterality: "left",
+            lateralityLabel: "Left",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Chest")
+    }
+
+    @MainActor
     func testProblemDisplayLocationPrefersLocationLabelAndPreservesRawCode() {
         let problem = ProblemAnnotation(
             id: "problem-1",
