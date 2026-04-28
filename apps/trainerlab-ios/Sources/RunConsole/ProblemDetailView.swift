@@ -137,8 +137,8 @@ struct ProblemDetailView: View {
             } else if let causeKind = problem.causeKind {
                 metadataCell(label: "Cause Type", value: SimulationEventRegistry.humanizedLabel(causeKind))
             }
-            if problem.isAnatomic, let loc = problem.locationCode {
-                metadataCell(label: "Location", value: InterventionDisplayText.normalizedSiteCode(loc))
+            if let location = PatientDiagramPanel.problemDisplayLocation(problem) {
+                metadataCell(label: "Location", value: location)
             }
         }
     }

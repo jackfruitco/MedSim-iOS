@@ -470,6 +470,79 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     @MainActor
+    func testCauseDisplayTitlePrefersBackendLocationLabel() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "LLL",
+            locationLabel: "Left Lower Leg",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
+    }
+
+    @MainActor
+    func testCauseDisplayTitleFallsBackWhenBackendLocationLabelIsEmpty() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "left_lower_leg",
+            locationLabel: "   ",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
+    }
+
+    @MainActor
+    func testCauseDisplayTitleDoesNotDuplicateLateralityIncludedInLocationLabel() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "LLL",
+            locationLabel: "Left Lower Leg",
+            laterality: "left",
+            lateralityLabel: "Left",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
+    }
+
+    @MainActor
+    func testCauseDisplayTitleCombinesSeparateLateralityLabelAndLocationLabel() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "chest",
+            locationLabel: "Chest",
+            laterality: "left",
+            lateralityLabel: "Left",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Chest")
+    }
+
+    @MainActor
+    func testProblemDisplayLocationPrefersLocationLabelAndPreservesRawCode() {
+        let problem = ProblemAnnotation(
+            id: "problem-1",
+            problemID: 41,
+            title: "Massive hemorrhage",
+            isAnatomic: true,
+            locationCode: "LLL",
+            locationLabel: "Left Lower Leg",
+            status: .active,
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.problemDisplayLocation(problem), "Left Lower Leg")
+        XCTAssertEqual(problem.locationCode, "LLL")
+    }
+
+    @MainActor
+    func testLateralityDisplayPrefersBackendLabel() {
+        XCTAssertEqual(RuntimeLocationDisplay.lateralityText(label: "Patient Right", raw: "patientRight"), "Patient Right")
+    }
+
+    @MainActor
     func testHumanizeLabelTitleCasesNormalWordsAndOnlyPreservesKnownAcronyms() {
         XCTAssertEqual(PatientDiagramPanel.humanizeLabel("left_lower_leg"), "Left Lower Leg")
         XCTAssertEqual(PatientDiagramPanel.humanizeLabel("right_chest"), "Right Chest")
@@ -925,14 +998,29 @@ private func makeProblem(
     )
 }
 
-private func makeRuntimeCause(causeID: Int, kind: String, location: String) -> RuntimeCauseState {
-    let payload = """
-    {
-      "id": \(causeID),
-      "kind": "\(kind)",
-      "anatomical_location": "\(location)"
+private func makeRuntimeCause(
+    causeID: Int,
+    kind: String,
+    location: String,
+    locationLabel: String? = nil,
+    laterality: String? = nil,
+    lateralityLabel: String? = nil,
+) -> RuntimeCauseState {
+    var fields = [
+        "\"id\": \(causeID)",
+        "\"kind\": \"\(kind)\"",
+        "\"anatomical_location\": \"\(location)\"",
+    ]
+    if let locationLabel {
+        fields.append("\"anatomical_location_label\": \"\(locationLabel)\"")
     }
-    """
+    if let laterality {
+        fields.append("\"laterality\": \"\(laterality)\"")
+    }
+    if let lateralityLabel {
+        fields.append("\"laterality_label\": \"\(lateralityLabel)\"")
+    }
+    let payload = "{\(fields.joined(separator: ","))}"
     let data = Data(payload.utf8)
 
     do {

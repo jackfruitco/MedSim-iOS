@@ -1265,10 +1265,39 @@ struct PatientDiagramPanel: View {
 
     static func causeDisplayTitle(cause: RuntimeCauseState) -> String {
         let kind = humanizeLabel(cause.kind ?? cause.code ?? cause.primaryLabel)
-        if let location = nonEmpty(cause.anatomicalLocation ?? cause.injuryLocation) {
-            return "\(kind) — \(humanizeLabel(location))"
+        if let location = causeDisplayLocation(cause) {
+            return "\(kind) — \(location)"
         }
         return kind
+    }
+
+    static func causeDisplayLocation(_ cause: RuntimeCauseState) -> String? {
+        RuntimeLocationDisplay.locationText(
+            preferredLabel: cause.anatomicalLocationLabel,
+            secondaryLabel: cause.injuryLocationLabel,
+            rawLocation: cause.anatomicalLocation,
+            fallbackRawLocation: cause.injuryLocation,
+            lateralityLabel: cause.lateralityLabel,
+            laterality: cause.laterality,
+            includesLateralityWhenSeparate: true,
+        )
+    }
+
+    static func problemDisplayLocation(_ problem: ProblemAnnotation) -> String? {
+        nonEmpty(problem.locationLabel)
+            ?? nonEmpty(problem.locationCode).map(InterventionDisplayText.normalizedSiteCode)
+    }
+
+    static func assessmentFindingDisplayLocation(_ finding: RuntimeAssessmentFindingState) -> String? {
+        RuntimeLocationDisplay.locationText(
+            preferredLabel: finding.anatomicalLocationLabel,
+            secondaryLabel: nil,
+            rawLocation: finding.anatomicalLocation,
+            fallbackRawLocation: nil,
+            lateralityLabel: finding.lateralityLabel,
+            laterality: finding.laterality,
+            includesLateralityWhenSeparate: true,
+        )
     }
 
     static func injuryDisplayTitle(injury: InjuryAnnotation) -> String {
@@ -1277,24 +1306,11 @@ struct PatientDiagramPanel: View {
     }
 
     static func humanizeLabel(_ raw: String) -> String {
-        let acronymAllowlist = Set(["gsw", "iv", "io", "ac", "loc", "avpu", "cpr"])
-        return raw
-            .replacingOccurrences(of: "_", with: " ")
-            .split(separator: " ")
-            .map { token in
-                let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-                let lower = trimmed.lowercased()
-                if acronymAllowlist.contains(lower) {
-                    return lower.uppercased()
-                }
-                return lower.prefix(1).uppercased() + lower.dropFirst()
-            }
-            .joined(separator: " ")
+        RuntimeLocationDisplay.humanizeLabel(raw)
     }
 
     static func nonEmpty(_ text: String?) -> String? {
-        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return text
+        RuntimeLocationDisplay.nonEmpty(text)
     }
 }
 

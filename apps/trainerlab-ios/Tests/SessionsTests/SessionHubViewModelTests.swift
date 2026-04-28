@@ -345,10 +345,12 @@ final class SessionHubViewModelTests: XCTestCase {
         let viewModel = SessionHubViewModel(service: service, hubRealtimeClient: realtime)
         await viewModel.loadSessions()
         await viewModel.startLiveUpdates()
+        await waitUntil {
+            viewModel.isRealtimeConnected
+        }
 
         viewModel.stopLiveUpdates()
         realtime.emit(event: hubEvent(eventID: "event-after-stop", simulationID: 420, status: .failed))
-        try? await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(realtime.disconnectCallCount, 1)
         XCTAssertFalse(viewModel.isRealtimeConnected)

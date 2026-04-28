@@ -1130,12 +1130,17 @@ public struct RunConsoleView: View {
     }
 
     private func runtimeDisplayText(_ finding: RuntimeAssessmentFindingState) -> String? {
-        runtimeDisplayText(
+        guard let primary = runtimeDisplayText(
             title: finding.title,
             code: finding.code ?? finding.kind,
             description: finding.description,
             status: finding.status,
-        )
+        ) else { return nil }
+
+        if let location = PatientDiagramPanel.assessmentFindingDisplayLocation(finding) {
+            return "\(primary) — \(location)"
+        }
+        return primary
     }
 
     private func runtimeDisplayText(_ result: RuntimeDiagnosticResultState) -> String? {

@@ -122,6 +122,7 @@ public final class SessionHubViewModel: ObservableObject {
         hubTransportTask = Task { [weak self] in
             guard let self else { return }
             for await state in hubRealtimeClient.transportStates {
+                guard !Task.isCancelled, isLiveUpdatesActive else { break }
                 handleTransportState(state)
             }
         }
