@@ -500,6 +500,7 @@ struct PatientDiagramPanel: View {
     var onUpdateProblemStatus: ((ProblemAnnotation, ProblemLifecycleState) -> Void)?
 
     @State private var selected: PatientDiagramSelection?
+    private let displayConvention: BodyDisplayOrientationConvention = RunConsolePatientDiagramSupport.displayOrientationConvention
 
     var body: some View {
         VStack(spacing: containerSpacing) {
@@ -544,8 +545,13 @@ struct PatientDiagramPanel: View {
 
     private var diagramSection: some View {
         staticSection(title: "Patient Diagram", systemImage: "figure.stand") {
-            diagramArea
-                .frame(height: diagramHeight)
+            VStack(alignment: .leading, spacing: 6) {
+                diagramArea
+                    .frame(height: diagramHeight)
+                if shouldShowDiagramLegend {
+                    diagramLegend
+                }
+            }
         }
     }
 
@@ -691,14 +697,33 @@ struct PatientDiagramPanel: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(TrainerLabTheme.tacticalSurface)
-                    BodyOutlineShape()
+                    bodySilhouette(for: side)
                         .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
                         .padding(12)
+                    Path { path in
+                        let x = geo.size.width * 0.5
+                        path.move(to: CGPoint(x: x, y: 10))
+                        path.addLine(to: CGPoint(x: x, y: geo.size.height - 10))
+                    }
+                    .stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    orientationOverlay(for: side)
                     markersOverlay(side: side, size: geo.size)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private func bodySilhouette(for side: InjuryZoneSide) -> BodySilhouetteShape {
+        BodySilhouetteShape(side: side)
+    }
+
+    private func orientationOverlay(for side: InjuryZoneSide) -> some View {
+        BodyOrientationLabels(
+            leadingText: RunConsolePatientDiagramSupport.orientationLabels(for: side).leading,
+            trailingText: RunConsolePatientDiagramSupport.orientationLabels(for: side).trailing,
+        )
+        .padding(8)
     }
 
     @ViewBuilder
@@ -737,15 +762,14 @@ struct PatientDiagramPanel: View {
         problems: [ProblemAnnotation],
         size: CGSize,
     ) -> some View {
-        let cx = injury.x * size.width
-        let cy = injury.y * size.height
+        let center = displayPoint(x: injury.x, y: injury.y, for: injury.side, in: size)
         let colocatedInterventions = interventions.filter { isColocated($0, with: injury) }
         let colocatedProblems = problems.filter { isColocated($0, with: injury) }
 
         return ZStack {
             // Base injury marker
             Image(systemName: "x.circle.fill")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(injuryColor(for: injury))
                 .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
                 .onTapGesture {
@@ -756,16 +780,16 @@ struct PatientDiagramPanel: View {
             // Intervention badge stack (offset right)
             ForEach(Array(colocatedInterventions.enumerated()), id: \.element.id) { idx, intervention in
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 11))
                     .foregroundStyle(TrainerLabTheme.accentBlue)
-                    .offset(x: 10 + CGFloat(idx) * 6, y: -6)
+                    .offset(x: 11 + CGFloat(idx) * 7, y: -8)
                     .onTapGesture { selected = .intervention(intervention) }
             }
 
             // Problem badge stack (offset below the cause marker)
             ForEach(Array(colocatedProblems.enumerated()), id: \.element.id) { idx, problem in
                 problemBadge(problem)
-                    .offset(x: CGFloat(idx) * 6, y: 12 + CGFloat(idx) * 4)
+                    .offset(x: CGFloat(idx) * 7, y: 13 + CGFloat(idx) * 5)
                     .onTapGesture {
                         if let onSelectProblem {
                             onSelectProblem(problem)
@@ -775,7 +799,7 @@ struct PatientDiagramPanel: View {
                     }
             }
         }
-        .position(x: cx, y: cy)
+        .position(center)
     }
 
     private func injuryColor(for injury: InjuryAnnotation) -> Color {
@@ -789,22 +813,20 @@ struct PatientDiagramPanel: View {
     // MARK: - Standalone Markers
 
     private func interventionMarker(_ intervention: InterventionAnnotation, size: CGSize) -> some View {
-        let cx = intervention.x * size.width
-        let cy = intervention.y * size.height
+        let center = displayPoint(x: intervention.x, y: intervention.y, for: intervention.side, in: size)
         return Image(systemName: "plus.circle.fill")
-            .font(.system(size: 14, weight: .bold))
+            .font(.system(size: 13, weight: .bold))
             .foregroundStyle(TrainerLabTheme.accentBlue)
             .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
-            .position(x: cx, y: cy)
+            .position(center)
             .onTapGesture { selected = .intervention(intervention) }
     }
 
     private func problemMarker(_ problem: ProblemAnnotation, size: CGSize) -> some View {
-        let cx = (problem.x ?? 0.5) * size.width
-        let cy = (problem.y ?? 0.5) * size.height
+        let center = displayPoint(x: problem.x ?? 0.5, y: problem.y ?? 0.5, for: problem.side ?? .front, in: size)
         return ZStack {
             Image(systemName: "circle.circle.fill")
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
             if problem.isUncontrolled {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -816,7 +838,7 @@ struct PatientDiagramPanel: View {
         .scaleEffect(problem.isUncontrolled ? 1.0 : 1.0)
         .modifier(PulsingModifier(active: problem.isUncontrolled))
         .shadow(color: problem.isUncontrolled ? TrainerLabTheme.danger.opacity(0.6) : .clear, radius: 4)
-        .position(x: cx, y: cy)
+        .position(center)
         .onTapGesture {
             if let onSelectProblem {
                 onSelectProblem(problem)
@@ -827,13 +849,12 @@ struct PatientDiagramPanel: View {
     }
 
     private func pulseMarker(_ pulse: PulseAnnotation, size: CGSize) -> some View {
-        let cx = pulse.x * size.width
-        let cy = pulse.y * size.height
+        let center = displayPoint(x: pulse.x, y: pulse.y, for: pulse.side, in: size)
         return Image(systemName: pulse.present ? "circle.dotted.circle" : "circle.dotted.circle.fill")
-            .font(.system(size: 12))
+            .font(.system(size: 11))
             .foregroundStyle(pulse.present ? .cyan : .gray)
             .shadow(color: .black.opacity(0.3), radius: 1, x: 0, y: 1)
-            .position(x: cx, y: cy)
+            .position(center)
             .onTapGesture { selected = .pulse(pulse) }
     }
 
@@ -841,7 +862,7 @@ struct PatientDiagramPanel: View {
         ZStack {
             Circle()
                 .fill(problem.isUncontrolled ? TrainerLabTheme.danger : TrainerLabTheme.success)
-                .frame(width: 12, height: 12)
+                .frame(width: 13, height: 13)
             if problem.isUncontrolled {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 7))
@@ -854,12 +875,22 @@ struct PatientDiagramPanel: View {
     // MARK: - Colocation Helpers
 
     private func isColocated(_ intervention: InterventionAnnotation, with injury: InjuryAnnotation) -> Bool {
-        abs(intervention.x - injury.x) < 0.05 && abs(intervention.y - injury.y) < 0.05 && intervention.side == injury.side
+        let unitSize = CGSize(width: 1, height: 1)
+        let injuryDisplay = displayPoint(x: injury.x, y: injury.y, for: injury.side, in: unitSize)
+        let interventionDisplay = displayPoint(x: intervention.x, y: intervention.y, for: intervention.side, in: unitSize)
+        return abs(interventionDisplay.x - injuryDisplay.x) < 0.05 &&
+            abs(interventionDisplay.y - injuryDisplay.y) < 0.05 &&
+            intervention.side == injury.side
     }
 
     private func isColocated(_ problem: ProblemAnnotation, with injury: InjuryAnnotation) -> Bool {
         guard let px = problem.x, let py = problem.y, let ps = problem.side else { return false }
-        return abs(px - injury.x) < 0.05 && abs(py - injury.y) < 0.05 && ps == injury.side
+        let unitSize = CGSize(width: 1, height: 1)
+        let injuryDisplay = displayPoint(x: injury.x, y: injury.y, for: injury.side, in: unitSize)
+        let problemDisplay = displayPoint(x: px, y: py, for: ps, in: unitSize)
+        return abs(problemDisplay.x - injuryDisplay.x) < 0.05 &&
+            abs(problemDisplay.y - injuryDisplay.y) < 0.05 &&
+            ps == injury.side
     }
 
     private func standaloneInterventions(from interventions: [InterventionAnnotation], injuries: [InjuryAnnotation]) -> [InterventionAnnotation] {
@@ -880,8 +911,13 @@ struct PatientDiagramPanel: View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(problem.label)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .lineLimit(2)
+                if let anatomicalLabel = anatomicalLocationLabel(for: problem) {
+                    Text(anatomicalLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if let problemID = problem.problemID, pendingInterventionProblemIDs.contains(problemID) {
@@ -908,10 +944,11 @@ struct PatientDiagramPanel: View {
     }
 
     private func interventionRow(_ intervention: InterventionAnnotation) -> some View {
-        let siteSummary = InterventionDisplayText.siteLabel(
+        let fallbackSummary = InterventionDisplayText.siteLabel(
             siteCode: intervention.siteCode,
             siteLabel: intervention.siteLabel,
         ) ?? intervention.siteCode
+        let siteSummary = anatomicalLocationLabel(for: intervention) ?? fallbackSummary
         return HStack(spacing: 6) {
             Image(systemName: "plus.circle.fill")
                 .font(.caption)
@@ -956,7 +993,7 @@ struct PatientDiagramPanel: View {
                     Text(injury.label)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text("Location: \(injury.locationCode) · \(injury.side.rawValue.capitalized)")
+                    Text("Location: \(anatomicalLocationLabel(for: injury) ?? injury.locationCode)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text("Cause Type: \(injury.kind.replacingOccurrences(of: "_", with: " ").capitalized)")
@@ -964,13 +1001,14 @@ struct PatientDiagramPanel: View {
                 }
             case let .intervention(intervention):
                 VStack(alignment: .leading, spacing: 4) {
-                    let siteSummary = InterventionDisplayText.siteLabel(
+                    let fallbackSummary = InterventionDisplayText.siteLabel(
                         siteCode: intervention.siteCode,
                         siteLabel: intervention.siteLabel,
                     ) ?? intervention.siteCode
+                    let siteSummary = anatomicalLocationLabel(for: intervention) ?? fallbackSummary
                     Text(intervention.title)
                         .font(.caption.bold())
-                    Text("Site: \(siteSummary) · \(intervention.side.rawValue.capitalized)")
+                    Text("Site: \(siteSummary)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text("Effectiveness: \(SimulationEventRegistry.humanizedLabel(intervention.effectiveness)) — \(intervention.status.capitalized)")
@@ -1007,8 +1045,8 @@ struct PatientDiagramPanel: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
-                    if let location = Self.problemDisplayLocation(problem) {
-                        Text("Location: \(location)")
+                    if problem.isAnatomic {
+                        Text("Location: \(anatomicalLocationLabel(for: problem) ?? problem.locationCode ?? "Unknown")")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     } else {
@@ -1081,6 +1119,61 @@ struct PatientDiagramPanel: View {
         .buttonStyle(.bordered)
         .controlSize(.mini)
         .tint(problem.status == status ? TrainerLabTheme.accentBlue : .secondary)
+    }
+
+    private var shouldShowDiagramLegend: Bool {
+        !(layoutMode == .compact && compactMetrics.cardPadding <= 8)
+    }
+
+    private var diagramLegend: some View {
+        HStack(spacing: 10) {
+            legendItem(icon: "x.circle.fill", color: TrainerLabTheme.danger, label: "Cause/Injury")
+            legendItem(icon: "circle.circle.fill", color: TrainerLabTheme.warning, label: "Problem")
+            legendItem(icon: "plus.circle.fill", color: TrainerLabTheme.accentBlue, label: "Intervention")
+            legendItem(icon: "circle.dotted.circle", color: .cyan, label: "Pulse")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+
+    private func legendItem(icon: String, color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+            Text(label)
+        }
+    }
+
+    private func displayPoint(x: Double, y: Double, for side: InjuryZoneSide, in size: CGSize) -> CGPoint {
+        RunConsolePatientDiagramSupport.displayPoint(
+            x: CGFloat(x),
+            y: CGFloat(y),
+            side: side,
+            size: size,
+            convention: displayConvention,
+        )
+    }
+
+    private func anatomicalLocationLabel(for problem: ProblemAnnotation) -> String? {
+        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+            side: problem.side,
+            zoneCode: problem.locationCode,
+        )
+    }
+
+    private func anatomicalLocationLabel(for injury: InjuryAnnotation) -> String? {
+        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+            side: injury.side,
+            zoneCode: injury.locationCode,
+        )
+    }
+
+    private func anatomicalLocationLabel(for intervention: InterventionAnnotation) -> String? {
+        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+            side: intervention.side,
+            zoneCode: intervention.siteCode,
+        )
     }
 
     private var causeProblemGroups: [PatientCauseProblemGroup] {
@@ -1219,9 +1312,125 @@ struct PatientDiagramPanel: View {
     }
 }
 
-// MARK: - Body Outline Shape
+enum BodyDisplayOrientationConvention {
+    case patientAnatomical
+    case viewerMirrored
+}
 
-struct BodyOutlineShape: Shape {
+enum RunConsolePatientDiagramSupport {
+    static let displayOrientationConvention: BodyDisplayOrientationConvention = .patientAnatomical
+
+    static func orientationLabels(for side: InjuryZoneSide) -> (leading: String, trailing: String) {
+        switch side {
+        case .front:
+            ("Patient Right", "Patient Left")
+        case .back:
+            ("Patient Left", "Patient Right")
+        }
+    }
+
+    /// Coordinates are rendered in patient-anatomy orientation, not viewer selfie orientation.
+    /// If older payloads are discovered to be viewer-mirrored, change displayOrientationConvention
+    /// (or side-specific logic) instead of introducing ad hoc flips in marker views.
+    static func displayPoint(
+        x: CGFloat,
+        y: CGFloat,
+        side: InjuryZoneSide,
+        size: CGSize,
+        convention: BodyDisplayOrientationConvention = displayOrientationConvention,
+    ) -> CGPoint {
+        let normalizedX: CGFloat = switch convention {
+        case .patientAnatomical:
+            x
+        case .viewerMirrored:
+            side == .front ? 1 - x : x
+        }
+
+        return CGPoint(x: normalizedX * size.width, y: y * size.height)
+    }
+
+    static func anatomicalLocationLabel(side: InjuryZoneSide?, zoneCode: String?) -> String? {
+        guard let zoneCode, !zoneCode.isEmpty else { return nil }
+        let cleaned = zoneCode
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+            .uppercased()
+
+        let tokens = cleaned.split(separator: "_").map(String.init)
+        let resolvedSide = normalizedLateralityLabel(side: side, zoneCode: zoneCode)
+
+        let regionTokens = tokens.filter {
+            !["LEFT", "RIGHT", "FRONT", "BACK", "ANTERIOR", "POSTERIOR"].contains($0)
+        }
+        let region = regionTokens.isEmpty ? nil : regionTokens.map(\.capitalized).joined(separator: " ")
+
+        let plane: String? = if tokens.contains("POSTERIOR") || tokens.contains("BACK") || side == .back {
+            "Posterior"
+        } else if tokens.contains("ANTERIOR") || tokens.contains("FRONT") {
+            "Anterior"
+        } else {
+            nil
+        }
+
+        var parts: [String] = []
+        if let plane { parts.append(plane) }
+        if let resolvedSide { parts.append(resolvedSide) }
+        if let region { parts.append(region) }
+
+        if parts.isEmpty {
+            return cleaned.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+        return parts.joined(separator: " ")
+    }
+
+    static func normalizedLateralityLabel(side: InjuryZoneSide?, zoneCode: String?) -> String? {
+        _ = side
+        let cleaned = zoneCode?
+            .replacingOccurrences(of: "-", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+            .uppercased() ?? ""
+        let tokens = cleaned.split(separator: "_").map(String.init)
+
+        if tokens.contains("RIGHT") { return "Right" }
+        if tokens.contains("LEFT") { return "Left" }
+        return nil
+    }
+}
+
+// MARK: - Body Silhouettes
+
+private struct BodySilhouetteShape: Shape {
+    let side: InjuryZoneSide
+
+    func path(in rect: CGRect) -> Path {
+        switch side {
+        case .front:
+            AnteriorBodyShape().path(in: rect)
+        case .back:
+            PosteriorBodyShape().path(in: rect)
+        }
+    }
+}
+
+private struct BodyOrientationLabels: View {
+    let leadingText: String
+    let trailingText: String
+
+    var body: some View {
+        VStack {
+            HStack {
+                Text(leadingText)
+                Spacer()
+                Text(trailingText)
+            }
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+}
+
+private struct AnteriorBodyShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width
         let h = rect.height
@@ -1239,14 +1448,14 @@ struct BodyOutlineShape: Shape {
         p.move(to: CGPoint(x: w * 0.53, y: h * 0.115))
         p.addLine(to: CGPoint(x: w * 0.53, y: h * 0.14))
 
-        // Torso
+        // Torso (anterior)
         p.move(to: CGPoint(x: w * 0.35, y: h * 0.14))
         p.addLine(to: CGPoint(x: w * 0.65, y: h * 0.14))
-        p.addQuadCurve(to: CGPoint(x: w * 0.62, y: h * 0.46), control: CGPoint(x: w * 0.68, y: h * 0.30))
+        p.addQuadCurve(to: CGPoint(x: w * 0.62, y: h * 0.47), control: CGPoint(x: w * 0.68, y: h * 0.29))
         p.addLine(to: CGPoint(x: w * 0.56, y: h * 0.48))
         p.addLine(to: CGPoint(x: w * 0.44, y: h * 0.48))
-        p.addLine(to: CGPoint(x: w * 0.38, y: h * 0.46))
-        p.addQuadCurve(to: CGPoint(x: w * 0.35, y: h * 0.14), control: CGPoint(x: w * 0.32, y: h * 0.30))
+        p.addLine(to: CGPoint(x: w * 0.38, y: h * 0.47))
+        p.addQuadCurve(to: CGPoint(x: w * 0.35, y: h * 0.14), control: CGPoint(x: w * 0.32, y: h * 0.29))
 
         // Left arm
         p.move(to: CGPoint(x: w * 0.35, y: h * 0.15))
@@ -1289,6 +1498,61 @@ struct BodyOutlineShape: Shape {
         p.addLine(to: CGPoint(x: w * 0.65, y: h * 0.95))
         p.move(to: CGPoint(x: w * 0.57, y: h * 0.92))
         p.addLine(to: CGPoint(x: w * 0.60, y: h * 0.95))
+
+        return p
+    }
+}
+
+private struct PosteriorBodyShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        var p = Path()
+
+        let headCX = w * 0.5
+        let headCY = h * 0.08
+        let headR = min(w, h) * 0.055
+        p.addEllipse(in: CGRect(x: headCX - headR, y: headCY - headR, width: headR * 2, height: headR * 2.2))
+
+        p.move(to: CGPoint(x: w * 0.47, y: h * 0.115))
+        p.addLine(to: CGPoint(x: w * 0.47, y: h * 0.145))
+        p.move(to: CGPoint(x: w * 0.53, y: h * 0.115))
+        p.addLine(to: CGPoint(x: w * 0.53, y: h * 0.145))
+
+        // Torso (posterior): slightly broader shoulders and straighter flank to differentiate from anterior.
+        p.move(to: CGPoint(x: w * 0.33, y: h * 0.145))
+        p.addQuadCurve(to: CGPoint(x: w * 0.67, y: h * 0.145), control: CGPoint(x: w * 0.50, y: h * 0.11))
+        p.addQuadCurve(to: CGPoint(x: w * 0.60, y: h * 0.49), control: CGPoint(x: w * 0.70, y: h * 0.34))
+        p.addLine(to: CGPoint(x: w * 0.40, y: h * 0.49))
+        p.addQuadCurve(to: CGPoint(x: w * 0.33, y: h * 0.145), control: CGPoint(x: w * 0.30, y: h * 0.34))
+
+        // Arms
+        p.move(to: CGPoint(x: w * 0.33, y: h * 0.16))
+        p.addQuadCurve(to: CGPoint(x: w * 0.18, y: h * 0.34), control: CGPoint(x: w * 0.22, y: h * 0.20))
+        p.addLine(to: CGPoint(x: w * 0.15, y: h * 0.47))
+        p.move(to: CGPoint(x: w * 0.67, y: h * 0.16))
+        p.addQuadCurve(to: CGPoint(x: w * 0.82, y: h * 0.34), control: CGPoint(x: w * 0.78, y: h * 0.20))
+        p.addLine(to: CGPoint(x: w * 0.85, y: h * 0.47))
+
+        // Legs
+        p.move(to: CGPoint(x: w * 0.43, y: h * 0.49))
+        p.addLine(to: CGPoint(x: w * 0.40, y: h * 0.72))
+        p.addLine(to: CGPoint(x: w * 0.39, y: h * 0.93))
+        p.move(to: CGPoint(x: w * 0.57, y: h * 0.49))
+        p.addLine(to: CGPoint(x: w * 0.60, y: h * 0.72))
+        p.addLine(to: CGPoint(x: w * 0.61, y: h * 0.93))
+        p.move(to: CGPoint(x: w * 0.49, y: h * 0.49))
+        p.addLine(to: CGPoint(x: w * 0.46, y: h * 0.73))
+        p.addLine(to: CGPoint(x: w * 0.45, y: h * 0.92))
+        p.move(to: CGPoint(x: w * 0.51, y: h * 0.49))
+        p.addLine(to: CGPoint(x: w * 0.54, y: h * 0.73))
+        p.addLine(to: CGPoint(x: w * 0.55, y: h * 0.92))
+
+        // Heels
+        p.move(to: CGPoint(x: w * 0.39, y: h * 0.93))
+        p.addLine(to: CGPoint(x: w * 0.36, y: h * 0.96))
+        p.move(to: CGPoint(x: w * 0.61, y: h * 0.93))
+        p.addLine(to: CGPoint(x: w * 0.64, y: h * 0.96))
 
         return p
     }
