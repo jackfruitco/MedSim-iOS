@@ -15,6 +15,7 @@ private final class StubChatLabService: ChatLabServiceProtocol, @unchecked Senda
     var quickCreateRequests: [ChatQuickCreateRequest] = []
     var listModifierGroupsResult: Result<[ModifierGroup], Error> = .failure(StubError.sentinel)
     var listModifierGroupsCallCount = 0
+    var listModifierGroupsDelay: UInt64 = 0
     var requestedLabTypes: [String] = []
 
     func listSimulations(limit _: Int, cursor _: String?, status _: String?, query _: String?, searchMessages _: Bool) async throws -> PaginatedResponse<ChatSimulation> {
@@ -109,6 +110,9 @@ private final class StubChatLabService: ChatLabServiceProtocol, @unchecked Senda
     func listModifierGroups(labType: String) async throws -> [ModifierGroup] {
         listModifierGroupsCallCount += 1
         requestedLabTypes.append(labType)
+        if listModifierGroupsDelay > 0 {
+            try? await Task.sleep(nanoseconds: listModifierGroupsDelay)
+        }
         return try listModifierGroupsResult.get()
     }
 }
@@ -192,6 +196,8 @@ final class ChatLabHomeStoreTests: XCTestCase {
         XCTAssertEqual(service.requestedLabTypes, ["chatlab"])
         XCTAssertEqual(store.modifierGroups.first?.key, "clinical_scenario")
         XCTAssertNil(store.modifierLoadError)
+        XCTAssertTrue(store.hasLoadedModifierGroups)
+        XCTAssertTrue(store.canCreateSimulation)
     }
 
     func testOptionalSingleSelectDefaultsToNoPreferenceAndFlattensNoKey() async {
@@ -329,6 +335,57 @@ final class ChatLabHomeStoreTests: XCTestCase {
         XCTAssertNil(created)
         XCTAssertEqual(store.presentableError?.message, "Invalid modifier selection. Refresh and try again.")
         XCTAssertFalse(store.presentableError?.message.contains("nonexistent") ?? true)
+    }
+
+    func testQuickCreateBeforeModifierHydrationDoesNotCallService() async {
+        let service = StubChatLabService()
+        service.quickCreateResult = .success(makeSimulation(id: 77))
+        let store = ChatLabHomeStore(service: service)
+
+        let created = await store.quickCreateSimulation()
+
+        XCTAssertNil(created)
+        XCTAssertEqual(service.quickCreateRequests.count, 0)
+        XCTAssertEqual(store.modifierValidationErrors, ["Modifiers are still loading."])
+        XCTAssertFalse(store.canCreateSimulation)
+    }
+
+    func testQuickCreateWhileModifierGroupsAreLoadingDoesNotCallService() async {
+        let service = StubChatLabService()
+        service.listModifierGroupsDelay = 200_000_000
+        service.listModifierGroupsResult = .success([makeModifierGroup()])
+        service.quickCreateResult = .success(makeSimulation(id: 78))
+        let store = ChatLabHomeStore(service: service)
+
+        let loadTask = Task { await store.loadModifierGroups() }
+        while store.isLoadingModifierGroups == false {
+            await Task.yield()
+        }
+
+        let created = await store.quickCreateSimulation()
+        await loadTask.value
+
+        XCTAssertNil(created)
+        XCTAssertEqual(service.quickCreateRequests.count, 0)
+        XCTAssertEqual(store.modifierValidationErrors, ["Modifiers are still loading."])
+    }
+
+    func testQuickCreateAfterModifierLoadFailureDoesNotCallService() async {
+        let service = StubChatLabService()
+        service.listModifierGroupsResult = .failure(
+            APIClientError.http(statusCode: 500, detail: "catalog invalid", correlationID: nil),
+        )
+        service.quickCreateResult = .success(makeSimulation(id: 79))
+        let store = ChatLabHomeStore(service: service)
+
+        await store.loadModifierGroups()
+        let created = await store.quickCreateSimulation()
+
+        XCTAssertNil(created)
+        XCTAssertEqual(service.quickCreateRequests.count, 0)
+        XCTAssertEqual(store.presentableError?.title, "Modifiers Unavailable")
+        XCTAssertEqual(store.presentableError?.message, "Refresh modifiers and try again.")
+        XCTAssertFalse(store.canCreateSimulation)
     }
 }
 

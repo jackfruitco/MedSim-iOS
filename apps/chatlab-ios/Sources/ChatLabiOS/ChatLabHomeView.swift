@@ -399,6 +399,7 @@ private struct ChatCreateSimulationSheet: View {
                                 }
                             }
                         }
+                        .disabled(!store.canCreateSimulation || creating)
                     }
                 }
             }

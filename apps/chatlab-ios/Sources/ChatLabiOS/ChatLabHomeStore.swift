@@ -13,6 +13,7 @@ public final class ChatLabHomeStore: ObservableObject {
     @Published public var includeMessageSearch = false
     @Published public private(set) var modifierGroups: [ModifierGroup] = []
     @Published public private(set) var isLoadingModifierGroups = false
+    @Published public private(set) var hasLoadedModifierGroups = false
     @Published public private(set) var modifierLoadError: PresentableAppError?
     @Published public private(set) var modifierValidationErrors: [String] = []
     @Published public var selectedModifiersByGroup: [String: Set<String>] = [:]
@@ -32,6 +33,13 @@ public final class ChatLabHomeStore: ObservableObject {
 
     public var selectedModifiers: Set<String> {
         Set(flattenSelectedModifierKeys())
+    }
+
+    public var canCreateSimulation: Bool {
+        !isCreating &&
+            hasLoadedModifierGroups &&
+            !isLoadingModifierGroups &&
+            modifierLoadError == nil
     }
 
     deinit {
@@ -111,8 +119,10 @@ public final class ChatLabHomeStore: ObservableObject {
 
         do {
             modifierGroups = try await service.listModifierGroups(labType: labType)
+            hasLoadedModifierGroups = true
             pruneStaleSelectedModifiers()
         } catch {
+            hasLoadedModifierGroups = false
             modifierLoadError = AppErrorPresenter.present(error)
         }
     }
@@ -159,6 +169,25 @@ public final class ChatLabHomeStore: ObservableObject {
         presentableError = nil
         modifierValidationErrors = []
         defer { isCreating = false }
+
+        guard !isLoadingModifierGroups else {
+            modifierValidationErrors = ["Modifiers are still loading."]
+            return nil
+        }
+
+        guard modifierLoadError == nil else {
+            presentableError = PresentableAppError(
+                title: "Modifiers Unavailable",
+                message: "Refresh modifiers and try again.",
+                recoveryActionLabel: "Retry",
+            )
+            return nil
+        }
+
+        guard hasLoadedModifierGroups else {
+            modifierValidationErrors = ["Modifiers are still loading."]
+            return nil
+        }
 
         let validationErrors = validateModifierSelections()
         guard validationErrors.isEmpty else {
