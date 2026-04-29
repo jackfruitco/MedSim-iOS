@@ -48,6 +48,7 @@ public struct ChatLabHomeView: View {
             }
             .refreshable {
                 await store.refresh()
+                await store.loadModifierGroups()
             }
             .background(Color.secondary.opacity(0.04).ignoresSafeArea())
             .navigationTitle("ChatLab")
@@ -360,26 +361,22 @@ private struct ChatCreateSimulationSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Selected Modifiers") {
-                    if store.modifierGroups.isEmpty {
-                        Text("No modifiers available.")
-                            .foregroundStyle(.secondary)
+                if let error = store.presentableError {
+                    Section {
+                        InlineAppErrorView(error: error)
                     }
                 }
 
-                ForEach(store.modifierGroups, id: \.group) { group in
-                    Section(group.group) {
-                        ForEach(group.modifiers, id: \.key) { modifier in
-                            Toggle(
-                                modifier.description,
-                                isOn: Binding(
-                                    get: { store.selectedModifiers.contains(modifier.key) },
-                                    set: { _ in store.toggleModifier(modifier.key) },
-                                ),
-                            )
+                if !store.modifierValidationErrors.isEmpty {
+                    Section("Selection Required") {
+                        ForEach(store.modifierValidationErrors, id: \.self) { error in
+                            Text(error)
+                                .foregroundStyle(.red)
                         }
                     }
                 }
+
+                modifierContent
             }
             .frame(maxWidth: layoutMode == .pad ? 680 : .infinity)
             .navigationTitle("New Chat Simulation")
@@ -404,6 +401,144 @@ private struct ChatCreateSimulationSheet: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modifierContent: some View {
+        if store.isLoadingModifierGroups {
+            Section("Modifiers") {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading modifiers...")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else if let error = store.modifierLoadError {
+            Section("Modifiers") {
+                InlineAppErrorView(error: error, actionLabel: "Retry") {
+                    Task { await store.loadModifierGroups() }
+                }
+            }
+        } else if store.modifierGroups.isEmpty {
+            Section("Modifiers") {
+                Text("No modifiers available.")
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            ForEach(store.modifierGroups, id: \.key) { group in
+                Section {
+                    if !group.description.isEmpty {
+                        Text(group.description)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    switch group.selection.mode {
+                    case .single:
+                        if group.selection.required == false {
+                            ModifierSingleOptionRow(
+                                title: "No preference",
+                                subtitle: nil,
+                                isSelected: store.singleSelection(in: group) == nil,
+                            ) {
+                                store.selectSingleModifier(nil, in: group)
+                            }
+                        }
+
+                        ForEach(group.modifiers, id: \.key) { modifier in
+                            ModifierSingleOptionRow(
+                                title: modifier.label,
+                                subtitle: modifier.description,
+                                isSelected: store.singleSelection(in: group) == modifier.key,
+                            ) {
+                                store.selectSingleModifier(modifier.key, in: group)
+                            }
+                        }
+
+                    case .multiple:
+                        ForEach(group.modifiers, id: \.key) { modifier in
+                            ModifierMultipleOptionRow(
+                                title: modifier.label,
+                                subtitle: modifier.description,
+                                isSelected: store.isModifierSelected(modifier.key, in: group),
+                            ) {
+                                store.toggleMultipleModifier(modifier.key, in: group)
+                            }
+                        }
+                    }
+                } header: {
+                    Text(group.label)
+                }
+            }
+        }
+    }
+}
+
+private struct ModifierSingleOptionRow: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .imageScale(.large)
+                    .frame(width: 24)
+
+                ModifierOptionText(title: title, subtitle: subtitle)
+
+                Spacer(minLength: 8)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+private struct ModifierMultipleOptionRow: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .imageScale(.large)
+                    .frame(width: 24)
+
+                ModifierOptionText(title: title, subtitle: subtitle)
+
+                Spacer(minLength: 8)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+private struct ModifierOptionText: View {
+    let title: String
+    let subtitle: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .foregroundStyle(.primary)
+
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
