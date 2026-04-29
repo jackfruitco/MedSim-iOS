@@ -493,8 +493,22 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         fatalError("Readme demo does not call submitLabOrders().")
     }
 
-    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
-        []
+    func listModifierGroups(labType _: String) async throws -> [ModifierGroup] {
+        [
+            ModifierGroup(
+                key: "clinical_scenario",
+                label: "Clinical Scenario",
+                description: "Type of clinical encounter",
+                selection: ModifierSelectionConfig(mode: .single, required: false),
+                modifiers: [
+                    ModifierOption(
+                        key: "respiratory",
+                        label: "Respiratory",
+                        description: "Respiratory issue",
+                    ),
+                ],
+            ),
+        ]
     }
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {

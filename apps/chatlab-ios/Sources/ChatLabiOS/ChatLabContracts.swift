@@ -627,13 +627,51 @@ public struct ChatLabOrdersResponse: Codable, Sendable, Equatable {
     }
 }
 
+public enum ModifierSelectionMode: String, Codable, Sendable, Equatable {
+    case single
+    case multiple
+}
+
+public struct ModifierSelectionConfig: Codable, Sendable, Equatable {
+    public let mode: ModifierSelectionMode
+    public let required: Bool
+
+    public init(mode: ModifierSelectionMode, required: Bool) {
+        self.mode = mode
+        self.required = required
+    }
+}
+
 public struct ModifierGroup: Codable, Sendable, Equatable {
-    public let group: String
+    public let key: String
+    public let label: String
     public let description: String
+    public let selection: ModifierSelectionConfig
     public let modifiers: [ModifierOption]
+
+    public init(
+        key: String,
+        label: String,
+        description: String,
+        selection: ModifierSelectionConfig,
+        modifiers: [ModifierOption],
+    ) {
+        self.key = key
+        self.label = label
+        self.description = description
+        self.selection = selection
+        self.modifiers = modifiers
+    }
 }
 
 public struct ModifierOption: Codable, Sendable, Equatable {
     public let key: String
+    public let label: String
     public let description: String
+
+    public init(key: String, label: String, description: String) {
+        self.key = key
+        self.label = label
+        self.description = description
+    }
 }

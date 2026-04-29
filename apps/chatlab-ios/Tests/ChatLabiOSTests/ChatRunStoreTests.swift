@@ -118,7 +118,7 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         ChatLabOrdersResponse(status: "accepted", callID: "call-1", orders: request.orders)
     }
 
-    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
+    func listModifierGroups(labType _: String) async throws -> [ModifierGroup] {
         []
     }
 

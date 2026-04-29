@@ -117,7 +117,7 @@ final class BackendRoutesTests: XCTestCase {
         XCTAssertEqual(ChatLabAPI.tool(simulationID: 7, toolName: "patient_results").path, "/api/v1/simulations/7/tools/patient_results/")
         XCTAssertEqual(ChatLabAPI.signOrders(simulationID: 7, body: body).path, "/api/v1/simulations/7/tools/patient_results/orders/")
         XCTAssertEqual(ChatLabAPI.submitLabOrders(simulationID: 7, body: body).path, "/api/v1/simulations/7/lab-orders/")
-        XCTAssertEqual(queryPairs(ChatLabAPI.listModifierGroups(groups: ["ClinicalScenario", "Difficulty"])), ["groups=ClinicalScenario", "groups=Difficulty"])
+        XCTAssertEqual(queryPairs(ChatLabAPI.listModifierGroups(labType: "chatlab")), ["lab_type=chatlab"])
     }
 
     func testRealtimeRoutesBuildExpectedRequests() throws {

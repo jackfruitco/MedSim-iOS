@@ -698,11 +698,8 @@ public enum ChatLabAPI {
         return Endpoint(path: "/api/v1/simulations/\(simulationID)/heartbeat/", method: .post, body: body)
     }
 
-    public static func listModifierGroups(groups: [String]?) -> Endpoint {
-        var queryItems: [URLQueryItem] = []
-        if let groups {
-            queryItems.append(contentsOf: groups.map { URLQueryItem(name: "groups", value: $0) })
-        }
+    public static func listModifierGroups(labType: String = "chatlab") -> Endpoint {
+        let queryItems = [URLQueryItem(name: "lab_type", value: labType)]
         return Endpoint(path: "/api/v1/config/modifier-groups/", query: queryItems)
     }
 }

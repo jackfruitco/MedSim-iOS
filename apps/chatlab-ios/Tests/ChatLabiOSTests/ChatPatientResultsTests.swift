@@ -103,7 +103,7 @@ private final class PatientResultsService: ChatLabServiceProtocol, @unchecked Se
         fatalError("unused")
     }
 
-    func listModifierGroups(groups _: [String]?) async throws -> [ModifierGroup] {
+    func listModifierGroups(labType _: String) async throws -> [ModifierGroup] {
         fatalError("unused")
     }
 }

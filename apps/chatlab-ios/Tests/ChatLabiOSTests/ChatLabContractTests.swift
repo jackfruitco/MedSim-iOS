@@ -176,6 +176,38 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertTrue(response.hasMore)
     }
 
+    func testModifierGroupDecodesBackendCatalogShape() throws {
+        let json = """
+        [
+          {
+            "key": "clinical_scenario",
+            "label": "Clinical Scenario",
+            "description": "Type of clinical encounter",
+            "selection": {
+              "mode": "single",
+              "required": false
+            },
+            "modifiers": [
+              {
+                "key": "musculoskeletal",
+                "label": "Musculoskeletal",
+                "description": "Musculoskeletal injury or issue scenario"
+              }
+            ]
+          }
+        ]
+        """
+
+        let groups = try JSONDecoder().decode([ModifierGroup].self, from: Data(json.utf8))
+
+        XCTAssertEqual(groups.first?.key, "clinical_scenario")
+        XCTAssertEqual(groups.first?.label, "Clinical Scenario")
+        XCTAssertEqual(groups.first?.selection.mode, .single)
+        XCTAssertEqual(groups.first?.selection.required, false)
+        XCTAssertEqual(groups.first?.modifiers.first?.key, "musculoskeletal")
+        XCTAssertEqual(groups.first?.modifiers.first?.label, "Musculoskeletal")
+    }
+
     func testRealtimeHelpersUseWebSocketOnlyRoutesAndLastEventIDQuery() async throws {
         let api = ChatRecordingAPIClient()
         let service = ChatLabService(apiClient: api)
@@ -198,5 +230,20 @@ final class ChatLabContractTests: XCTestCase {
             api.capturedEndpoints.last?.query.first(where: { $0.name == "last_event_id" })?.value,
             "evt-22",
         )
+    }
+
+    func testListModifierGroupsUsesLabTypeQuery() async throws {
+        let api = ChatRecordingAPIClient()
+        let service = ChatLabService(apiClient: api)
+
+        do {
+            _ = try await service.listModifierGroups(labType: "chatlab")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/config/modifier-groups/")
+        XCTAssertEqual(api.capturedEndpoints.last?.query, [URLQueryItem(name: "lab_type", value: "chatlab")])
     }
 }
