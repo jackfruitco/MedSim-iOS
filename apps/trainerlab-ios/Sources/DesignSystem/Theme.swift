@@ -207,9 +207,9 @@ private struct TrainerLabGlassSurfaceModifier: ViewModifier {
     private var fallbackBackground: AnyShapeStyle {
         switch role {
         case .floatingOverlay:
-            return AnyShapeStyle(.regularMaterial)
+            AnyShapeStyle(.regularMaterial)
         default:
-            return AnyShapeStyle(role.fallbackBackground)
+            AnyShapeStyle(role.fallbackBackground)
         }
     }
 

@@ -2722,7 +2722,7 @@ private struct InjuryQuickActionSheet: View {
 private struct RunConsoleCardModifier: ViewModifier {
     let background: Color
     let padding: CGFloat
-    var glassRole: TrainerLabSurfaceRole? = nil
+    var glassRole: TrainerLabSurfaceRole?
 
     func body(content: Content) -> some View {
         let paddedContent = content.padding(padding)

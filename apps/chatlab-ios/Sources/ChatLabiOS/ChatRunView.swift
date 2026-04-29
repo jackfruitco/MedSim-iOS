@@ -188,28 +188,35 @@ public struct ChatRunView: View {
                         .padding(.top, 4)
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
-                            VStack(spacing: 6) {
-                                awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
-                                typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                                composer(layoutMode: layoutMode)
+                        ZStack {
+                            Rectangle()
+                                .fill(.ultraThinMaterial)
+                                .opacity(0.35)
+                                .ignoresSafeArea(edges: .bottom)
+
+                            compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
+                                VStack(spacing: 6) {
+                                    awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
+                                    typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                                    composer(layoutMode: layoutMode)
+                                }
+                                .padding(.horizontal, horizontalInset(for: layoutMode))
+                                .padding(.top, 8)
+                                .padding(.bottom, 8)
                             }
-                            .padding(.horizontal, horizontalInset(for: layoutMode))
-                            .padding(.top, 8)
-                            .padding(.bottom, 8)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 4)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
                     }
             }
         }
     }
 
     @ViewBuilder
-    private func compactGlassChrome<Content: View>(
+    private func compactGlassChrome(
         cornerRadius: CGFloat,
         tint: Color?,
-        @ViewBuilder content: () -> Content,
+        @ViewBuilder content: () -> some View,
     ) -> some View {
         #if os(iOS)
             if #available(iOS 26.0, *) {
