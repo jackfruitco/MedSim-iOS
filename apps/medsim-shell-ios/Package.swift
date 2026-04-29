@@ -25,6 +25,7 @@ let package = Package(
                 .product(name: "RunConsole", package: "trainerlab-ios"),
                 .product(name: "Summary", package: "trainerlab-ios"),
                 .product(name: "FeedbackFeature", package: "trainerlab-ios"),
+                .product(name: "DesignSystem", package: "trainerlab-ios"),
                 .product(name: "Networking", package: "trainerlab-ios"),
                 .product(name: "Realtime", package: "trainerlab-ios"),
                 .product(name: "Persistence", package: "trainerlab-ios"),

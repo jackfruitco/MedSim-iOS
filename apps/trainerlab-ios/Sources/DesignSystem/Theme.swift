@@ -45,14 +45,185 @@ public enum TrainerLabTheme {
     public static let avpuUnalert = Color.primary
 }
 
+public enum TrainerLabSurfaceRole: Equatable {
+    case setupCard
+    case tacticalPanel
+    case floatingOverlay
+    case chip
+
+    var fallbackBackground: Color {
+        switch self {
+        case .setupCard:
+            TrainerLabTheme.setupSurface
+        case .tacticalPanel:
+            TrainerLabTheme.tacticalSurfaceElevated
+        case .floatingOverlay:
+            TrainerLabTheme.setupSurface.opacity(0.86)
+        case .chip:
+            Color.secondary.opacity(0.08)
+        }
+    }
+
+    var strokeColor: Color {
+        switch self {
+        case .setupCard:
+            Color.primary.opacity(0.08)
+        case .tacticalPanel:
+            TrainerLabTheme.tacticalBorder
+        case .floatingOverlay:
+            Color.primary.opacity(0.10)
+        case .chip:
+            Color.primary.opacity(0.07)
+        }
+    }
+}
+
 public extension View {
-    func trainerCardStyle(background: Color = TrainerLabTheme.tacticalSurface) -> some View {
-        padding(12)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    func trainerGlassSurface(
+        role: TrainerLabSurfaceRole,
+        cornerRadius: CGFloat = 14,
+        interactive: Bool = false,
+        tint: Color? = nil,
+    ) -> some View {
+        modifier(
+            TrainerLabGlassSurfaceModifier(
+                role: role,
+                cornerRadius: cornerRadius,
+                interactive: interactive,
+                tint: tint,
+            ),
+        )
+    }
+
+    func trainerCardStyle(
+        background: Color = TrainerLabTheme.tacticalSurface,
+        glassRole: TrainerLabSurfaceRole? = nil,
+        cornerRadius: CGFloat = 14,
+        interactive: Bool = false,
+        tint: Color? = nil,
+    ) -> some View {
+        modifier(
+            TrainerLabCardStyleModifier(
+                background: background,
+                glassRole: glassRole,
+                cornerRadius: cornerRadius,
+                interactive: interactive,
+                tint: tint,
+            ),
+        )
+    }
+
+    @ViewBuilder
+    func trainerGlassButtonStyle(prominent: Bool = false) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *) {
+                if prominent {
+                    buttonStyle(.glassProminent)
+                } else {
+                    buttonStyle(.glass)
+                }
+            } else if prominent {
+                buttonStyle(.borderedProminent)
+            } else {
+                buttonStyle(.bordered)
+            }
+        #else
+            if prominent {
+                buttonStyle(.borderedProminent)
+            } else {
+                buttonStyle(.bordered)
+            }
+        #endif
+    }
+}
+
+private struct TrainerLabCardStyleModifier: ViewModifier {
+    let background: Color
+    let glassRole: TrainerLabSurfaceRole?
+    let cornerRadius: CGFloat
+    let interactive: Bool
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        let paddedContent = content.padding(12)
+
+        if let glassRole {
+            paddedContent
+                .trainerGlassSurface(
+                    role: glassRole,
+                    cornerRadius: cornerRadius,
+                    interactive: interactive,
+                    tint: tint,
+                )
+        } else {
+            paddedContent
+                .background(background)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                )
+        }
+    }
+}
+
+private struct TrainerLabGlassSurfaceModifier: ViewModifier {
+    let role: TrainerLabSurfaceRole
+    let cornerRadius: CGFloat
+    let interactive: Bool
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        glassSurface(content)
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(role.strokeColor, lineWidth: 1),
             )
     }
+
+    @ViewBuilder
+    private func glassSurface(_ content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *) {
+                content
+                    .glassEffect(
+                        glassConfiguration,
+                        in: .rect(cornerRadius: cornerRadius),
+                    )
+            } else {
+                fallbackSurface(content)
+            }
+        #else
+            fallbackSurface(content)
+        #endif
+    }
+
+    private func fallbackSurface(_ content: Content) -> some View {
+        content
+            .background(fallbackBackground)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    private var fallbackBackground: AnyShapeStyle {
+        switch role {
+        case .floatingOverlay:
+            return AnyShapeStyle(.regularMaterial)
+        default:
+            return AnyShapeStyle(role.fallbackBackground)
+        }
+    }
+
+    #if os(iOS)
+        @available(iOS 26.0, *)
+        private var glassConfiguration: Glass {
+            var glass = Glass.regular
+            if let tint {
+                glass = glass.tint(tint)
+            }
+            if interactive {
+                glass = glass.interactive()
+            }
+            return glass
+        }
+    #endif
 }

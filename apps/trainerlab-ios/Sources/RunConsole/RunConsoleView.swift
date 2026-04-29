@@ -361,8 +361,11 @@ public struct RunConsoleView: View {
             }
         }
         .padding(10)
-        .background(TrainerLabTheme.tacticalSurfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .trainerGlassSurface(
+            role: .tacticalPanel,
+            cornerRadius: 12,
+            tint: TrainerLabTheme.accentBlue.opacity(0.05),
+        )
     }
 
     private func compactCommandPanel(
@@ -382,6 +385,7 @@ public struct RunConsoleView: View {
             RunConsoleCardModifier(
                 background: TrainerLabTheme.tacticalSurfaceElevated,
                 padding: compactMetrics.cardPadding,
+                glassRole: .tacticalPanel,
             ),
         )
     }
@@ -1519,7 +1523,7 @@ public struct RunConsoleView: View {
                     Button("Retry Simulation") {
                         store.retryInitialSimulation()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .trainerGlassButtonStyle(prominent: true)
                     .frame(maxWidth: .infinity)
                 } else if card.status == .failed {
                     Text("Retry unavailable for this failure.")
@@ -1531,12 +1535,15 @@ public struct RunConsoleView: View {
                 Button("View Run Summary") {
                     onOpenSummary()
                 }
-                .buttonStyle(.borderedProminent)
+                .trainerGlassButtonStyle(prominent: true)
                 .frame(maxWidth: .infinity)
             }
             .padding(18)
-            .background(TrainerLabTheme.tacticalSurfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .trainerGlassSurface(
+                role: .tacticalPanel,
+                cornerRadius: 18,
+                tint: terminalCardColor(card.status).opacity(0.12),
+            )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(terminalCardColor(card.status).opacity(0.4), lineWidth: 1),
@@ -2361,13 +2368,13 @@ public struct RunConsoleView: View {
 
         if case .exit = control {
             button
-                .buttonStyle(.bordered)
+                .trainerGlassButtonStyle()
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
                 .disabled(!controlEnabled(control))
                 .accessibilityLabel(control.title)
         } else {
             button
-                .buttonStyle(.borderedProminent)
+                .trainerGlassButtonStyle(prominent: true)
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
                 .disabled(!controlEnabled(control))
                 .accessibilityLabel(control.title)
@@ -2394,7 +2401,7 @@ public struct RunConsoleView: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: compactMetrics.buttonMinHeight)
         }
-        .buttonStyle(.borderedProminent)
+        .trainerGlassButtonStyle(prominent: true)
         .controlSize(compactMetrics.buttonControlSize)
     }
 
@@ -2715,16 +2722,27 @@ private struct InjuryQuickActionSheet: View {
 private struct RunConsoleCardModifier: ViewModifier {
     let background: Color
     let padding: CGFloat
+    var glassRole: TrainerLabSurfaceRole? = nil
 
     func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
-            )
+        let paddedContent = content.padding(padding)
+
+        if let glassRole {
+            paddedContent
+                .trainerGlassSurface(
+                    role: glassRole,
+                    cornerRadius: 14,
+                    tint: TrainerLabTheme.accentBlue.opacity(0.05),
+                )
+        } else {
+            paddedContent
+                .background(background)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(TrainerLabTheme.tacticalBorder, lineWidth: 1),
+                )
+        }
     }
 }
 

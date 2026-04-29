@@ -169,34 +169,74 @@ public struct ChatRunView: View {
                 // so content scrolls behind the translucent overlays (Messages-style).
                 messageTimeline(layoutMode: layoutMode, chromeMode: chromeMode)
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        VStack(spacing: 0) {
-                            overlayHeader(layoutMode: layoutMode)
-                            if chromeMode == .standard {
-                                compactFailureBanners
+                        compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
+                            VStack(spacing: 0) {
+                                overlayHeader(layoutMode: layoutMode)
+                                if chromeMode == .standard {
+                                    compactFailureBanners
+                                }
+                                if store.conversations.count > 1 {
+                                    conversationTabs(layoutMode: layoutMode)
+                                        .padding(.top, 4)
+                                        .padding(.bottom, 4)
+                                }
+                                Divider()
+                                    .overlay(Color.secondary.opacity(0.18))
                             }
-                            if store.conversations.count > 1 {
-                                conversationTabs(layoutMode: layoutMode)
-                                    .padding(.top, 4)
-                                    .padding(.bottom, 4)
-                            }
-                            Divider()
-                                .overlay(Color.secondary.opacity(0.18))
                         }
-                        .background(.ultraThinMaterial)
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        VStack(spacing: 6) {
-                            awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
-                            typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                            composer(layoutMode: layoutMode)
+                        compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
+                            VStack(spacing: 6) {
+                                awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
+                                typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                                composer(layoutMode: layoutMode)
+                            }
+                            .padding(.horizontal, horizontalInset(for: layoutMode))
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
                         }
-                        .padding(.horizontal, horizontalInset(for: layoutMode))
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
-                        .background(.ultraThinMaterial)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 4)
                     }
             }
         }
+    }
+
+    @ViewBuilder
+    private func compactGlassChrome<Content: View>(
+        cornerRadius: CGFloat,
+        tint: Color?,
+        @ViewBuilder content: () -> Content,
+    ) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: 18) {
+                    content()
+                        .trainerGlassSurface(
+                            role: .floatingOverlay,
+                            cornerRadius: cornerRadius,
+                            tint: tint,
+                        )
+                }
+            } else {
+                content()
+                    .trainerGlassSurface(
+                        role: .floatingOverlay,
+                        cornerRadius: cornerRadius,
+                        tint: tint,
+                    )
+            }
+        #else
+            content()
+                .trainerGlassSurface(
+                    role: .floatingOverlay,
+                    cornerRadius: cornerRadius,
+                    tint: tint,
+                )
+        #endif
     }
 
     @ViewBuilder
@@ -421,7 +461,7 @@ public struct ChatRunView: View {
         Button(action: onBack) {
             Label("Back", systemImage: "chevron.left")
         }
-        .buttonStyle(.bordered)
+        .trainerGlassButtonStyle()
     }
 
     private var patientIdentityHeader: some View {
@@ -462,7 +502,7 @@ public struct ChatRunView: View {
                 Button("End Simulation") {
                     store.endSimulation()
                 }
-                .buttonStyle(.borderedProminent)
+                .trainerGlassButtonStyle(prominent: true)
                 .tint(.red)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -471,7 +511,7 @@ public struct ChatRunView: View {
             Button("Send Feedback") {
                 activeFeedbackContext = feedbackLaunchContext()
             }
-            .buttonStyle(.bordered)
+            .trainerGlassButtonStyle()
         }
     }
 
