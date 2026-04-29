@@ -119,6 +119,40 @@ final class RuntimePayloadLabelDecodingTests: XCTestCase {
         )
     }
 
+    func testRuntimeAnatomicalLocationDisplayUsesFallbackKnownCodeBeforeHumanizingRawLocation() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(
+                preferredLabel: nil,
+                rawCode: "leg",
+                fallbackRawCode: "LLL",
+            ),
+            "Left Lower Leg",
+        )
+    }
+
+    func testRuntimeAnatomicalLocationDisplayPrefersBackendLabelOverFallbackKnownCode() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(
+                preferredLabel: "Provider Supplied Leg",
+                rawCode: "leg",
+                fallbackRawCode: "LLL",
+            ),
+            "Provider Supplied Leg",
+        )
+    }
+
+    func testRuntimeAnatomicalLocationDisplayUsesFallbackLabelBeforeFallbackKnownCode() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(
+                preferredLabel: nil,
+                rawCode: "leg",
+                fallbackRawCode: "LLL",
+                fallbackLabel: "Backend Injury Location",
+            ),
+            "Backend Injury Location",
+        )
+    }
+
     func testRuntimeProblemStateDecodesAnatomyAndLateralityLabels() throws {
         let json = """
         {

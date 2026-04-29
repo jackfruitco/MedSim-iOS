@@ -1280,7 +1280,8 @@ struct PatientDiagramPanel: View {
     static func causeDisplayLocation(_ cause: RuntimeCauseState) -> String? {
         RuntimeAnatomicalLocationDisplay.label(
             preferredLabel: cause.anatomicalLocationLabel,
-            rawCode: cause.anatomicalLocation ?? cause.injuryLocation,
+            rawCode: cause.anatomicalLocation,
+            fallbackRawCode: cause.injuryLocation,
             fallbackLabel: cause.injuryLocationLabel,
             lateralityLabel: cause.lateralityLabel,
             laterality: cause.laterality,

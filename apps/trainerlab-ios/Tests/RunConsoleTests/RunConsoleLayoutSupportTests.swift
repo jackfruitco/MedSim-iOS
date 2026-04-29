@@ -489,6 +489,18 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     @MainActor
+    func testCauseDisplayTitleUsesInjuryLocationCodeWhenAnatomicalLocationIsCoarse() {
+        let cause = makeRuntimeCause(
+            causeID: 11,
+            kind: "gunshot",
+            location: "leg",
+            injuryLocation: "LLL",
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
+    }
+
+    @MainActor
     func testCauseDisplayTitleFallsBackWhenBackendLocationLabelIsEmpty() {
         let cause = makeRuntimeCause(
             causeID: 11,
@@ -1041,6 +1053,8 @@ private func makeRuntimeCause(
     kind: String,
     location: String,
     locationLabel: String? = nil,
+    injuryLocation: String? = nil,
+    injuryLocationLabel: String? = nil,
     laterality: String? = nil,
     lateralityLabel: String? = nil,
 ) -> RuntimeCauseState {
@@ -1051,6 +1065,12 @@ private func makeRuntimeCause(
     ]
     if let locationLabel {
         fields.append("\"anatomical_location_label\": \"\(locationLabel)\"")
+    }
+    if let injuryLocation {
+        fields.append("\"injury_location\": \"\(injuryLocation)\"")
+    }
+    if let injuryLocationLabel {
+        fields.append("\"injury_location_label\": \"\(injuryLocationLabel)\"")
     }
     if let laterality {
         fields.append("\"laterality\": \"\(laterality)\"")

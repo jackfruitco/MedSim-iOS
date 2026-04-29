@@ -2094,17 +2094,19 @@ public final class RunSessionStore: ObservableObject {
         let label = eventPrimaryLabel(from: event.payload) ?? "Problem"
         let status = ProblemLifecycleState(rawValue: jsonString(event.payload["status"]) ?? "active") ?? .active
         let severity = jsonString(event.payload["severity"])
+        let rawAnatomicalLocation = jsonString(event.payload["anatomical_location"])
+        let rawInjuryLocation = jsonString(event.payload["injury_location"])
         let locationCode = resolvedAnatomicLocationCode(
-            primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
+            primary: rawAnatomicalLocation ?? rawInjuryLocation,
             fallback: jsonInt(event.payload["cause_id"]).flatMap { causeID in
                 state.causeAnnotations.first(where: { $0.causeID == causeID })?.locationCode
             },
         )
         let locationLabel = RuntimeAnatomicalLocationDisplay.label(
             preferredLabel: jsonString(event.payload["anatomical_location_label"]),
-            rawCode: locationCode
-                ?? jsonString(event.payload["anatomical_location"])
-                ?? jsonString(event.payload["injury_location"]),
+            rawCode: rawAnatomicalLocation ?? locationCode,
+            fallbackRawCode: rawInjuryLocation ?? locationCode,
+            fallbackLabel: jsonString(event.payload["injury_location_label"]),
             lateralityLabel: jsonString(event.payload["laterality_label"]),
             laterality: jsonString(event.payload["laterality"]),
             includeLateralityWhenSeparate: true,
@@ -2637,10 +2639,11 @@ public final class RunSessionStore: ObservableObject {
         )
         let locationLabel = RuntimeAnatomicalLocationDisplay.label(
             preferredLabel: problem.anatomicalLocationLabel,
-            rawCode: locationCode
-                ?? problem.anatomicalLocation
+            rawCode: problem.anatomicalLocation,
+            fallbackRawCode: linkedCause?.injuryLocation
                 ?? linkedCause?.anatomicalLocation
-                ?? linkedCause?.injuryLocation,
+                ?? locationCode,
+            fallbackLabel: linkedCause?.injuryLocationLabel,
             lateralityLabel: problem.lateralityLabel,
             laterality: problem.laterality,
             includeLateralityWhenSeparate: true,

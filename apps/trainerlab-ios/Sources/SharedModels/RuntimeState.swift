@@ -379,16 +379,20 @@ public enum RuntimeAnatomicalLocationDisplay {
     public static func label(
         preferredLabel: String?,
         rawCode: String?,
+        fallbackRawCode: String? = nil,
         fallbackLabel: String? = nil,
         lateralityLabel: String? = nil,
         laterality: String? = nil,
         includeLateralityWhenSeparate: Bool = false,
     ) -> String? {
         let raw = RuntimeLocationDisplay.nonEmpty(rawCode)
+        let fallbackRaw = RuntimeLocationDisplay.nonEmpty(fallbackRawCode)
         let resolved = RuntimeLocationDisplay.nonEmpty(preferredLabel)
             ?? knownLabel(for: raw)
             ?? RuntimeLocationDisplay.nonEmpty(fallbackLabel)
+            ?? knownLabel(for: fallbackRaw)
             ?? raw.map(RuntimeLocationDisplay.humanizeLabel)
+            ?? fallbackRaw.map(RuntimeLocationDisplay.humanizeLabel)
 
         let side = RuntimeLocationDisplay.lateralityText(label: lateralityLabel, raw: laterality)
 
