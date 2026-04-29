@@ -482,6 +482,13 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
     }
 
     @MainActor
+    func testCauseDisplayTitleMapsAnatomicalCodeWithoutBackendLabel() {
+        let cause = makeRuntimeCause(causeID: 11, kind: "gunshot", location: "LLL")
+
+        XCTAssertEqual(PatientDiagramPanel.causeDisplayTitle(cause: cause), "Gunshot — Left Lower Leg")
+    }
+
+    @MainActor
     func testCauseDisplayTitleFallsBackWhenBackendLocationLabelIsEmpty() {
         let cause = makeRuntimeCause(
             causeID: 11,
@@ -535,6 +542,37 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         XCTAssertEqual(PatientDiagramPanel.problemDisplayLocation(problem), "Left Lower Leg")
         XCTAssertEqual(problem.locationCode, "LLL")
+    }
+
+    @MainActor
+    func testProblemDisplayLocationMapsAnatomicalCodeWithoutLocationLabel() {
+        let problem = ProblemAnnotation(
+            id: "problem-1",
+            problemID: 41,
+            title: "Massive hemorrhage",
+            isAnatomic: true,
+            locationCode: "LLL",
+            locationLabel: nil,
+            status: .active,
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.problemDisplayLocation(problem), "Left Lower Leg")
+    }
+
+    @MainActor
+    func testInjuryDisplayTitleMapsAnatomicalCodeWithoutHumanizingRawCode() {
+        let injury = InjuryAnnotation(
+            id: "injury-1",
+            locationCode: "LLL",
+            side: .front,
+            x: 0.42,
+            y: 0.74,
+            kind: "gunshot",
+            summary: "Gunshot wound",
+            status: .active,
+        )
+
+        XCTAssertEqual(PatientDiagramPanel.injuryDisplayTitle(injury: injury), "Gunshot — Left Lower Leg")
     }
 
     @MainActor

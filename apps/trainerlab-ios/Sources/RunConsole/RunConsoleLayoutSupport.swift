@@ -1156,14 +1156,20 @@ struct PatientDiagramPanel: View {
     }
 
     private func anatomicalLocationLabel(for problem: ProblemAnnotation) -> String? {
-        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+        if let displayLocation = Self.problemDisplayLocation(problem) {
+            return displayLocation
+        }
+        return RunConsolePatientDiagramSupport.anatomicalLocationLabel(
             side: problem.side,
             zoneCode: problem.locationCode,
         )
     }
 
     private func anatomicalLocationLabel(for injury: InjuryAnnotation) -> String? {
-        RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+        if let knownLabel = RuntimeAnatomicalLocationDisplay.knownLabel(for: injury.locationCode) {
+            return knownLabel
+        }
+        return RunConsolePatientDiagramSupport.anatomicalLocationLabel(
             side: injury.side,
             zoneCode: injury.locationCode,
         )
@@ -1272,37 +1278,49 @@ struct PatientDiagramPanel: View {
     }
 
     static func causeDisplayLocation(_ cause: RuntimeCauseState) -> String? {
-        RuntimeLocationDisplay.locationText(
+        RuntimeAnatomicalLocationDisplay.label(
             preferredLabel: cause.anatomicalLocationLabel,
-            secondaryLabel: cause.injuryLocationLabel,
-            rawLocation: cause.anatomicalLocation,
-            fallbackRawLocation: cause.injuryLocation,
+            rawCode: cause.anatomicalLocation ?? cause.injuryLocation,
+            fallbackLabel: cause.injuryLocationLabel,
             lateralityLabel: cause.lateralityLabel,
             laterality: cause.laterality,
-            includesLateralityWhenSeparate: true,
+            includeLateralityWhenSeparate: true,
         )
     }
 
     static func problemDisplayLocation(_ problem: ProblemAnnotation) -> String? {
-        nonEmpty(problem.locationLabel)
-            ?? nonEmpty(problem.locationCode).map(InterventionDisplayText.normalizedSiteCode)
+        if let locationLabel = nonEmpty(problem.locationLabel) {
+            return locationLabel
+        }
+        if let knownLabel = RuntimeAnatomicalLocationDisplay.knownLabel(for: problem.locationCode) {
+            return knownLabel
+        }
+        return RunConsolePatientDiagramSupport.anatomicalLocationLabel(
+            side: problem.side,
+            zoneCode: problem.locationCode,
+        ) ?? RuntimeAnatomicalLocationDisplay.label(
+            preferredLabel: nil,
+            rawCode: problem.locationCode,
+        )
     }
 
     static func assessmentFindingDisplayLocation(_ finding: RuntimeAssessmentFindingState) -> String? {
-        RuntimeLocationDisplay.locationText(
+        RuntimeAnatomicalLocationDisplay.label(
             preferredLabel: finding.anatomicalLocationLabel,
-            secondaryLabel: nil,
-            rawLocation: finding.anatomicalLocation,
-            fallbackRawLocation: nil,
+            rawCode: finding.anatomicalLocation,
             lateralityLabel: finding.lateralityLabel,
             laterality: finding.laterality,
-            includesLateralityWhenSeparate: true,
+            includeLateralityWhenSeparate: true,
         )
     }
 
     static func injuryDisplayTitle(injury: InjuryAnnotation) -> String {
         let kind = humanizeLabel(injury.kind)
-        return "\(kind) — \(humanizeLabel(injury.locationCode))"
+        let location = RuntimeAnatomicalLocationDisplay.label(
+            preferredLabel: nil,
+            rawCode: injury.locationCode,
+        ) ?? humanizeLabel(injury.locationCode)
+        return "\(kind) — \(location)"
     }
 
     static func humanizeLabel(_ raw: String) -> String {

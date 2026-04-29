@@ -74,6 +74,51 @@ final class RuntimePayloadLabelDecodingTests: XCTestCase {
         )
     }
 
+    func testRuntimeAnatomicalLocationDisplayMapsKnownInjuryCodes() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(preferredLabel: nil, rawCode: "LLL"),
+            "Left Lower Leg",
+        )
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(preferredLabel: nil, rawCode: "TLA"),
+            "Left Anterior Chest",
+        )
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(preferredLabel: nil, rawCode: "JRN"),
+            "Right Junctional Neck",
+        )
+    }
+
+    func testRuntimeAnatomicalLocationDisplayNormalizesRawCodes() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(preferredLabel: nil, rawCode: "  lll  "),
+            "Left Lower Leg",
+        )
+    }
+
+    func testRuntimeAnatomicalLocationDisplayPrefersBackendLabel() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(
+                preferredLabel: "Provider Supplied Location",
+                rawCode: "LLL",
+            ),
+            "Provider Supplied Location",
+        )
+    }
+
+    func testRuntimeAnatomicalLocationDisplayDoesNotDuplicateLaterality() {
+        XCTAssertEqual(
+            RuntimeAnatomicalLocationDisplay.label(
+                preferredLabel: nil,
+                rawCode: "LLL",
+                lateralityLabel: "Left",
+                laterality: "left",
+                includeLateralityWhenSeparate: true,
+            ),
+            "Left Lower Leg",
+        )
+    }
+
     func testRuntimeProblemStateDecodesAnatomyAndLateralityLabels() throws {
         let json = """
         {

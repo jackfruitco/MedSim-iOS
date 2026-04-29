@@ -2094,19 +2094,20 @@ public final class RunSessionStore: ObservableObject {
         let label = eventPrimaryLabel(from: event.payload) ?? "Problem"
         let status = ProblemLifecycleState(rawValue: jsonString(event.payload["status"]) ?? "active") ?? .active
         let severity = jsonString(event.payload["severity"])
-        let locationLabel = RuntimeLocationDisplay.locationText(
-            preferredLabel: jsonString(event.payload["anatomical_location_label"]),
-            rawLocation: jsonString(event.payload["anatomical_location"]),
-            fallbackRawLocation: jsonString(event.payload["injury_location"]),
-            lateralityLabel: jsonString(event.payload["laterality_label"]),
-            laterality: jsonString(event.payload["laterality"]),
-            includesLateralityWhenSeparate: true,
-        )
         let locationCode = resolvedAnatomicLocationCode(
             primary: jsonString(event.payload["anatomical_location"]) ?? jsonString(event.payload["injury_location"]),
             fallback: jsonInt(event.payload["cause_id"]).flatMap { causeID in
                 state.causeAnnotations.first(where: { $0.causeID == causeID })?.locationCode
             },
+        )
+        let locationLabel = RuntimeAnatomicalLocationDisplay.label(
+            preferredLabel: jsonString(event.payload["anatomical_location_label"]),
+            rawCode: locationCode
+                ?? jsonString(event.payload["anatomical_location"])
+                ?? jsonString(event.payload["injury_location"]),
+            lateralityLabel: jsonString(event.payload["laterality_label"]),
+            laterality: jsonString(event.payload["laterality"]),
+            includeLateralityWhenSeparate: true,
         )
 
         let zone = locationCode.flatMap { injuryZone(for: $0) }
@@ -2630,17 +2631,19 @@ public final class RunSessionStore: ObservableObject {
         causesByID: [Int: RuntimeCauseState],
     ) -> ProblemAnnotation {
         let linkedCause = problem.causeID.flatMap { causesByID[$0] }
-        let locationLabel = RuntimeLocationDisplay.locationText(
-            preferredLabel: problem.anatomicalLocationLabel,
-            rawLocation: problem.anatomicalLocation,
-            fallbackRawLocation: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
-            lateralityLabel: problem.lateralityLabel,
-            laterality: problem.laterality,
-            includesLateralityWhenSeparate: true,
-        )
         let locationCode = resolvedAnatomicLocationCode(
             primary: problem.anatomicalLocation,
             fallback: linkedCause?.anatomicalLocation ?? linkedCause?.injuryLocation,
+        )
+        let locationLabel = RuntimeAnatomicalLocationDisplay.label(
+            preferredLabel: problem.anatomicalLocationLabel,
+            rawCode: locationCode
+                ?? problem.anatomicalLocation
+                ?? linkedCause?.anatomicalLocation
+                ?? linkedCause?.injuryLocation,
+            lateralityLabel: problem.lateralityLabel,
+            laterality: problem.laterality,
+            includeLateralityWhenSeparate: true,
         )
         let zone = locationCode.flatMap(injuryZone(for:))
         let id = problem.problemID.map(String.init) ?? problem.primaryLabel
