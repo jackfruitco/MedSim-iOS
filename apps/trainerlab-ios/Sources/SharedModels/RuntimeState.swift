@@ -333,6 +333,81 @@ public enum RuntimeLocationDisplay {
     }
 }
 
+public enum RuntimeAnatomicalLocationDisplay {
+    private static let injuryLocationLabels: [String: String] = [
+        "HLA": "Left Anterior Head",
+        "HRA": "Right Anterior Head",
+        "HLP": "Left Posterior Head",
+        "HRP": "Right Posterior Head",
+        "NLA": "Left Anterior Neck",
+        "NRA": "Right Anterior Neck",
+        "NLP": "Left Posterior Neck",
+        "NRP": "Right Posterior Neck",
+        "LUA": "Left Upper Arm",
+        "LLA": "Left Lower Arm",
+        "LHA": "Left Hand",
+        "RUA": "Right Upper Arm",
+        "RLA": "Right Lower Arm",
+        "RHA": "Right Hand",
+        "TLA": "Left Anterior Chest",
+        "TRA": "Right Anterior Chest",
+        "TLP": "Left Posterior Chest",
+        "TRP": "Right Posterior Chest",
+        "ALA": "Left Anterior Abdomen",
+        "ARA": "Right Anterior Abdomen",
+        "ALP": "Left Posterior Abdomen",
+        "ARP": "Right Posterior Abdomen",
+        "LUL": "Left Upper Leg",
+        "LLL": "Left Lower Leg",
+        "LFT": "Left Foot",
+        "RUL": "Right Upper Leg",
+        "RLL": "Right Lower Leg",
+        "RFT": "Right Foot",
+        "JLX": "Left Junctional Axilla",
+        "JRX": "Right Junctional Axilla",
+        "JLI": "Left Junctional Inguinal",
+        "JRI": "Right Junctional Inguinal",
+        "JLN": "Left Junctional Neck",
+        "JRN": "Right Junctional Neck",
+    ]
+
+    public static func knownLabel(for rawCode: String?) -> String? {
+        guard let raw = RuntimeLocationDisplay.nonEmpty(rawCode) else { return nil }
+        return injuryLocationLabels[raw.uppercased()]
+    }
+
+    public static func label(
+        preferredLabel: String?,
+        rawCode: String?,
+        fallbackRawCode: String? = nil,
+        fallbackLabel: String? = nil,
+        lateralityLabel: String? = nil,
+        laterality: String? = nil,
+        includeLateralityWhenSeparate: Bool = false,
+    ) -> String? {
+        let raw = RuntimeLocationDisplay.nonEmpty(rawCode)
+        let fallbackRaw = RuntimeLocationDisplay.nonEmpty(fallbackRawCode)
+        let resolved = RuntimeLocationDisplay.nonEmpty(preferredLabel)
+            ?? knownLabel(for: raw)
+            ?? RuntimeLocationDisplay.nonEmpty(fallbackLabel)
+            ?? knownLabel(for: fallbackRaw)
+            ?? raw.map(RuntimeLocationDisplay.humanizeLabel)
+            ?? fallbackRaw.map(RuntimeLocationDisplay.humanizeLabel)
+
+        let side = RuntimeLocationDisplay.lateralityText(label: lateralityLabel, raw: laterality)
+
+        guard let resolved else { return side }
+        guard
+            includeLateralityWhenSeparate,
+            let side,
+            !RuntimeLocationDisplay.locationContainsLaterality(resolved, side)
+        else {
+            return resolved
+        }
+        return "\(side) \(resolved)"
+    }
+}
+
 public struct RecommendedInterventionItem: Identifiable, Equatable, Sendable {
     public let recommendationID: Int
     public let title: String
