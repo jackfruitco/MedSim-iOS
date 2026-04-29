@@ -96,18 +96,21 @@ public struct ChatLabHomeView: View {
                     Button("Search") {
                         Task { await store.search() }
                     }
-                    .buttonStyle(.bordered)
+                    .trainerGlassButtonStyle()
 
                     Button("New Simulation") {
                         showCreateSheet = true
                     }
-                    .buttonStyle(.borderedProminent)
+                    .trainerGlassButtonStyle(prominent: true)
                 }
                 .frame(minWidth: 180)
             }
             .padding(20)
-            .background(chatHomeSystemBackgroundColor())
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .trainerGlassSurface(
+                role: .setupCard,
+                cornerRadius: 20,
+                tint: Color.accentColor.opacity(0.06),
+            )
             .shadow(color: Color.primary.opacity(0.04), radius: 18, y: 8)
 
         case .phone:

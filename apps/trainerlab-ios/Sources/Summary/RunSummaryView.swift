@@ -44,7 +44,7 @@ public struct RunSummaryView: View {
                             Button("Send Feedback") {
                                 activeFeedbackContext = feedbackLaunchContext()
                             }
-                            .buttonStyle(.bordered)
+                            .trainerGlassButtonStyle()
                         }
                     }
 
@@ -166,7 +166,11 @@ public struct RunSummaryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
-                .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+                .trainerCardStyle(
+                    background: TrainerLabTheme.setupSurface,
+                    glassRole: .setupCard,
+                    tint: item.tint.opacity(0.08),
+                )
             }
         }
     }
@@ -198,7 +202,7 @@ public struct RunSummaryView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+        .trainerCardStyle(background: TrainerLabTheme.setupSurface, glassRole: .setupCard)
     }
 
     private func sectionCard(
@@ -225,7 +229,7 @@ public struct RunSummaryView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+        .trainerCardStyle(background: TrainerLabTheme.setupSurface, glassRole: .setupCard)
     }
 
     private func timelineContent(_ summary: RunSummary) -> some View {

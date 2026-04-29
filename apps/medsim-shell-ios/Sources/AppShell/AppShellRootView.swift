@@ -345,8 +345,11 @@ private struct MainMenuView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.secondary.opacity(0.08))
-                .clipShape(Capsule())
+                .trainerGlassSurface(
+                    role: .chip,
+                    cornerRadius: 999,
+                    tint: TrainerLabTheme.accentBlue.opacity(0.08),
+                )
 
                 VStack(spacing: 12) {
                     menuButton(
@@ -374,10 +377,10 @@ private struct MainMenuView: View {
                 .padding(.top, 8)
 
                 Button("Account & Billing", action: onOpenAccountBilling)
-                    .buttonStyle(.borderedProminent)
+                    .trainerGlassButtonStyle(prominent: true)
 
                 Button("Send Feedback", action: onOpenFeedback)
-                    .buttonStyle(.bordered)
+                    .trainerGlassButtonStyle()
 
                 if let accessMessage, !accessMessage.isEmpty {
                     Text(accessMessage)
@@ -387,7 +390,7 @@ private struct MainMenuView: View {
                 }
 
                 Button("Sign Out", action: onSignOut)
-                    .buttonStyle(.bordered)
+                    .trainerGlassButtonStyle()
 
                 Spacer()
             }
@@ -405,8 +408,11 @@ private struct MainMenuView: View {
                 Image(systemName: content.systemImage)
                     .font(.title2.weight(.semibold))
                     .frame(width: 42, height: 42)
-                    .background(TrainerLabTheme.accentBlue.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .trainerGlassSurface(
+                        role: .chip,
+                        cornerRadius: 12,
+                        tint: TrainerLabTheme.accentBlue.opacity(0.16),
+                    )
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(content.title)
@@ -429,8 +435,12 @@ private struct MainMenuView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .trainerGlassSurface(
+                role: .setupCard,
+                cornerRadius: 18,
+                interactive: content.isEnabled,
+                tint: TrainerLabTheme.accentBlue.opacity(content.isEnabled ? 0.08 : 0.03),
+            )
         }
         .buttonStyle(.plain)
         .disabled(!content.isEnabled)

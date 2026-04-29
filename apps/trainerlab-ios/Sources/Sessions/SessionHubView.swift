@@ -82,15 +82,19 @@ public struct SessionHubView: View {
 
                 HStack(spacing: 12) {
                     Button("Presets Library", action: onOpenPresets)
-                        .buttonStyle(.bordered)
+                        .trainerGlassButtonStyle()
                     Button("Create Session") {
                         Task { await viewModel.createSession() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .trainerGlassButtonStyle(prominent: true)
                 }
             }
             .padding(20)
-            .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+            .trainerCardStyle(
+                background: TrainerLabTheme.setupSurface,
+                glassRole: .setupCard,
+                tint: TrainerLabTheme.accentBlue.opacity(0.06),
+            )
 
         case .phone:
             VStack(alignment: .leading, spacing: 10) {

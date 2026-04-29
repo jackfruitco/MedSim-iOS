@@ -1,3 +1,4 @@
+import DesignSystem
 import SwiftUI
 
 public struct FeedbackSuccessBanner: View {
@@ -20,12 +21,11 @@ public struct FeedbackSuccessBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.regularMaterial)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.green.opacity(0.28), lineWidth: 1),
+        .trainerGlassSurface(
+            role: .floatingOverlay,
+            cornerRadius: 14,
+            tint: Color.green.opacity(0.14),
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
     }
 }

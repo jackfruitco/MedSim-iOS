@@ -139,7 +139,7 @@ public struct PresetsLibraryView: View {
                 Button("Refresh") {
                     Task { await viewModel.loadPresets() }
                 }
-                .buttonStyle(.bordered)
+                .trainerGlassButtonStyle()
             }
 
             if showRefreshCard {
@@ -175,8 +175,7 @@ public struct PresetsLibraryView: View {
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(TrainerLabTheme.setupSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .presetSidebarSurface(isSelected: true)
                 }
                 .buttonStyle(.plain)
 
@@ -199,12 +198,7 @@ public struct PresetsLibraryView: View {
                         }
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(selectedPresetID == preset.id ? TrainerLabTheme.setupSurface : TrainerLabTheme.setupSurface.opacity(0.55))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(selectedPresetID == preset.id ? TrainerLabTheme.accentBlue : Color.clear, lineWidth: 2),
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .presetSidebarSurface(isSelected: selectedPresetID == preset.id)
                     }
                     .buttonStyle(.plain)
                 }
@@ -383,7 +377,11 @@ public struct PresetsLibraryView: View {
             }
         }
         .padding(18)
-        .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+        .trainerCardStyle(
+            background: TrainerLabTheme.setupSurface,
+            glassRole: .setupCard,
+            tint: TrainerLabTheme.accentBlue.opacity(0.05),
+        )
     }
 
     private func shareManager(preset: ScenarioInstruction, layoutMode _: PresetsLayoutMode) -> some View {
@@ -433,7 +431,7 @@ public struct PresetsLibraryView: View {
             }
         }
         .padding(18)
-        .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+        .trainerCardStyle(background: TrainerLabTheme.setupSurface, glassRole: .setupCard)
     }
 
     private func presetShareSheet(preset: ScenarioInstruction) -> some View {
@@ -546,6 +544,27 @@ public struct PresetsLibraryView: View {
             } else {
                 resetDraftForNewPreset()
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func presetSidebarSurface(isSelected: Bool) -> some View {
+        if isSelected {
+            trainerGlassSurface(
+                role: .setupCard,
+                cornerRadius: 16,
+                interactive: true,
+                tint: TrainerLabTheme.accentBlue.opacity(0.08),
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(TrainerLabTheme.accentBlue, lineWidth: 2),
+            )
+        } else {
+            background(TrainerLabTheme.setupSurface.opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 }
