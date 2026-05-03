@@ -1,13 +1,17 @@
 import DesignSystem
+import Networking
 import SharedModels
 import SwiftUI
 
 public struct SessionHubView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     @ObservedObject private var viewModel: SessionHubViewModel
     private let onSelectSession: (TrainerSessionDTO) -> Void
     private let onOpenPresets: () -> Void
 
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showCreateSessionSheet = false
+    @State private var createDraft = TrainerSessionCreateDraft.default
 
     public init(
         viewModel: SessionHubViewModel,
@@ -63,6 +67,25 @@ public struct SessionHubView: View {
         .onDisappear {
             viewModel.stopLiveUpdates()
         }
+        .sheet(isPresented: $showCreateSessionSheet) {
+            CreateTrainerSessionSheet(
+                draft: $createDraft,
+                isCreating: viewModel.isLoading,
+                presentableError: viewModel.presentableError,
+                onCancel: {
+                    showCreateSessionSheet = false
+                },
+                onCreate: {
+                    Task {
+                        await viewModel.createSession(draft: createDraft)
+                        if viewModel.presentableError == nil {
+                            createDraft = .default
+                            showCreateSessionSheet = false
+                        }
+                    }
+                },
+            )
+        }
     }
 
     @ViewBuilder
@@ -83,9 +106,7 @@ public struct SessionHubView: View {
                 HStack(spacing: 12) {
                     Button("Presets Library", action: onOpenPresets)
                         .trainerGlassButtonStyle()
-                    Button("Create Session") {
-                        Task { await viewModel.createSession() }
-                    }
+                    Button("Create Session", action: openCreateSessionSheet)
                     .trainerGlassButtonStyle(prominent: true)
                 }
             }
@@ -104,9 +125,7 @@ public struct SessionHubView: View {
                     Button("Presets Library", action: onOpenPresets)
                         .buttonStyle(.bordered)
                         .frame(maxWidth: .infinity)
-                    Button("Create Session") {
-                        Task { await viewModel.createSession() }
-                    }
+                    Button("Create Session", action: openCreateSessionSheet)
                     .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
                 }
@@ -119,9 +138,7 @@ public struct SessionHubView: View {
                 Button("Presets Library", action: onOpenPresets)
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
-                Button("Create Session") {
-                    Task { await viewModel.createSession() }
-                }
+                Button("Create Session", action: openCreateSessionSheet)
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity)
             }
@@ -185,6 +202,96 @@ public struct SessionHubView: View {
     private func gridColumns(for width: CGFloat) -> [GridItem] {
         let columnCount = width >= 1100 ? 3 : 2
         return Array(repeating: GridItem(.flexible(), spacing: 16), count: columnCount)
+    }
+
+    private func openCreateSessionSheet() {
+        createDraft = .default
+        showCreateSessionSheet = true
+    }
+}
+
+private struct CreateTrainerSessionSheet: View {
+    @Binding var draft: TrainerSessionCreateDraft
+    let isCreating: Bool
+    let presentableError: PresentableAppError?
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    @State private var showStartConfirmation = false
+
+    private var canStart: Bool {
+        !draft.patientSeed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && draft.tickIntervalSeconds >= 5
+            && draft.tickIntervalSeconds <= 60
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Scenario") {
+                    Picker("Preset", selection: $draft.preset) {
+                        ForEach(TrainerSessionScenarioPreset.allCases) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    TextField("Patient/problem seed", text: $draft.patientSeed, axis: .vertical)
+                        .lineLimit(1 ... 3)
+
+                    TextField("Trainer directive", text: $draft.directives, axis: .vertical)
+                        .lineLimit(3 ... 6)
+                }
+
+                Section("Runtime") {
+                    Stepper(
+                        "Tick interval: \(draft.tickIntervalSeconds)s",
+                        value: $draft.tickIntervalSeconds,
+                        in: 5 ... 60,
+                        step: 5,
+                    )
+                }
+
+                if let presentableError {
+                    Section {
+                        InlineAppErrorView(error: presentableError)
+                    }
+                }
+
+                Section {
+                    Button {
+                        showStartConfirmation = true
+                    } label: {
+                        if isCreating {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Start Seeding")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .disabled(!canStart || isCreating)
+                } footer: {
+                    Text("TrainerLab will create the session, seed the initial runtime, and unlock live controls when the scenario is ready.")
+                }
+            }
+            .navigationTitle("Create Session")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+            }
+            .confirmationDialog(
+                "Start seeding this trainer session?",
+                isPresented: $showStartConfirmation,
+                titleVisibility: Visibility.visible,
+            ) {
+                Button("Start Seeding", action: onCreate)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The selected preset and directive will be sent to the runtime. You can still steer the scenario after it starts.")
+            }
+        }
     }
 }
 

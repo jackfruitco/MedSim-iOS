@@ -19,3 +19,9 @@ enum PresetsWorkspaceSelection {
         return nil
     }
 }
+
+enum PresetsApplyAvailability {
+    static func canApplyPreset(activeSimulationID: Int?) -> Bool {
+        activeSimulationID != nil
+    }
+}

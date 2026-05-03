@@ -11,6 +11,7 @@ public struct RunConsoleView: View {
     private let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     private let onBack: () -> Void
     private let onOpenSummary: () -> Void
+    private let onOpenPresets: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     // Sheet visibility
@@ -18,6 +19,7 @@ public struct RunConsoleView: View {
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
+    @State private var showStopConfirmation = false
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
 
@@ -33,6 +35,7 @@ public struct RunConsoleView: View {
     @State private var activeInfoPanel: ActiveInfoPanel? = .scenarioBrief
     @State private var isLoadingRuntimeState = false
     @State private var showScenarioBriefEditSheet = false
+    @State private var showAIDebugDetails = false
     @Namespace private var segmentNS
 
     @State private var interventionTargetProblemID: Int?
@@ -74,12 +77,14 @@ public struct RunConsoleView: View {
         feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         onBack: @escaping () -> Void,
         onOpenSummary: @escaping () -> Void,
+        onOpenPresets: @escaping () -> Void,
     ) {
         self.store = store
         self.feedbackService = feedbackService
         self.feedbackHeaderProvider = feedbackHeaderProvider
         self.onBack = onBack
         self.onOpenSummary = onOpenSummary
+        self.onOpenPresets = onOpenPresets
     }
 
     public var body: some View {
@@ -196,6 +201,18 @@ public struct RunConsoleView: View {
                 feedbackSuccessMessage = nil
             }
         }
+        .confirmationDialog(
+            "Stop this trainer session?",
+            isPresented: $showStopConfirmation,
+            titleVisibility: .visible,
+        ) {
+            Button("Stop Session", role: .destructive) {
+                store.stop()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Stopping ends the live runtime and prepares the run summary. Live controls will no longer mutate this session.")
+        }
     }
 
     // MARK: - Layouts
@@ -260,6 +277,12 @@ public struct RunConsoleView: View {
             await store.refreshConsole()
         }
         .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            compactPrimaryActionBar(compactMetrics: compactMetrics)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.regularMaterial)
+        }
     }
 
     // MARK: - Vitals table
@@ -319,45 +342,47 @@ public struct RunConsoleView: View {
 
     private var regularCommandBar: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(sessionControls) { control in
-                        controlButton(control)
-                    }
-
-                    Spacer(minLength: 10)
-
-                    TransportChip(banner: store.state.transportBanner)
-                    regularStopwatchStatus
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
                         ForEach(sessionControls) { control in
                             controlButton(control)
                         }
                     }
 
-                    HStack(spacing: 10) {
-                        TransportChip(banner: store.state.transportBanner)
-                        regularStopwatchStatus
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 116), spacing: 8)],
+                        spacing: 8,
+                    ) {
+                        ForEach(sessionControls) { control in
+                            controlButton(control, fullWidth: true)
+                        }
                     }
                 }
+
+                Spacer(minLength: 10)
+
+                TransportChip(banner: store.state.transportBanner)
+                regularStopwatchStatus
+                adminControlMenu(controlSize: .regular)
             }
 
             sessionPreparationBanner
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 136), spacing: 8)],
-                spacing: 8,
-            ) {
-                ForEach(quickControls) { control in
-                    controlButton(
-                        control,
-                        fullWidth: true,
-                        multiline: true,
-                    )
-                }
+            HStack(alignment: .top, spacing: 12) {
+                regularControlSection(
+                    title: RunConsoleControlGroup.clinical.rawValue,
+                    controls: clinicalControls,
+                    columnMinimum: 150,
+                    prominent: true,
+                )
+
+                regularControlSection(
+                    title: RunConsoleControlGroup.tools.rawValue,
+                    controls: toolControls,
+                    columnMinimum: 126,
+                    prominent: false,
+                )
             }
         }
         .padding(10)
@@ -374,6 +399,7 @@ public struct RunConsoleView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: compactMetrics.sectionSpacing) {
             sessionPreparationBanner
+            compactStatusStrip(compactMetrics: compactMetrics)
 
             if controlPresentation == .phoneMenus {
                 compactPhoneControlPanel(compactMetrics: compactMetrics)
@@ -397,19 +423,6 @@ public struct RunConsoleView: View {
                     .font(compactMetrics.controlLabelFont)
                     .foregroundStyle(.secondary)
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: compactMetrics.gridSpacing) {
-                        TransportChip(banner: store.state.transportBanner)
-                        stopwatchStatus
-                        Spacer(minLength: 0)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        TransportChip(banner: store.state.transportBanner)
-                        stopwatchStatus
-                    }
-                }
-
                 LazyVGrid(
                     columns: compactControlColumns(for: compactMetrics),
                     spacing: compactMetrics.gridSpacing,
@@ -427,7 +440,7 @@ public struct RunConsoleView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(RunConsoleControlGroup.quick.rawValue)
+                Text(RunConsoleControlGroup.tools.rawValue)
                     .font(compactMetrics.controlLabelFont)
                     .foregroundStyle(.secondary)
 
@@ -435,7 +448,7 @@ public struct RunConsoleView: View {
                     columns: compactControlColumns(for: compactMetrics),
                     spacing: compactMetrics.gridSpacing,
                 ) {
-                    ForEach(quickControls) { control in
+                    ForEach(toolControls) { control in
                         controlButton(
                             control,
                             compact: true,
@@ -446,24 +459,13 @@ public struct RunConsoleView: View {
                     }
                 }
             }
+
+            adminControlMenu(controlSize: compactMetrics.buttonControlSize)
         }
     }
 
     private func compactPhoneControlPanel(compactMetrics: RunConsoleCompactMetrics) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: compactMetrics.gridSpacing) {
-                    TransportChip(banner: store.state.transportBanner)
-                    stopwatchStatus
-                    Spacer(minLength: 0)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    TransportChip(banner: store.state.transportBanner)
-                    stopwatchStatus
-                }
-            }
-
             HStack(spacing: compactMetrics.gridSpacing) {
                 compactControlMenu(
                     title: RunConsoleControlGroup.session.rawValue,
@@ -471,12 +473,75 @@ public struct RunConsoleView: View {
                     compactMetrics: compactMetrics,
                 )
                 compactControlMenu(
-                    title: RunConsoleControlGroup.quick.rawValue,
-                    controls: quickControls,
+                    title: RunConsoleControlGroup.tools.rawValue,
+                    controls: toolControls + adminControls,
                     compactMetrics: compactMetrics,
                 )
             }
         }
+    }
+
+    private func regularControlSection(
+        title: String,
+        controls: [RunConsoleControlItem],
+        columnMinimum: CGFloat,
+        prominent: Bool,
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: columnMinimum), spacing: 8)],
+                spacing: 8,
+            ) {
+                ForEach(controls) { control in
+                    controlButton(
+                        control,
+                        fullWidth: true,
+                        multiline: true,
+                        prominent: prominent,
+                    )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactStatusStrip(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: compactMetrics.gridSpacing) {
+                TransportChip(banner: store.state.transportBanner)
+                stopwatchStatus
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                TransportChip(banner: store.state.transportBanner)
+                stopwatchStatus
+            }
+        }
+    }
+
+    private func compactPrimaryActionBar(compactMetrics: RunConsoleCompactMetrics) -> some View {
+        HStack(spacing: compactMetrics.gridSpacing) {
+            ForEach(clinicalControls) { control in
+                controlButton(
+                    control,
+                    compact: true,
+                    compactMetrics: compactMetrics,
+                    fullWidth: true,
+                    multiline: true,
+                )
+            }
+        }
+        .padding(8)
+        .trainerGlassSurface(
+            role: .tacticalPanel,
+            cornerRadius: 14,
+            tint: TrainerLabTheme.accentBlue.opacity(0.10),
+        )
     }
 
     // MARK: - Conflict banner
@@ -812,33 +877,6 @@ public struct RunConsoleView: View {
             )
         } else if let rs = store.runtimeState {
             VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Runtime")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    debugMetaRow(label: "Status", value: rs.runtimeSnapshot.status.replacingOccurrences(of: "_", with: " ").capitalized)
-                    if let tickInterval = rs.runtimeSnapshot.tickIntervalSeconds {
-                        debugMetaRow(label: "Tick Interval", value: "\(tickInterval)s")
-                    }
-                    if let nextTickAt = rs.runtimeSnapshot.nextTickAt {
-                        debugMetaRow(label: "Next Tick", value: nextTickAt.formatted(date: .omitted, time: .standard))
-                    }
-                    if let lastAITickAt = rs.runtimeSnapshot.lastAITickAt {
-                        debugMetaRow(label: "Last AI Tick", value: lastAITickAt.formatted(date: .omitted, time: .standard))
-                    }
-                    if !rs.runtimeSnapshot.pendingRuntimeReasons.isEmpty {
-                        debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.runtimeSnapshot.pendingRuntimeReasons.count)")
-                    }
-                    if !rs.runtimeSnapshot.currentlyProcessingReasons.isEmpty {
-                        debugMetaRow(label: "Processing Reasons", value: "\(rs.runtimeSnapshot.currentlyProcessingReasons.count)")
-                    }
-                    if !rs.runtimeSnapshot.lastRuntimeError.isEmpty {
-                        Text(rs.runtimeSnapshot.lastRuntimeError)
-                            .font(.caption)
-                            .foregroundStyle(TrainerLabTheme.danger)
-                    }
-                }
-
                 if let plan = store.aiInstructorIntent {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Current Focus")
@@ -847,16 +885,7 @@ public struct RunConsoleView: View {
                         Text(plan.summary)
                             .font(.subheadline)
                     }
-                    if !plan.rationale.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Rationale")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                            Text(plan.rationale)
-                                .font(.caption)
-                                .foregroundStyle(Color(white: 0.70))
-                        }
-                    }
+
                     if !plan.upcomingChanges.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Upcoming Changes")
@@ -869,6 +898,7 @@ public struct RunConsoleView: View {
                             }
                         }
                     }
+
                     if !plan.monitoringFocus.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Monitoring")
@@ -881,7 +911,18 @@ public struct RunConsoleView: View {
                             }
                         }
                     }
+
+                    if !plan.rationale.isEmpty {
+                        DisclosureGroup("Rationale") {
+                            Text(plan.rationale)
+                                .font(.caption)
+                                .foregroundStyle(Color(white: 0.70))
+                        }
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    }
                 }
+
                 if !store.aiInstructorNotes.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("AI Notes")
@@ -894,58 +935,19 @@ public struct RunConsoleView: View {
                         }
                     }
                 }
-                if let debug = store.controlPlaneDebug {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Control Plane Debug")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        debugMetaRow(label: "Current Step", value: "\(debug.currentStepIndex)")
-                        if !debug.executionPlan.isEmpty {
-                            ForEach(Array(debug.executionPlan.prefix(4).enumerated()), id: \.offset) { index, step in
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text(index == debug.currentStepIndex ? "•" : "◦")
-                                        .foregroundStyle(index == debug.currentStepIndex ? TrainerLabTheme.accentBlue : .secondary)
-                                    Text(step)
-                                        .font(.caption)
-                                        .foregroundStyle(Color(white: 0.70))
-                                }
-                            }
-                        }
-                        if !debug.lastFailedStep.isEmpty {
-                            debugMetaRow(label: "Last Failed Step", value: debug.lastFailedStep)
-                        }
-                        if !debug.lastFailedError.isEmpty {
-                            Text(debug.lastFailedError)
-                                .font(.caption)
-                                .foregroundStyle(TrainerLabTheme.warning)
-                        }
-                    }
-                }
+
                 if store.aiInstructorIntent == nil, store.aiInstructorNotes.isEmpty {
                     Text("No AI plan available yet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                HStack(spacing: 8) {
-                    if canMutate {
-                        Button("Tick AI") {
-                            store.triggerRunTick()
-                        }
-                        .font(.caption)
-                        .buttonStyle(.bordered)
 
-                        Button("Tick Vitals") {
-                            store.triggerVitalsTick()
-                        }
-                        .font(.caption)
-                        .buttonStyle(.bordered)
-                    }
-
-                    Button("Refresh") {
-                        Task { await fetchRuntimeState() }
-                    }
-                    .font(.caption)
-                    .buttonStyle(.bordered)
+                DisclosureGroup(isExpanded: $showAIDebugDetails) {
+                    aiInstructorDebugContent(runtimeState: rs)
+                } label: {
+                    Text("Runtime & Debug")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
                 }
             }
         } else if isLoadingRuntimeState {
@@ -956,6 +958,93 @@ public struct RunConsoleView: View {
             Text("Could not load runtime state.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private func aiInstructorDebugContent(runtimeState rs: TrainerRestViewModelDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Runtime")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                debugMetaRow(label: "Status", value: rs.runtimeSnapshot.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                if let tickInterval = rs.runtimeSnapshot.tickIntervalSeconds {
+                    debugMetaRow(label: "Tick Interval", value: "\(tickInterval)s")
+                }
+                if let nextTickAt = rs.runtimeSnapshot.nextTickAt {
+                    debugMetaRow(label: "Next Tick", value: nextTickAt.formatted(date: .omitted, time: .standard))
+                }
+                if let lastAITickAt = rs.runtimeSnapshot.lastAITickAt {
+                    debugMetaRow(label: "Last AI Tick", value: lastAITickAt.formatted(date: .omitted, time: .standard))
+                }
+                if !rs.runtimeSnapshot.pendingRuntimeReasons.isEmpty {
+                    debugMetaRow(label: "Pending Runtime Reasons", value: "\(rs.runtimeSnapshot.pendingRuntimeReasons.count)")
+                }
+                if !rs.runtimeSnapshot.currentlyProcessingReasons.isEmpty {
+                    debugMetaRow(label: "Processing Reasons", value: "\(rs.runtimeSnapshot.currentlyProcessingReasons.count)")
+                }
+                if !rs.runtimeSnapshot.lastRuntimeError.isEmpty {
+                    Text(rs.runtimeSnapshot.lastRuntimeError)
+                        .font(.caption)
+                        .foregroundStyle(TrainerLabTheme.danger)
+                }
+            }
+
+            controlPlaneDebugContent
+
+            HStack(spacing: 8) {
+                if canMutate {
+                    Button("Tick AI") {
+                        store.triggerRunTick()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+
+                    Button("Tick Vitals") {
+                        store.triggerVitalsTick()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                }
+
+                Button("Refresh") {
+                    Task { await fetchRuntimeState() }
+                }
+                .font(.caption)
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private var controlPlaneDebugContent: some View {
+        if let debug = store.controlPlaneDebug {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Control Plane Debug")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                debugMetaRow(label: "Current Step", value: "\(debug.currentStepIndex)")
+                if !debug.executionPlan.isEmpty {
+                    ForEach(Array(debug.executionPlan.prefix(4).enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(index == debug.currentStepIndex ? "•" : "◦")
+                                .foregroundStyle(index == debug.currentStepIndex ? TrainerLabTheme.accentBlue : .secondary)
+                            Text(step)
+                                .font(.caption)
+                                .foregroundStyle(Color(white: 0.70))
+                        }
+                    }
+                }
+                if !debug.lastFailedStep.isEmpty {
+                    debugMetaRow(label: "Last Failed Step", value: debug.lastFailedStep)
+                }
+                if !debug.lastFailedError.isEmpty {
+                    Text(debug.lastFailedError)
+                        .font(.caption)
+                        .foregroundStyle(TrainerLabTheme.warning)
+                }
+            }
         }
     }
 
@@ -2197,8 +2286,16 @@ public struct RunConsoleView: View {
         RunConsoleControlsCatalog.sessionControls(lifecycleActions: lifecycleActions)
     }
 
-    private var quickControls: [RunConsoleControlItem] {
-        RunConsoleControlsCatalog.quickControls
+    private var clinicalControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.clinicalControls
+    }
+
+    private var toolControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.toolControls
+    }
+
+    private var adminControls: [RunConsoleControlItem] {
+        RunConsoleControlsCatalog.adminControls
     }
 
     private var orderedVitals: [VitalStatusSnapshot] {
@@ -2286,6 +2383,17 @@ public struct RunConsoleView: View {
         ]
     }
 
+    // MARK: - Control styling
+
+    private func controlUsesSecondaryStyle(_ control: RunConsoleControlItem) -> Bool {
+        switch control {
+        case .exit, .summary, .quick(.annotation), .quick(.presets):
+            true
+        case .lifecycle, .quick:
+            false
+        }
+    }
+
     // MARK: - Button helpers
 
     private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
@@ -2296,6 +2404,8 @@ public struct RunConsoleView: View {
             canRunMutate
         case .quick(.intervention):
             canIntervene
+        case .quick(.presets):
+            true
         case .quick:
             canMutate
         }
@@ -2316,7 +2426,7 @@ public struct RunConsoleView: View {
             case .resume:
                 store.resume()
             case .stop:
-                store.stop()
+                showStopConfirmation = true
             }
         case let .quick(action):
             switch action {
@@ -2325,12 +2435,14 @@ public struct RunConsoleView: View {
                 showInterventionSheet = true
             case .event:
                 showEventSheet = true
-            case .annotation:
-                showAnnotationSheet = true
-            case .sendFeedback:
-                activeFeedbackContext = feedbackLaunchContext()
             case .steer:
                 showSteerSheet = true
+            case .annotation:
+                showAnnotationSheet = true
+            case .presets:
+                onOpenPresets()
+            case .sendFeedback:
+                activeFeedbackContext = feedbackLaunchContext()
             case .tickAI:
                 store.triggerRunTick()
             case .tickVitals:
@@ -2346,6 +2458,7 @@ public struct RunConsoleView: View {
         compactMetrics: RunConsoleCompactMetrics = .standard,
         fullWidth: Bool = false,
         multiline: Bool = false,
+        prominent: Bool? = nil,
     ) -> some View {
         let button = Button {
             performControl(control)
@@ -2365,16 +2478,17 @@ public struct RunConsoleView: View {
             .frame(maxWidth: fullWidth ? .infinity : nil, alignment: fullWidth ? .center : .leading)
             .frame(minHeight: compact ? compactMetrics.buttonMinHeight : nil)
         }
+        let isProminent = prominent ?? !controlUsesSecondaryStyle(control)
 
-        if case .exit = control {
+        if isProminent {
             button
-                .trainerGlassButtonStyle()
+                .trainerGlassButtonStyle(prominent: true)
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
                 .disabled(!controlEnabled(control))
                 .accessibilityLabel(control.title)
         } else {
             button
-                .trainerGlassButtonStyle(prominent: true)
+                .trainerGlassButtonStyle()
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
                 .disabled(!controlEnabled(control))
                 .accessibilityLabel(control.title)
@@ -2403,6 +2517,23 @@ public struct RunConsoleView: View {
         }
         .trainerGlassButtonStyle(prominent: true)
         .controlSize(compactMetrics.buttonControlSize)
+    }
+
+    private func adminControlMenu(controlSize: ControlSize) -> some View {
+        Menu {
+            ForEach(adminControls) { control in
+                Button {
+                    performControl(control)
+                } label: {
+                    Label(control.title, systemImage: control.systemImage)
+                }
+                .disabled(!controlEnabled(control))
+            }
+        } label: {
+            Label(RunConsoleControlGroup.admin.rawValue, systemImage: "ellipsis.circle")
+        }
+        .trainerGlassButtonStyle()
+        .controlSize(controlSize)
     }
 
     private func compactVitalCell(_ vital: VitalStatusSnapshot, compactMetrics: RunConsoleCompactMetrics) -> some View {

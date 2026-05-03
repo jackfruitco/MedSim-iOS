@@ -122,9 +122,34 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .injury), "INJURY")
         XCTAssertEqual(RunConsoleTimelinePresentation.chipText(for: .loc), "LOC")
-        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: injuryEntry), "Change")
+        XCTAssertEqual(RunConsoleTimelinePresentation.title(for: injuryEntry), "Injury Added")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: lifecycleEntry), "Run Started")
         XCTAssertEqual(RunConsoleTimelinePresentation.title(for: noteEntry), "Anything")
+    }
+
+    func testTimelinePresentationUsesSpecificClinicalTitles() {
+        let entries: [(ClinicalTimelineKind, String)] = [
+            (.cause, "Cause Identified"),
+            (.injury, "Injury Added"),
+            (.illness, "Illness Added"),
+            (.intervention, "Intervention Applied"),
+            (.loc, "LOC Updated"),
+            (.problem, "Problem Updated"),
+            (.recommendation, "Recommendation"),
+            (.vitals, "Vitals Updated"),
+        ]
+
+        for (kind, expectedTitle) in entries {
+            let entry = ClinicalTimelineEntry(
+                dedupeKey: "\(kind.rawValue)-1",
+                kind: kind,
+                title: "Backend Title",
+                message: "Message",
+                createdAt: Date(),
+            )
+
+            XCTAssertEqual(RunConsoleTimelinePresentation.title(for: entry), expectedTitle)
+        }
     }
 
     func testTimelineAccordionTogglesSingleExpandedEntryByDedupeKey() {
@@ -172,12 +197,20 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(sessionControls.map(\.title), ["Exit", "Pause", "Stop", "Summary"])
         XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
         XCTAssertEqual(
-            RunConsoleControlsCatalog.quickControls.map(\.title),
-            ["Intervention", "Event", "Annotation", "Send Feedback", "Steer", "Tick AI", "Tick Vitals"],
+            RunConsoleControlsCatalog.clinicalControls.map(\.title),
+            ["Intervention", "Event", "Steer"],
+        )
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.toolControls.map(\.title),
+            ["Annotation", "Presets"],
+        )
+        XCTAssertEqual(
+            RunConsoleControlsCatalog.adminControls.map(\.title),
+            ["Send Feedback", "Tick AI", "Tick Vitals"],
         )
         XCTAssertEqual(
             RunConsoleControlsCatalog.quickControls.map(\.systemImage),
-            ["plus.app", "plus.app", "note.text.badge.plus", "bubble.left.and.text.bubble.right", "wand.and.sparkles", "timer", "heart.text.square"],
+            ["plus.app", "plus.app", "wand.and.sparkles", "note.text.badge.plus", "shippingbox", "bubble.left.and.text.bubble.right", "timer", "heart.text.square"],
         )
     }
 

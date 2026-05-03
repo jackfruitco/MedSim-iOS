@@ -55,14 +55,26 @@ enum RunConsoleTimelinePresentation {
 
     static func title(for entry: ClinicalTimelineEntry) -> String {
         switch entry.kind {
-        case .cause, .injury, .illness, .intervention, .loc, .problem, .recommendation:
-            "Change"
+        case .cause:
+            "Cause Identified"
+        case .injury:
+            "Injury Added"
+        case .illness:
+            "Illness Added"
+        case .intervention:
+            "Intervention Applied"
+        case .loc:
+            "LOC Updated"
+        case .problem:
+            "Problem Updated"
+        case .recommendation:
+            "Recommendation"
         case .lifecycle:
             entry.title
         case .note:
             entry.title
         case .vitals:
-            entry.title
+            "Vitals Updated"
         }
     }
 }
@@ -85,15 +97,18 @@ enum RunConsoleTimelineAccordion {
 
 enum RunConsoleControlGroup: String {
     case session = "Session Controls"
-    case quick = "Quick Controls"
+    case clinical = "Clinical Actions"
+    case tools = "Run Tools"
+    case admin = "Admin & Debug"
 }
 
 enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
     case intervention
     case event
-    case annotation
-    case sendFeedback
     case steer
+    case annotation
+    case presets
+    case sendFeedback
     case tickAI
     case tickVitals
 
@@ -107,12 +122,14 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
             "Intervention"
         case .event:
             "Event"
-        case .annotation:
-            "Annotation"
-        case .sendFeedback:
-            "Send Feedback"
         case .steer:
             "Steer"
+        case .annotation:
+            "Annotation"
+        case .presets:
+            "Presets"
+        case .sendFeedback:
+            "Send Feedback"
         case .tickAI:
             "Tick AI"
         case .tickVitals:
@@ -124,12 +141,14 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .intervention, .event:
             "plus.app"
-        case .annotation:
-            "note.text.badge.plus"
-        case .sendFeedback:
-            "bubble.left.and.text.bubble.right"
         case .steer:
             "wand.and.sparkles"
+        case .annotation:
+            "note.text.badge.plus"
+        case .presets:
+            "shippingbox"
+        case .sendFeedback:
+            "bubble.left.and.text.bubble.right"
         case .tickAI:
             "timer"
         case .tickVitals:
@@ -161,8 +180,12 @@ enum RunConsoleControlItem: Hashable, Identifiable {
         switch self {
         case .exit, .lifecycle, .summary:
             .session
-        case .quick:
-            .quick
+        case .quick(.intervention), .quick(.event), .quick(.steer):
+            .clinical
+        case .quick(.annotation), .quick(.presets):
+            .tools
+        case .quick(.sendFeedback), .quick(.tickAI), .quick(.tickVitals):
+            .admin
         }
     }
 
@@ -207,7 +230,26 @@ enum RunConsoleControlsCatalog {
         [.exit] + lifecycleActions.map(RunConsoleControlItem.lifecycle) + [.summary]
     }
 
-    static let quickControls = RunConsoleQuickAction.allCases.map(RunConsoleControlItem.quick)
+    static let clinicalControls: [RunConsoleControlItem] = [
+        .quick(.intervention),
+        .quick(.event),
+        .quick(.steer),
+    ]
+
+    static let toolControls: [RunConsoleControlItem] = [
+        .quick(.annotation),
+        .quick(.presets),
+    ]
+
+    static let adminControls: [RunConsoleControlItem] = [
+        .quick(.sendFeedback),
+        .quick(.tickAI),
+        .quick(.tickVitals),
+    ]
+
+    static var quickControls: [RunConsoleControlItem] {
+        clinicalControls + toolControls + adminControls
+    }
 }
 
 enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
