@@ -805,7 +805,7 @@ final class ChatRunStoreTests: XCTestCase {
         ISO8601DateFormatter().string(from: Date())
     }
 
-    // MARK: - Self-typing suppression (simulation.userID == 7)
+    // MARK: - Self-typing suppression
 
     func testSelfTypingByActorUserIdIsNotDisplayed() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
@@ -816,12 +816,17 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        // Identity explicitly set to match the payload's actor_user_id
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(id: 7),
+        )
         store.start()
         defer { store.stop() }
         try await waitUntil { store.activeConversationID == patientConversation.id }
 
-        // actor_user_id matches simulation.userID (7)
         realtime.pushEvent(makeEvent(
             id: "evt-self-typing-1",
             type: ChatRealtimeEventType.typingStarted,
@@ -846,12 +851,17 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        // Identity explicitly set to match the payload's sender_id
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(id: 7),
+        )
         store.start()
         defer { store.stop() }
         try await waitUntil { store.activeConversationID == patientConversation.id }
 
-        // sender_id matches simulation.userID (7)
         realtime.pushEvent(makeEvent(
             id: "evt-self-typing-2",
             type: ChatRealtimeEventType.typingStarted,
@@ -865,6 +875,115 @@ final class ChatRunStoreTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertTrue(store.activeTypingUsers.isEmpty, "Self typing via sender_id must not appear")
+    }
+
+    func testLegacyEmailOnlySelfTypingIsNotDisplayed() async throws {
+        // Older payloads have no actor_type or IDs; only the user email field.
+        // The store must still suppress them when the email matches the current user.
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(email: "me@example.com"),
+        )
+        store.start()
+        defer { store.stop() }
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        // Legacy payload: only user field, no IDs, no actor_type
+        realtime.pushEvent(makeEvent(
+            id: "evt-legacy-self-typing",
+            type: ChatRealtimeEventType.typingStarted,
+            payload: [
+                "conversation_id": .number(Double(patientConversation.id)),
+                "user": .string("me@example.com"),
+                "display_initials": .string("ME"),
+            ],
+        ))
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(store.activeTypingUsers.isEmpty, "Legacy email-only self typing must not appear")
+    }
+
+    func testUuidOnlySelfTypingIsNotDisplayed() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        let myUUID = "abc-def-123"
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(uuid: myUUID),
+        )
+        store.start()
+        defer { store.stop() }
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        realtime.pushEvent(makeEvent(
+            id: "evt-uuid-self-typing",
+            type: ChatRealtimeEventType.typingStarted,
+            payload: [
+                "conversation_id": .number(Double(patientConversation.id)),
+                "user": .string("me@example.com"),
+                "actor_type": .string("user"),
+                "actor_user_uuid": .string(myUUID),
+            ],
+        ))
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(store.activeTypingUsers.isEmpty, "UUID-only self typing must not appear")
+    }
+
+    func testSimulationOwnerMismatchDoesNotSuppressOtherUser() async throws {
+        // If authenticated user ID differs from simulation.userID, a typing event
+        // whose sender_id matches simulation.userID must NOT be suppressed.
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+
+        let realtime = TestRealtimeClient()
+        // Authenticated user is 99, but simulation.userID is 7
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(id: 99),
+        )
+        store.start()
+        defer { store.stop() }
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+
+        // Payload from user 7 (simulation owner, not the current authenticated user)
+        realtime.pushEvent(makeEvent(
+            id: "evt-owner-typing",
+            type: ChatRealtimeEventType.typingStarted,
+            payload: [
+                "conversation_id": .number(Double(patientConversation.id)),
+                "user": .string("owner@example.com"),
+                "actor_type": .string("user"),
+                "sender_id": .number(7),
+            ],
+        ))
+
+        try await waitUntil { store.activeTypingUsers.contains("owner@example.com") }
+        XCTAssertFalse(store.activeTypingUsers.isEmpty, "Typing from simulation owner must appear when current user differs")
     }
 
     func testSystemTypingIsDisplayed() async throws {

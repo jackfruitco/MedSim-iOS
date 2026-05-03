@@ -1,6 +1,21 @@
 import Foundation
 import SharedModels
 
+/// Identity of the currently authenticated user, injected into ChatRunStore
+/// for self-typing suppression. All fields are optional so callers can supply
+/// only what they have available.
+public struct ChatCurrentUserIdentity: Sendable, Equatable {
+    public let id: Int?
+    public let uuid: String?
+    public let email: String?
+
+    public init(id: Int? = nil, uuid: String? = nil, email: String? = nil) {
+        self.id = id
+        self.uuid = uuid
+        self.email = email
+    }
+}
+
 public enum SimulationTerminalState: String, Codable, Sendable, CaseIterable {
     case inProgress = "in_progress"
     case completed

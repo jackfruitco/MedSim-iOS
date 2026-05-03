@@ -102,6 +102,7 @@ public final class ChatRunStore: ObservableObject {
 
     private let service: ChatLabServiceProtocol
     private let realtimeClient: ChatRealtimeClientProtocol
+    private let currentUserIdentity: ChatCurrentUserIdentity
     private var eventTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
@@ -132,10 +133,12 @@ public final class ChatRunStore: ObservableObject {
         service: ChatLabServiceProtocol,
         realtimeClient: ChatRealtimeClientProtocol,
         simulation: ChatSimulation,
+        currentUserIdentity: ChatCurrentUserIdentity = ChatCurrentUserIdentity(),
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
         self.simulation = simulation
+        self.currentUserIdentity = currentUserIdentity
         if simulation.status == .failed {
             simulationFailureText = simulation.terminalReasonText.isEmpty
                 ? "Initial patient generation failed."
@@ -799,9 +802,9 @@ public final class ChatRunStore: ObservableObject {
 
         // Defensively remove self-typing events regardless of backend suppression.
         if payload.isFromCurrentUser(
-            currentUserId: simulation.userID,
-            currentUserUuid: nil,
-            currentUserEmail: nil
+            currentUserId: currentUserIdentity.id,
+            currentUserUuid: currentUserIdentity.uuid,
+            currentUserEmail: currentUserIdentity.email
         ) {
             if var entries = typingEntries[conversationID], entries.contains(where: { $0.key == key }) {
                 entries.removeAll { $0.key == key }
