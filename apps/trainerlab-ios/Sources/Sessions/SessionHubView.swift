@@ -107,7 +107,7 @@ public struct SessionHubView: View {
                     Button("Presets Library", action: onOpenPresets)
                         .trainerGlassButtonStyle()
                     Button("Create Session", action: openCreateSessionSheet)
-                    .trainerGlassButtonStyle(prominent: true)
+                        .trainerGlassButtonStyle(prominent: true)
                 }
             }
             .padding(20)
@@ -126,8 +126,8 @@ public struct SessionHubView: View {
                         .buttonStyle(.bordered)
                         .frame(maxWidth: .infinity)
                     Button("Create Session", action: openCreateSessionSheet)
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
                 }
             }
 
@@ -139,8 +139,8 @@ public struct SessionHubView: View {
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
                 Button("Create Session", action: openCreateSessionSheet)
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
