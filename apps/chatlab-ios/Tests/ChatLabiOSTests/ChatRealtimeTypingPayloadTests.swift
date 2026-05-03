@@ -7,21 +7,21 @@ final class ChatRealtimeTypingPayloadTests: XCTestCase {
 
     func testIdentityKeyPrefersActorUserUuid() {
         let payload = makePayload(
-            actorUserUuid: "uuid-abc",
-            actorUserId: 1,
+            user: "a@example.com",
             senderId: 2,
-            user: "a@example.com"
+            actorUserId: 1,
+            actorUserUuid: "uuid-abc",
         )
         XCTAssertEqual(payload.identityKey, "uuid-abc")
     }
 
     func testIdentityKeyFallsToActorUserIdWhenNoUuid() {
-        let payload = makePayload(actorUserId: 42, senderId: 99, user: "a@example.com")
+        let payload = makePayload(user: "a@example.com", senderId: 99, actorUserId: 42)
         XCTAssertEqual(payload.identityKey, "42")
     }
 
     func testIdentityKeyFallsToSenderIdWhenNoUuidOrActorUserId() {
-        let payload = makePayload(senderId: 99, user: "a@example.com")
+        let payload = makePayload(user: "a@example.com", senderId: 99)
         XCTAssertEqual(payload.identityKey, "99")
     }
 
@@ -112,30 +112,42 @@ final class ChatRealtimeTypingPayloadTests: XCTestCase {
 
     func testSystemActorTypeIsNeverSelf() {
         let payload = makePayload(
-            actorType: "system",
             user: "system@medsim.local",
-            displayInitials: "TP"
+            displayInitials: "TP",
+            actorType: "system",
         )
-        XCTAssertFalse(payload.isFromCurrentUser(currentUserId: nil, currentUserUuid: nil, currentUserEmail: "system@medsim.local"))
-        XCTAssertFalse(payload.isFromCurrentUser(currentUserId: 0, currentUserUuid: nil, currentUserEmail: nil))
+        XCTAssertFalse(payload.isFromCurrentUser(
+            currentUserId: nil,
+            currentUserUuid: nil,
+            currentUserEmail: "system@medsim.local",
+        ))
+        XCTAssertFalse(payload.isFromCurrentUser(
+            currentUserId: 0,
+            currentUserUuid: nil,
+            currentUserEmail: nil,
+        ))
     }
 
     // MARK: - isFromCurrentUser: allows another user (Case F)
 
     func testAnotherUserIsNotSelf() {
         let payload = makePayload(
+            user: "other@example.com",
             actorType: "user",
             senderId: 55,
-            user: "other@example.com"
         )
-        XCTAssertFalse(payload.isFromCurrentUser(currentUserId: 7, currentUserUuid: nil, currentUserEmail: "me@example.com"))
+        XCTAssertFalse(payload.isFromCurrentUser(
+            currentUserId: 7,
+            currentUserUuid: nil,
+            currentUserEmail: "me@example.com",
+        ))
     }
 
     // MARK: - identity does not use initials (Case G)
 
     func testTwoUsersWithSameInitialsGetDistinctKeys() {
-        let p1 = makePayload(actorUserId: 10, displayInitials: "JD")
-        let p2 = makePayload(actorUserId: 20, displayInitials: "JD")
+        let p1 = makePayload(displayInitials: "JD", actorUserId: 10)
+        let p2 = makePayload(displayInitials: "JD", actorUserId: 20)
         XCTAssertNotEqual(p1.identityKey, p2.identityKey)
     }
 
@@ -201,7 +213,7 @@ final class ChatRealtimeTypingPayloadTests: XCTestCase {
         XCTAssertFalse(payload.isFromCurrentUser(
             currentUserId: nil,
             currentUserUuid: nil,
-            currentUserEmail: "system@medsim.local"
+            currentUserEmail: "system@medsim.local",
         ))
     }
 
@@ -223,7 +235,7 @@ final class ChatRealtimeTypingPayloadTests: XCTestCase {
             actorType: actorType,
             senderId: senderId,
             actorUserId: actorUserId,
-            actorUserUuid: actorUserUuid
+            actorUserUuid: actorUserUuid,
         )
     }
 }
