@@ -266,13 +266,13 @@ public struct RunConsoleView: View {
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         let regularVitalsMetrics = RunConsoleRegularVitalsMetrics.standard
-        let orderedVitals = self.orderedVitals
+        let vitals = orderedVitals
 
         return VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : regularVitalsMetrics.sectionSpacing) {
             Text("Patient Vitals")
                 .font(.subheadline.bold())
 
-            if orderedVitals.isEmpty {
+            if vitals.isEmpty {
                 Text(
                     isSeedingSession
                         ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
@@ -286,14 +286,14 @@ public struct RunConsoleView: View {
             } else if layoutMode == .regular {
                 regularVitalsContent(
                     metrics: regularVitalsMetrics,
-                    vitals: orderedVitals,
+                    vitals: vitals,
                 )
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
                     spacing: compactMetrics.gridSpacing,
                 ) {
-                    ForEach(orderedVitals) { vital in
+                    ForEach(vitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
                     }
                 }
@@ -1375,7 +1375,7 @@ public struct RunConsoleView: View {
     // MARK: - Operational log
 
     private func bottomLogPane(layoutMode _: RunConsoleLayoutMode) -> some View {
-        let operationalItems = self.operationalItems
+        let recentItems = operationalItems
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -1409,7 +1409,7 @@ public struct RunConsoleView: View {
             }
 
             if isOperationalLogExpanded {
-                operationalLogEntries(items: operationalItems)
+                operationalLogEntries(items: recentItems)
             } else {
                 Text("Tap to view recent runtime events.")
                     .font(.caption)
