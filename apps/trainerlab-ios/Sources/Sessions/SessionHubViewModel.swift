@@ -3,6 +3,86 @@ import Networking
 import Realtime
 import SharedModels
 
+public enum TrainerSessionScenarioPreset: String, CaseIterable, Identifiable, Sendable {
+    case trauma
+    case airway
+    case shock
+
+    public var id: String {
+        rawValue
+    }
+
+    public var title: String {
+        switch self {
+        case .trauma:
+            "Trauma"
+        case .airway:
+            "Airway"
+        case .shock:
+            "Shock"
+        }
+    }
+
+    var defaultDiagnosis: String {
+        switch self {
+        case .trauma:
+            "Undifferentiated trauma"
+        case .airway:
+            "Airway compromise"
+        case .shock:
+            "Shock"
+        }
+    }
+
+    var defaultModifiers: [String] {
+        switch self {
+        case .trauma:
+            ["night-ops", "limited-resources"]
+        case .airway:
+            ["limited-airway-equipment", "rapid-deterioration"]
+        case .shock:
+            ["limited-blood-products", "delayed-evacuation"]
+        }
+    }
+}
+
+public struct TrainerSessionCreateDraft: Equatable, Sendable {
+    public var preset: TrainerSessionScenarioPreset
+    public var patientSeed: String
+    public var directives: String
+    public var tickIntervalSeconds: Int
+
+    public init(
+        preset: TrainerSessionScenarioPreset = .trauma,
+        patientSeed: String = "Altered mental status",
+        directives: String = "Begin with unstable vitals and evolving airway compromise.",
+        tickIntervalSeconds: Int = 10,
+    ) {
+        self.preset = preset
+        self.patientSeed = patientSeed
+        self.directives = directives
+        self.tickIntervalSeconds = tickIntervalSeconds
+    }
+
+    public static let `default` = Self()
+
+    public var request: TrainerSessionCreateRequest {
+        let trimmedPatientSeed = patientSeed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDirectives = directives.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return TrainerSessionCreateRequest(
+            scenarioSpec: [
+                "diagnosis": .string(preset.defaultDiagnosis),
+                "chief_complaint": .string(trimmedPatientSeed.isEmpty ? "Altered mental status" : trimmedPatientSeed),
+                "scenario_preset": .string(preset.rawValue),
+                "tick_interval_seconds": .number(Double(tickIntervalSeconds)),
+            ],
+            directives: trimmedDirectives.isEmpty ? nil : trimmedDirectives,
+            modifiers: preset.defaultModifiers,
+        )
+    }
+}
+
 @MainActor
 public final class SessionHubViewModel: ObservableObject {
     @Published public private(set) var sessions: [TrainerSessionDTO] = []
@@ -195,20 +275,12 @@ public final class SessionHubViewModel: ObservableObject {
         )
     }
 
-    public func createSession() async {
+    public func createSession(draft: TrainerSessionCreateDraft = .default) async {
         isLoading = true
         presentableError = nil
         defer { isLoading = false }
 
-        let request = TrainerSessionCreateRequest(
-            scenarioSpec: [
-                "diagnosis": .string("Undifferentiated trauma"),
-                "chief_complaint": .string("Altered mental status"),
-                "tick_interval_seconds": .number(10),
-            ],
-            directives: "Begin with unstable vitals and evolving airway compromise.",
-            modifiers: ["night-ops", "limited-resources"],
-        )
+        let request = draft.request
 
         do {
             let idempotencyKey = makeIdempotencyKey(scope: "session.create")

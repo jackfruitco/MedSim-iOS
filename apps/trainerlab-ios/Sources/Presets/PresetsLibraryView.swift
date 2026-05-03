@@ -17,6 +17,8 @@ public struct PresetsLibraryView: View {
     @State private var draftIsActive = true
     @State private var shareSearch = ""
     @State private var sharingPreset: ScenarioInstruction?
+    @State private var presetPendingDelete: ScenarioInstruction?
+    @State private var showDeleteConfirmation = false
 
     public init(viewModel: PresetsViewModel, activeSimulationID: Int?) {
         self.viewModel = viewModel
@@ -41,6 +43,28 @@ public struct PresetsLibraryView: View {
             .sheet(item: $sharingPreset) { preset in
                 presetShareSheet(preset: preset)
                     .presentationDetents([.medium, .large])
+            }
+            .confirmationDialog(
+                "Delete this preset?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible,
+            ) {
+                Button("Delete Preset", role: .destructive) {
+                    guard let preset = presetPendingDelete else { return }
+                    Task {
+                        await viewModel.deletePreset(id: preset.id)
+                        if selectedPresetID == preset.id {
+                            selectedPresetID = nil
+                            resetDraftForNewPreset()
+                        }
+                        presetPendingDelete = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    presetPendingDelete = nil
+                }
+            } message: {
+                Text("Deleting removes this preset from the library. Active runs keep any changes that were already applied.")
             }
             .onReceive(viewModel.$presets) { presets in
                 syncSelection(with: presets, layoutMode: layoutMode)
@@ -259,7 +283,7 @@ public struct PresetsLibraryView: View {
         }
 
         let deleteButton = Button("Delete", role: .destructive) {
-            Task { await viewModel.deletePreset(id: preset.id) }
+            requestDeletePreset(preset)
         }
 
         let shareButton = Button("Share") {
@@ -277,7 +301,7 @@ public struct PresetsLibraryView: View {
             editButton
             duplicateButton
             shareButton
-            if let activeSimulationID {
+            if PresetsApplyAvailability.canApplyPreset(activeSimulationID: activeSimulationID), let activeSimulationID {
                 Button("Apply") {
                     Task { await viewModel.applyPreset(id: preset.id, simulationID: activeSimulationID) }
                 }
@@ -293,7 +317,7 @@ public struct PresetsLibraryView: View {
             shareButton
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let activeSimulationID {
+            if PresetsApplyAvailability.canApplyPreset(activeSimulationID: activeSimulationID), let activeSimulationID {
                 Button("Apply") {
                     Task { await viewModel.applyPreset(id: preset.id, simulationID: activeSimulationID) }
                 }
@@ -358,7 +382,7 @@ public struct PresetsLibraryView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    if let activeSimulationID {
+                    if PresetsApplyAvailability.canApplyPreset(activeSimulationID: activeSimulationID), let activeSimulationID {
                         Button("Apply") {
                             Task { await viewModel.applyPreset(id: selectedPreset.id, simulationID: activeSimulationID) }
                         }
@@ -366,11 +390,7 @@ public struct PresetsLibraryView: View {
                     }
 
                     Button("Delete", role: .destructive) {
-                        Task {
-                            await viewModel.deletePreset(id: selectedPreset.id)
-                            selectedPresetID = nil
-                            resetDraftForNewPreset()
-                        }
+                        requestDeletePreset(selectedPreset)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -510,6 +530,11 @@ public struct PresetsLibraryView: View {
         draftSeverity = "moderate"
         draftIsActive = true
         shareSearch = ""
+    }
+
+    private func requestDeletePreset(_ preset: ScenarioInstruction) {
+        presetPendingDelete = preset
+        showDeleteConfirmation = true
     }
 
     private func saveCurrentDraft() async {

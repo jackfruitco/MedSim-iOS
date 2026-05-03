@@ -15,6 +15,21 @@ private final class MockSessionHubService: TrainerLabServiceProtocol, @unchecked
     var listSessionsResult = PaginatedResponse<TrainerSessionDTO>(items: [], nextCursor: nil, hasMore: false)
     var listSessionsError: Error?
     var listSessionsDelayNanoseconds: UInt64 = 0
+    var createSessionCalls: [(request: TrainerSessionCreateRequest, idempotencyKey: String)] = []
+    var createSessionResult = TrainerSessionDTO(
+        simulationID: 900,
+        status: .seeding,
+        scenarioSpec: [:],
+        runtimeState: [:],
+        initialDirectives: nil,
+        tickIntervalSeconds: 10,
+        runStartedAt: nil,
+        runPausedAt: nil,
+        runCompletedAt: nil,
+        lastAITickAt: nil,
+        createdAt: Date(timeIntervalSince1970: 50),
+        modifiedAt: Date(timeIntervalSince1970: 100),
+    )
 
     func listSessions(limit: Int, cursor: String?, status: String?, query: String?) async throws -> PaginatedResponse<TrainerSessionDTO> {
         listSessionsCalls.append((limit: limit, cursor: cursor, status: status, query: query))
@@ -34,8 +49,9 @@ private final class MockSessionHubService: TrainerLabServiceProtocol, @unchecked
         throw SessionHubMockError.unused
     }
 
-    func createSession(request _: TrainerSessionCreateRequest, idempotencyKey _: String) async throws -> TrainerSessionDTO {
-        throw SessionHubMockError.unused
+    func createSession(request: TrainerSessionCreateRequest, idempotencyKey: String) async throws -> TrainerSessionDTO {
+        createSessionCalls.append((request: request, idempotencyKey: idempotencyKey))
+        return createSessionResult
     }
 
     func getSession(simulationID _: Int) async throws -> TrainerSessionDTO {
@@ -550,6 +566,30 @@ final class SessionHubViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.sessions.isEmpty)
         XCTAssertEqual(realtime.disconnectCallCount, 1)
         XCTAssertFalse(viewModel.isRealtimeConnected)
+    }
+
+    func testCreateSessionUsesExplicitDraftRequest() async {
+        let service = MockSessionHubService()
+        let created = session(simulationID: 901, status: .seeding)
+        service.createSessionResult = created
+        let viewModel = SessionHubViewModel(service: service)
+        let draft = TrainerSessionCreateDraft(
+            preset: .shock,
+            patientSeed: "Hypotensive blast injury",
+            directives: "Make perfusion the primary teaching focus.",
+            tickIntervalSeconds: 20,
+        )
+
+        await viewModel.createSession(draft: draft)
+
+        XCTAssertEqual(service.createSessionCalls.count, 1)
+        XCTAssertEqual(service.createSessionCalls.first?.request.scenarioSpec["diagnosis"], .string("Shock"))
+        XCTAssertEqual(service.createSessionCalls.first?.request.scenarioSpec["chief_complaint"], .string("Hypotensive blast injury"))
+        XCTAssertEqual(service.createSessionCalls.first?.request.scenarioSpec["scenario_preset"], .string("shock"))
+        XCTAssertEqual(service.createSessionCalls.first?.request.scenarioSpec["tick_interval_seconds"], .number(20))
+        XCTAssertEqual(service.createSessionCalls.first?.request.directives, "Make perfusion the primary teaching focus.")
+        XCTAssertEqual(service.createSessionCalls.first?.request.modifiers, ["limited-blood-products", "delayed-evacuation"])
+        XCTAssertEqual(viewModel.sessions.first?.simulationID, created.simulationID)
     }
 
     private func page(
