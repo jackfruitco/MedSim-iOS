@@ -182,7 +182,7 @@ public struct ChatRealtimeTypingPayload: Codable, Sendable, Equatable {
     public func isFromCurrentUser(
         currentUserId: Int?,
         currentUserUuid: String?,
-        currentUserEmail: String?
+        currentUserEmail: String?,
     ) -> Bool {
         guard normalizedActorType == "user" else {
             return false

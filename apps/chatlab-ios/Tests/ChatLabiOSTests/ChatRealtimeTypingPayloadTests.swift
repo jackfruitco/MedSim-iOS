@@ -2,7 +2,6 @@
 import XCTest
 
 final class ChatRealtimeTypingPayloadTests: XCTestCase {
-
     // MARK: - identityKey
 
     func testIdentityKeyPrefersActorUserUuid() {
@@ -226,7 +225,7 @@ final class ChatRealtimeTypingPayloadTests: XCTestCase {
         actorType: String? = nil,
         senderId: Int? = nil,
         actorUserId: Int? = nil,
-        actorUserUuid: String? = nil
+        actorUserUuid: String? = nil,
     ) -> ChatRealtimeTypingPayload {
         ChatRealtimeTypingPayload(
             conversationID: conversationID,

@@ -839,7 +839,7 @@ final class ChatRunStoreTests: XCTestCase {
         ))
 
         try await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertTrue(store.activeTypingUsers.isEmpty, "Self typing via actor_user_id must not appear")
+        XCTAssertNil(store.typingUsersByConversation[patientConversation.id], "Self typing via actor_user_id must not appear")
     }
 
     func testSelfTypingBySenderIdIsNotDisplayed() async throws {
@@ -874,7 +874,7 @@ final class ChatRunStoreTests: XCTestCase {
         ))
 
         try await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertTrue(store.activeTypingUsers.isEmpty, "Self typing via sender_id must not appear")
+        XCTAssertNil(store.typingUsersByConversation[patientConversation.id], "Self typing via sender_id must not appear")
     }
 
     func testLegacyEmailOnlySelfTypingIsNotDisplayed() async throws {
@@ -910,7 +910,7 @@ final class ChatRunStoreTests: XCTestCase {
         ))
 
         try await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertTrue(store.activeTypingUsers.isEmpty, "Legacy email-only self typing must not appear")
+        XCTAssertNil(store.typingUsersByConversation[patientConversation.id], "Legacy email-only self typing must not appear")
     }
 
     func testUuidOnlySelfTypingIsNotDisplayed() async throws {
@@ -945,7 +945,7 @@ final class ChatRunStoreTests: XCTestCase {
         ))
 
         try await Task.sleep(nanoseconds: 100_000_000)
-        XCTAssertTrue(store.activeTypingUsers.isEmpty, "UUID-only self typing must not appear")
+        XCTAssertNil(store.typingUsersByConversation[patientConversation.id], "UUID-only self typing must not appear")
     }
 
     func testSimulationOwnerMismatchDoesNotSuppressOtherUser() async throws {
@@ -1086,7 +1086,9 @@ final class ChatRunStoreTests: XCTestCase {
             ],
         ))
 
-        try await waitUntil { store.activeTypingUsers.count == 2 }
+        try await waitUntil {
+            store.activeTypingUsers.contains("alpha@example.com") && store.activeTypingUsers.contains("beta@example.com")
+        }
         XCTAssertTrue(store.activeTypingUsers.contains("alpha@example.com"))
         XCTAssertTrue(store.activeTypingUsers.contains("beta@example.com"))
 
@@ -1103,7 +1105,9 @@ final class ChatRunStoreTests: XCTestCase {
             ],
         ))
 
-        try await waitUntil { store.activeTypingUsers.count == 1 }
+        try await waitUntil {
+            !store.activeTypingUsers.contains("alpha@example.com") && store.activeTypingUsers.contains("beta@example.com")
+        }
         XCTAssertFalse(store.activeTypingUsers.contains("alpha@example.com"))
         XCTAssertTrue(store.activeTypingUsers.contains("beta@example.com"))
     }

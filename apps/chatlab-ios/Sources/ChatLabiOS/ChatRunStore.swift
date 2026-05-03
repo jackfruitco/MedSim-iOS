@@ -65,11 +65,11 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var typingUsersByConversation: [Int: [String]] = [:]
     @Published public private(set) var hasMoreByConversation: [Int: Bool] = [:]
 
-    // Internal stable-keyed store: identity key → display string, per conversation.
     private struct TypingEntry: Equatable {
         let key: String
         let display: String
     }
+
     private var typingEntries: [Int: [TypingEntry]] = [:]
 
     @Published public private(set) var isMessagesLoading = false
@@ -804,7 +804,7 @@ public final class ChatRunStore: ObservableObject {
         if payload.isFromCurrentUser(
             currentUserId: currentUserIdentity.id,
             currentUserUuid: currentUserIdentity.uuid,
-            currentUserEmail: currentUserIdentity.email
+            currentUserEmail: currentUserIdentity.email,
         ) {
             if var entries = typingEntries[conversationID], entries.contains(where: { $0.key == key }) {
                 entries.removeAll { $0.key == key }
