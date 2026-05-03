@@ -211,7 +211,6 @@ public struct ChatRunView: View {
         }
     }
 
-    @ViewBuilder
     private func compactGlassChrome(
         cornerRadius: CGFloat,
         tint: Color?,
