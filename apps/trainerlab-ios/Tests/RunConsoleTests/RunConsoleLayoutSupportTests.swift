@@ -242,6 +242,21 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         )
     }
 
+    func testVitalsPresentationOrdersPreferredKeysBeforeFallbacks() {
+        let vitals = [
+            makeVital(key: "temperature"),
+            makeVital(key: "blood_pressure"),
+            makeVital(key: "heart_rate"),
+            makeVital(key: "custom_alpha"),
+            makeVital(key: "spo2"),
+        ]
+
+        XCTAssertEqual(
+            RunConsoleVitalsPresentation.orderedVitals(vitals).map(\.key),
+            ["heart_rate", "spo2", "blood_pressure", "custom_alpha", "temperature"],
+        )
+    }
+
     func testLifecycleActionsMatchSessionStatus() {
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeding), [])
         XCTAssertEqual(RunConsoleLifecycleAction.visibleActions(for: .seeded), [.start])
@@ -314,6 +329,20 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(row.title, "Summary Updated")
         XCTAssertNil(row.detail)
         XCTAssertEqual(row.canonicalEventType, SimulationEventType.simulationSummaryUpdated)
+    }
+
+    func testOperationalLogPresentationReturnsRecentUniqueItemsWithLimit() {
+        let events = [
+            makeEvent(id: "evt-1", createdAt: Date(timeIntervalSince1970: 1)),
+            makeEvent(id: "evt-2", createdAt: Date(timeIntervalSince1970: 2)),
+            makeEvent(id: "evt-1", createdAt: Date(timeIntervalSince1970: 3)),
+            makeEvent(id: "evt-3", createdAt: Date(timeIntervalSince1970: 4)),
+        ]
+
+        XCTAssertEqual(
+            RunConsoleOperationalLogPresentation.recentUniqueItems(from: events, limit: 2).map(\.eventID),
+            ["evt-3", "evt-1"],
+        )
     }
 
     func testAvailableAccessInventoryDerivesIVAndIOAvailability() {
@@ -1038,6 +1067,25 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
 
 private func makeDictionary(_ types: [String]) -> [InterventionGroup] {
     types.map { InterventionGroup(interventionType: $0, label: $0, sites: []) }
+}
+
+private func makeEvent(id: String, createdAt: Date) -> EventEnvelope {
+    EventEnvelope(
+        eventID: id,
+        eventType: SimulationEventType.simulationStatusUpdated,
+        createdAt: createdAt,
+        correlationID: nil,
+        payload: [:],
+    )
+}
+
+private func makeVital(key: String) -> VitalStatusSnapshot {
+    VitalStatusSnapshot(
+        key: key,
+        minValue: 0,
+        maxValue: 100,
+        currentValue: 50,
+    )
 }
 
 private func makeInterventionAnnotation(

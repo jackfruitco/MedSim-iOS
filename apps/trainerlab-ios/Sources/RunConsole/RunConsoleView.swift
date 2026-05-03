@@ -36,6 +36,7 @@ public struct RunConsoleView: View {
     @State private var isLoadingRuntimeState = false
     @State private var showScenarioBriefEditSheet = false
     @State private var showAIDebugDetails = false
+    @State private var scenarioBriefEditDraft: ScenarioBriefEditDraft?
     @Namespace private var segmentNS
 
     @State private var interventionTargetProblemID: Int?
@@ -154,14 +155,11 @@ public struct RunConsoleView: View {
             }
             .presentationDetents([.fraction(0.55)])
         }
-        .sheet(isPresented: $showScenarioBriefEditSheet) {
-            if let brief = store.scenarioBrief {
-                ScenarioBriefEditSheet(brief: brief) { request in
-                    store.updateScenarioBrief(request)
-                    showScenarioBriefEditSheet = false
-                }
-                .presentationDetents([.fraction(0.65)])
+        .sheet(item: $scenarioBriefEditDraft) { draft in
+            ScenarioBriefEditSheet(brief: draft.brief) { request in
+                store.updateScenarioBrief(request)
             }
+            .presentationDetents([.fraction(0.65)])
         }
         .task {
             store.startConsole()
@@ -292,12 +290,13 @@ public struct RunConsoleView: View {
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
         let regularVitalsMetrics = RunConsoleRegularVitalsMetrics.standard
+        let vitals = orderedVitals
 
         return VStack(alignment: .leading, spacing: layoutMode == .compact ? compactMetrics.sectionSpacing : regularVitalsMetrics.sectionSpacing) {
             Text("Patient Vitals")
                 .font(.subheadline.bold())
 
-            if orderedVitals.isEmpty {
+            if vitals.isEmpty {
                 Text(
                     isSeedingSession
                         ? "Seeding scenario. Vital ranges will appear once the runtime is ready."
@@ -309,13 +308,16 @@ public struct RunConsoleView: View {
                     regularAVPUInlineControl(metrics: regularVitalsMetrics)
                 }
             } else if layoutMode == .regular {
-                regularVitalsContent(metrics: regularVitalsMetrics)
+                regularVitalsContent(
+                    metrics: regularVitalsMetrics,
+                    vitals: vitals,
+                )
             } else {
                 LazyVGrid(
                     columns: compactVitalsColumns(for: compactMetrics),
                     spacing: compactMetrics.gridSpacing,
                 ) {
-                    ForEach(orderedVitals) { vital in
+                    ForEach(vitals) { vital in
                         compactVitalCell(vital, compactMetrics: compactMetrics)
                     }
                 }
@@ -753,7 +755,7 @@ public struct RunConsoleView: View {
                 if canMutate {
                     HStack {
                         Spacer()
-                        Button { showScenarioBriefEditSheet = true } label: {
+                        Button { scenarioBriefEditDraft = ScenarioBriefEditDraft(brief: brief) } label: {
                             Label("Edit Brief", systemImage: "pencil.circle")
                                 .font(.caption)
                         }
@@ -1308,19 +1310,22 @@ public struct RunConsoleView: View {
     // MARK: - Timeline pane
 
     private func centerTimelinePane(layoutMode: RunConsoleLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let entries = filteredTimelineEntries
+        let entryKeys = entries.map(\.dedupeKey)
+
+        return VStack(alignment: .leading, spacing: 10) {
             timelineHeader(layoutMode: layoutMode)
 
-            if filteredTimelineEntries.isEmpty {
+            if entries.isEmpty {
                 Text(selectedTimelineFilter == .all ? "No timeline entries yet" : "No matching timeline entries")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 8)
             } else {
-                timelineEntries
+                timelineEntries(entries: entries)
             }
         }
-        .onChange(of: filteredTimelineEntryKeys) { _, keys in
+        .onChange(of: entryKeys) { _, keys in
             guard
                 let expandedTimelineEntryKey,
                 !keys.contains(expandedTimelineEntryKey)
@@ -1332,9 +1337,9 @@ public struct RunConsoleView: View {
         .trainerCardStyle()
     }
 
-    private var timelineEntries: some View {
+    private func timelineEntries(entries: [ClinicalTimelineEntry]) -> some View {
         LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(filteredTimelineEntries.prefix(160)) { item in
+            ForEach(entries.prefix(160)) { item in
                 timelineEntryRow(item)
             }
         }
@@ -1460,7 +1465,9 @@ public struct RunConsoleView: View {
     // MARK: - Operational log
 
     private func bottomLogPane(layoutMode _: RunConsoleLayoutMode) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let recentItems = operationalItems
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -1492,7 +1499,7 @@ public struct RunConsoleView: View {
             }
 
             if isOperationalLogExpanded {
-                operationalLogEntries
+                operationalLogEntries(items: recentItems)
             } else {
                 Text("Tap to view recent runtime events.")
                     .font(.caption)
@@ -1503,30 +1510,16 @@ public struct RunConsoleView: View {
         .trainerCardStyle(background: TrainerLabTheme.tacticalSurfaceElevated)
     }
 
-    private var operationalLogEntries: some View {
+    private func operationalLogEntries(items: [EventEnvelope]) -> some View {
         LazyVStack(alignment: .leading, spacing: 6) {
-            if operationalItems.isEmpty {
+            if items.isEmpty {
                 Text("No runtime events yet")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ForEach(operationalItems.prefix(30), id: \.eventID) { item in
-                    let row = RunConsoleOperationalLogPresentation.row(for: item)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("[\(item.createdAt.formatted(date: .omitted, time: .standard))] \(row.title)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
-                        if let detail = row.detail {
-                            Text(detail)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(row.canonicalEventType)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(items) { item in
+                    OperationalLogRowView(item: item)
                 }
             }
         }
@@ -2187,10 +2180,6 @@ public struct RunConsoleView: View {
         )
     }
 
-    private var filteredTimelineEntryKeys: [String] {
-        filteredTimelineEntries.map(\.dedupeKey)
-    }
-
     private func annotationOutcomeColor(_ outcome: AnnotationOutcome) -> Color {
         switch outcome {
         case .correct:
@@ -2299,22 +2288,11 @@ public struct RunConsoleView: View {
     }
 
     private var orderedVitals: [VitalStatusSnapshot] {
-        let preferred = ["heart_rate", "spo2", "etco2", "blood_pressure", "blood_glucose", "blood_glucose_level"]
-        return store.state.vitals.sorted { lhs, rhs in
-            let li = preferred.firstIndex(of: lhs.key) ?? Int.max
-            let ri = preferred.firstIndex(of: rhs.key) ?? Int.max
-            return li == ri ? lhs.key < rhs.key : li < ri
-        }
+        RunConsoleVitalsPresentation.orderedVitals(store.state.vitals)
     }
 
     private var operationalItems: [EventEnvelope] {
-        var seen = Set<String>()
-        var result: [EventEnvelope] = []
-        for event in store.state.timeline.reversed() where !seen.contains(event.eventID) {
-            seen.insert(event.eventID)
-            result.append(event)
-        }
-        return result
+        RunConsoleOperationalLogPresentation.recentUniqueItems(from: store.state.timeline)
     }
 
     private var formattedStopwatch: String {
@@ -2570,23 +2548,29 @@ public struct RunConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func regularVitalsContent(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+    private func regularVitalsContent(
+        metrics: RunConsoleRegularVitalsMetrics,
+        vitals: [VitalStatusSnapshot],
+    ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .center, spacing: metrics.inlineGroupSpacing) {
-                regularVitalsRow(metrics: metrics)
+                regularVitalsRow(metrics: metrics, vitals: vitals)
                 regularAVPUInlineControl(metrics: metrics)
             }
 
             VStack(alignment: .leading, spacing: metrics.fallbackRowSpacing) {
-                regularVitalsRow(metrics: metrics)
+                regularVitalsRow(metrics: metrics, vitals: vitals)
                 regularAVPUInlineControl(metrics: metrics)
             }
         }
     }
 
-    private func regularVitalsRow(metrics: RunConsoleRegularVitalsMetrics) -> some View {
+    private func regularVitalsRow(
+        metrics: RunConsoleRegularVitalsMetrics,
+        vitals: [VitalStatusSnapshot],
+    ) -> some View {
         HStack(alignment: .top, spacing: metrics.vitalsRowSpacing) {
-            ForEach(orderedVitals) { vital in
+            ForEach(vitals) { vital in
                 regularVitalCell(vital, metrics: metrics)
             }
         }
@@ -2672,6 +2656,36 @@ public struct RunConsoleView: View {
             simulationDisplayName: store.state.session.map { "Simulation #\($0.simulationID)" },
             simulationStatus: store.state.session?.status.rawValue,
         )
+    }
+}
+
+private struct ScenarioBriefEditDraft: Identifiable {
+    let id = UUID()
+    let brief: ScenarioBriefOut
+}
+
+private struct OperationalLogRowView: View {
+    let item: EventEnvelope
+
+    private var row: RunConsoleOperationalLogRow {
+        RunConsoleOperationalLogPresentation.row(for: item)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("[\(item.createdAt.formatted(date: .omitted, time: .standard))] \(row.title)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+            if let detail = row.detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Text(row.canonicalEventType)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -3153,6 +3167,7 @@ private struct ScenarioBriefEditSheet: View {
                             evacuationTime: evacuationTime.isEmpty ? nil : evacuationTime,
                             specialConsiderations: parseList(from: specialConsiderations),
                         ))
+                        dismiss()
                     }
                     .disabled(readAloudBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

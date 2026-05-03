@@ -309,6 +309,25 @@ enum RunConsoleTimelineFilter: Hashable, CaseIterable, Identifiable {
     }
 }
 
+enum RunConsoleVitalsPresentation {
+    private static let preferredVitalKeyOrder: [String: Int] = [
+        "heart_rate": 0,
+        "spo2": 1,
+        "etco2": 2,
+        "blood_pressure": 3,
+        "blood_glucose": 4,
+        "blood_glucose_level": 5,
+    ]
+
+    static func orderedVitals(_ vitals: [VitalStatusSnapshot]) -> [VitalStatusSnapshot] {
+        vitals.sorted { lhs, rhs in
+            let lhsIndex = preferredVitalKeyOrder[lhs.key] ?? Int.max
+            let rhsIndex = preferredVitalKeyOrder[rhs.key] ?? Int.max
+            return lhsIndex == rhsIndex ? lhs.key < rhs.key : lhsIndex < rhsIndex
+        }
+    }
+}
+
 struct RunConsoleCompactMetrics {
     let sectionSpacing: CGFloat
     let cardPadding: CGFloat
