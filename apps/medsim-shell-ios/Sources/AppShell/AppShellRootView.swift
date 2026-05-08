@@ -228,6 +228,7 @@ private struct TrainerLabWorkspace: View {
                             Task { await model.sessionHubViewModel.loadSessions() }
                         },
                         onOpenSummary: { showSummary = true },
+                        onOpenPresets: { showPresets = true },
                     )
                 } else {
                     SessionHubView(
@@ -269,6 +270,7 @@ private struct RunConsoleScreen: View {
     let session: TrainerSessionDTO
     let onBack: () -> Void
     let onOpenSummary: () -> Void
+    let onOpenPresets: () -> Void
 
     @StateObject private var store: RunSessionStore
 
@@ -277,11 +279,13 @@ private struct RunConsoleScreen: View {
         session: TrainerSessionDTO,
         onBack: @escaping () -> Void,
         onOpenSummary: @escaping () -> Void,
+        onOpenPresets: @escaping () -> Void,
     ) {
         self.model = model
         self.session = session
         self.onBack = onBack
         self.onOpenSummary = onOpenSummary
+        self.onOpenPresets = onOpenPresets
         _store = StateObject(wrappedValue: model.makeRunSessionStore(session: session))
     }
 
@@ -292,6 +296,7 @@ private struct RunConsoleScreen: View {
             feedbackHeaderProvider: model.feedbackHeaderProvider,
             onBack: onBack,
             onOpenSummary: onOpenSummary,
+            onOpenPresets: onOpenPresets,
         )
         .appShellOrientationLock(.iPadLandscape)
     }

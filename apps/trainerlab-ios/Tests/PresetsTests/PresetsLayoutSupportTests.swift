@@ -67,4 +67,9 @@ final class PresetsLayoutSupportTests: XCTestCase {
             11,
         )
     }
+
+    func testApplyAvailabilityRequiresActiveSimulation() {
+        XCTAssertTrue(PresetsApplyAvailability.canApplyPreset(activeSimulationID: 42))
+        XCTAssertFalse(PresetsApplyAvailability.canApplyPreset(activeSimulationID: nil))
+    }
 }
