@@ -133,7 +133,7 @@ public final class ChatRunStore: ObservableObject {
         service: ChatLabServiceProtocol,
         realtimeClient: ChatRealtimeClientProtocol,
         simulation: ChatSimulation,
-        currentUserIdentity: ChatCurrentUserIdentity = ChatCurrentUserIdentity(),
+        currentUserIdentity: ChatCurrentUserIdentity,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient

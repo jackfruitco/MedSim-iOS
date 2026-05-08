@@ -236,7 +236,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -254,7 +259,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -286,7 +296,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -317,7 +332,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -353,7 +373,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -382,7 +407,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -410,7 +440,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -440,7 +475,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -474,7 +514,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -541,7 +586,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -580,7 +630,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = [initialAIMessage]
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -613,7 +668,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -644,7 +704,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -669,7 +734,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
 
@@ -995,7 +1065,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
         try await waitUntil { store.activeConversationID == patientConversation.id }
@@ -1028,7 +1103,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
         try await waitUntil { store.activeConversationID == patientConversation.id }
@@ -1057,7 +1137,12 @@ final class ChatRunStoreTests: XCTestCase {
         service.messagesByConversation[patientConversation.id] = []
 
         let realtime = TestRealtimeClient()
-        let store = ChatRunStore(service: service, realtimeClient: realtime, simulation: simulation)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
         store.start()
         defer { store.stop() }
         try await waitUntil { store.activeConversationID == patientConversation.id }
