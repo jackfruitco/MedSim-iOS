@@ -65,6 +65,13 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var typingUsersByConversation: [Int: [String]] = [:]
     @Published public private(set) var hasMoreByConversation: [Int: Bool] = [:]
 
+    private struct TypingEntry: Equatable {
+        let key: String
+        let display: String
+    }
+
+    private var typingEntries: [Int: [TypingEntry]] = [:]
+
     @Published public private(set) var isMessagesLoading = false
     @Published public private(set) var isOlderLoading = false
     @Published public private(set) var socketDisconnected = false
@@ -95,6 +102,7 @@ public final class ChatRunStore: ObservableObject {
 
     private let service: ChatLabServiceProtocol
     private let realtimeClient: ChatRealtimeClientProtocol
+    private let currentUserIdentity: ChatCurrentUserIdentity
     private var eventTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
@@ -125,10 +133,12 @@ public final class ChatRunStore: ObservableObject {
         service: ChatLabServiceProtocol,
         realtimeClient: ChatRealtimeClientProtocol,
         simulation: ChatSimulation,
+        currentUserIdentity: ChatCurrentUserIdentity,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
         self.simulation = simulation
+        self.currentUserIdentity = currentUserIdentity
         if simulation.status == .failed {
             simulationFailureText = simulation.terminalReasonText.isEmpty
                 ? "Initial patient generation failed."
@@ -518,13 +528,17 @@ public final class ChatRunStore: ObservableObject {
 
         if event.eventType == ChatRealtimeEventType.typingStarted {
             runStoreLogger.debug("Received transient typing.started event_id=\(event.eventID, privacy: .public)")
-            setTyping(event.payload, started: true)
+            if let payload = try? event.typingPayload() {
+                setTyping(payload, started: true)
+            }
             return
         }
 
         if event.eventType == ChatRealtimeEventType.typingStopped {
             runStoreLogger.debug("Received transient typing.stopped event_id=\(event.eventID, privacy: .public)")
-            setTyping(event.payload, started: false)
+            if let payload = try? event.typingPayload() {
+                setTyping(payload, started: false)
+            }
             return
         }
 
@@ -779,23 +793,41 @@ public final class ChatRunStore: ObservableObject {
         return false
     }
 
-    private func setTyping(_ payload: [String: JSONValue], started: Bool) {
-        guard let rawUser = string(payload, keys: ["user"]) else { return }
-        let conversationID = int(payload, keys: ["conversation_id"]) ?? activeConversationID ?? 0
-        guard conversationID > 0 else { return }
-        let user = rawUser == "system@medsim.local"
-            ? simulation.patientDisplayName
-            : rawUser
+    private func setTyping(_ payload: ChatRealtimeTypingPayload, started: Bool) {
+        let key = payload.identityKey
+        guard key != "unknown" else { return }
 
-        var users = typingUsersByConversation[conversationID] ?? []
+        let conversationID = payload.conversationID ?? activeConversationID ?? 0
+        guard conversationID > 0 else { return }
+
+        // Defensively remove self-typing events regardless of backend suppression.
+        if payload.isFromCurrentUser(
+            currentUserId: currentUserIdentity.id,
+            currentUserUuid: currentUserIdentity.uuid,
+            currentUserEmail: currentUserIdentity.email,
+        ) {
+            if var entries = typingEntries[conversationID], entries.contains(where: { $0.key == key }) {
+                entries.removeAll { $0.key == key }
+                typingEntries[conversationID] = entries.isEmpty ? nil : entries
+                typingUsersByConversation[conversationID] = entries.map(\.display)
+            }
+            return
+        }
+
+        let isSystem = payload.normalizedActorType == "system"
+            || payload.user == "system@medsim.local"
+        let display = isSystem ? simulation.patientDisplayName : (payload.user ?? key)
+
+        var entries = typingEntries[conversationID] ?? []
         if started {
-            if !users.contains(user), user != localUserMarker {
-                users.append(user)
+            if !entries.contains(where: { $0.key == key }) {
+                entries.append(TypingEntry(key: key, display: display))
             }
         } else {
-            users.removeAll(where: { $0 == user })
+            entries.removeAll { $0.key == key }
         }
-        typingUsersByConversation[conversationID] = users
+        typingEntries[conversationID] = entries
+        typingUsersByConversation[conversationID] = entries.map(\.display)
     }
 
     private func handleSimulationStatusUpdated(_ payload: [String: JSONValue]) {
@@ -1366,6 +1398,7 @@ public final class ChatRunStore: ObservableObject {
     }
 
     private func clearRemoteTypingUsers() {
+        typingEntries.removeAll(keepingCapacity: true)
         typingUsersByConversation.removeAll(keepingCapacity: true)
     }
 

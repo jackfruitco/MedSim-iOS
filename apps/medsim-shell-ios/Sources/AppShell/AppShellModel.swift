@@ -183,10 +183,14 @@ public final class AppShellModel: ObservableObject {
         let realtime = ChatRealtimeClient(
             authLoader: apiClient,
         )
+        let identity = ChatCurrentUserIdentity(
+            email: authViewModel.email.isEmpty ? nil : authViewModel.email,
+        )
         return ChatRunStore(
             service: chatService,
             realtimeClient: realtime,
             simulation: simulation,
+            currentUserIdentity: identity,
         )
     }
 

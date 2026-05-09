@@ -147,10 +147,68 @@ public struct ChatRealtimeTypingPayload: Codable, Sendable, Equatable {
     public let user: String?
     public let displayInitials: String?
 
+    // Enriched identity fields from backend (optional; absent on older payloads)
+    public let actorType: String?
+    public let senderId: Int?
+    public let actorUserId: Int?
+    public let actorUserUuid: String?
+
     enum CodingKeys: String, CodingKey {
         case conversationID = "conversation_id"
         case user
         case displayInitials = "display_initials"
+        case actorType = "actor_type"
+        case senderId = "sender_id"
+        case actorUserId = "actor_user_id"
+        case actorUserUuid = "actor_user_uuid"
+    }
+
+    /// Stable key for store identity: prefers UUID > actorUserId > senderId > user email.
+    public var identityKey: String {
+        actorUserUuid
+            ?? actorUserId.map(String.init)
+            ?? senderId.map(String.init)
+            ?? user
+            ?? "unknown"
+    }
+
+    /// Treats a missing actor_type as "user" for backward compatibility.
+    public var normalizedActorType: String {
+        actorType ?? "user"
+    }
+
+    /// Returns true when the payload belongs to the currently authenticated user.
+    /// System/simulated-patient payloads (actor_type == "system") always return false.
+    public func isFromCurrentUser(
+        currentUserId: Int?,
+        currentUserUuid: String?,
+        currentUserEmail: String?,
+    ) -> Bool {
+        guard normalizedActorType == "user" else {
+            return false
+        }
+
+        if let actorUserId, let currentUserId, actorUserId == currentUserId {
+            return true
+        }
+
+        if let senderId, let currentUserId, senderId == currentUserId {
+            return true
+        }
+
+        if let actorUserUuid, let currentUserUuid,
+           actorUserUuid.lowercased() == currentUserUuid.lowercased()
+        {
+            return true
+        }
+
+        if let user, let currentUserEmail,
+           user.lowercased() == currentUserEmail.lowercased()
+        {
+            return true
+        }
+
+        return false
     }
 }
 
