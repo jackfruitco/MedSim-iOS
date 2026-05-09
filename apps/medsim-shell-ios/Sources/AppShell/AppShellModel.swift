@@ -184,8 +184,6 @@ public final class AppShellModel: ObservableObject {
             authLoader: apiClient,
         )
         let identity = ChatCurrentUserIdentity(
-            id: simulation.userID,
-            uuid: nil,
             email: authViewModel.email.isEmpty ? nil : authViewModel.email,
         )
         return ChatRunStore(
