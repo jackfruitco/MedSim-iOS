@@ -437,6 +437,8 @@ public enum ChatSimulationEventKind: Sendable, Equatable {
     case simulationStatusUpdated
     case guardStateUpdated
     case guardWarningUpdated
+    case voiceSessionCreated
+    case voiceSessionUpdated
     case unknown(rawValue: String)
 
     public init(rawEventType: String) {
@@ -461,6 +463,10 @@ public enum ChatSimulationEventKind: Sendable, Equatable {
             self = .guardStateUpdated
         case SimulationEventType.guardWarningUpdated:
             self = .guardWarningUpdated
+        case SimulationEventType.voiceSessionCreated:
+            self = .voiceSessionCreated
+        case SimulationEventType.voiceSessionUpdated:
+            self = .voiceSessionUpdated
         default:
             self = .unknown(rawValue: SimulationEventRegistry.canonicalize(rawEventType))
         }
@@ -582,6 +588,178 @@ public struct ChatCreateMessageRequest: Codable, Sendable {
         case content
         case messageType = "message_type"
         case conversationID = "conversation_id"
+    }
+}
+
+public enum ChatVoiceTransport: String, Codable, Sendable, Equatable {
+    case webRTC = "webrtc"
+    case webSocket = "websocket"
+}
+
+public enum ChatVoiceSessionStatus: String, Codable, Sendable, Equatable {
+    case configuring
+    case active
+    case ended
+    case failed
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = (try? container.decode(String.self)) ?? ""
+        self = Self(rawValue: value) ?? .unknown
+    }
+}
+
+public struct ChatVoiceSessionCreateRequest: Codable, Sendable, Equatable {
+    public let conversationID: Int?
+    public let transport: ChatVoiceTransport
+    public let model: String?
+    public let voice: String?
+    public let idempotencyKey: String
+    public let clientMetadata: [String: JSONValue]
+
+    public init(
+        conversationID: Int?,
+        transport: ChatVoiceTransport = .webSocket,
+        model: String? = nil,
+        voice: String? = nil,
+        idempotencyKey: String,
+        clientMetadata: [String: JSONValue] = [:],
+    ) {
+        self.conversationID = conversationID
+        self.transport = transport
+        self.model = model
+        self.voice = voice
+        self.idempotencyKey = idempotencyKey
+        self.clientMetadata = clientMetadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case conversationID = "conversation_id"
+        case transport
+        case model
+        case voice
+        case idempotencyKey = "idempotency_key"
+        case clientMetadata = "client_metadata"
+    }
+}
+
+public struct ChatVoiceSession: Codable, Identifiable, Sendable, Equatable {
+    public let id: Int
+    public let uuid: String
+    public let simulationID: Int
+    public let conversationID: Int
+    public let status: ChatVoiceSessionStatus
+    public let transport: ChatVoiceTransport
+    public let provider: String
+    public let providerSessionID: String
+    public let model: String
+    public let voice: String
+    public let createdAt: Date
+    public let updatedAt: Date
+    public let endedAt: Date?
+    public let expiresAt: Date?
+    public let realtimeURL: String?
+    public let callsURL: String?
+    public let websocketURL: String?
+    public let clientSecret: [String: JSONValue]?
+    public let sessionConfig: [String: JSONValue]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case uuid
+        case simulationID = "simulation_id"
+        case conversationID = "conversation_id"
+        case status
+        case transport
+        case provider
+        case providerSessionID = "provider_session_id"
+        case model
+        case voice
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case endedAt = "ended_at"
+        case expiresAt = "expires_at"
+        case realtimeURL = "realtime_url"
+        case callsURL = "calls_url"
+        case websocketURL = "websocket_url"
+        case clientSecret = "client_secret"
+        case sessionConfig = "session_config"
+    }
+}
+
+public struct ChatVoiceTranscriptCreateRequest: Codable, Sendable, Equatable {
+    public let role: String
+    public let transcript: String
+    public let status: String
+    public let providerItemID: String?
+    public let providerResponseID: String?
+    public let providerEventID: String?
+    public let metadata: [String: JSONValue]
+
+    public init(
+        role: String,
+        transcript: String,
+        status: String = "final",
+        providerItemID: String?,
+        providerResponseID: String?,
+        providerEventID: String?,
+        metadata: [String: JSONValue] = [:],
+    ) {
+        self.role = role
+        self.transcript = transcript
+        self.status = status
+        self.providerItemID = providerItemID
+        self.providerResponseID = providerResponseID
+        self.providerEventID = providerEventID
+        self.metadata = metadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case role
+        case transcript
+        case status
+        case providerItemID = "provider_item_id"
+        case providerResponseID = "provider_response_id"
+        case providerEventID = "provider_event_id"
+        case metadata
+    }
+}
+
+public struct ChatVoiceTranscriptResponse: Codable, Sendable, Equatable {
+    public let persisted: Bool
+    public let message: ChatMessage
+}
+
+public struct ChatVoiceToolCallRequest: Codable, Sendable, Equatable {
+    public let toolCallID: String
+    public let name: String
+    public let arguments: [String: JSONValue]
+
+    public init(toolCallID: String, name: String, arguments: [String: JSONValue]) {
+        self.toolCallID = toolCallID
+        self.name = name
+        self.arguments = arguments
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case toolCallID = "tool_call_id"
+        case name
+        case arguments
+    }
+}
+
+public struct ChatVoiceToolCallResponse: Codable, Sendable, Equatable {
+    public let toolCallID: String
+    public let name: String
+    public let status: String
+    public let output: [String: JSONValue]
+
+    enum CodingKeys: String, CodingKey {
+        case toolCallID = "tool_call_id"
+        case name
+        case status
+        case output
     }
 }
 

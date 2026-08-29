@@ -48,13 +48,15 @@ final class SimulationEventRegistryTests: XCTestCase {
             "patient.vital.updated",
             "patient.pulse.created",
             "patient.pulse.updated",
+            "voice.session.created",
+            "voice.session.updated",
             "guard.state.updated",
             "guard.warning.updated",
         ])
 
         XCTAssertEqual(Set(SimulationEventType.allCanonicalDurable), expected)
         XCTAssertEqual(SimulationEventRegistry.knownCanonicalDurableEventTypes, expected)
-        XCTAssertEqual(expected.count, 46)
+        XCTAssertEqual(expected.count, 48)
 
         for eventType in expected {
             XCTAssertEqual(SimulationEventRegistry.canonicalize(eventType), eventType)

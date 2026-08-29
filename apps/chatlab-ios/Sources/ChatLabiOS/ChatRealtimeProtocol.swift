@@ -61,6 +61,8 @@ public enum ChatRealtimeEventType {
         SimulationEventType.patientPulseUpdated,
         SimulationEventType.guardStateUpdated,
         SimulationEventType.guardWarningUpdated,
+        SimulationEventType.voiceSessionCreated,
+        SimulationEventType.voiceSessionUpdated,
     ]
 
     public static let transientEventTypes: Set<String> = [

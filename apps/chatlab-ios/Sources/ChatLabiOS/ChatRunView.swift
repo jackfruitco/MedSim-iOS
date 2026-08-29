@@ -146,6 +146,7 @@ public struct ChatRunView: View {
                         messageTimeline(layoutMode: .padWorkspace, chromeMode: chromeMode)
                         awaitingReplyWarning(horizontalPadding: 0)
                         typingIndicator(horizontalPadding: 0)
+                        voiceStatusIndicator(horizontalPadding: 0)
                         composer(layoutMode: .padWorkspace)
                     }
                     .frame(maxWidth: 920, maxHeight: .infinity, alignment: .top)
@@ -192,6 +193,7 @@ public struct ChatRunView: View {
                         VStack(spacing: 6) {
                             awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
                             typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                            voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
                             composer(layoutMode: layoutMode)
                         }
                         .padding(.horizontal, horizontalInset(for: layoutMode))
@@ -673,6 +675,36 @@ public struct ChatRunView: View {
             }
 
             HStack(spacing: 8) {
+                if store.isVoiceSessionActive {
+                    Button {
+                        store.toggleVoiceMute()
+                    } label: {
+                        Image(systemName: store.isVoiceMuted ? "mic.slash.fill" : "mic.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
+                    .help(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
+
+                    Button {
+                        store.endVoiceSession()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("End voice")
+                    .help("End voice")
+                } else {
+                    Button {
+                        store.startVoiceSession()
+                    } label: {
+                        Image(systemName: "mic.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(store.canStartVoiceSession == false)
+                    .accessibilityLabel("Start voice")
+                    .help("Start voice")
+                }
+
                 TextField(
                     store.activeConversationLocked ? "This conversation is read-only" : "Message",
                     text: $store.draftText,
@@ -714,6 +746,55 @@ public struct ChatRunView: View {
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func voiceStatusIndicator(horizontalPadding: CGFloat) -> some View {
+        if let text = store.voiceStatusText {
+            HStack {
+                Label {
+                    Text(text)
+                        .font(.footnote)
+                } icon: {
+                    Image(systemName: voiceStatusIcon)
+                }
+                .foregroundStyle(voiceStatusColor)
+                Spacer()
+            }
+            .padding(.horizontal, horizontalPadding)
+        }
+    }
+
+    private var voiceStatusIcon: String {
+        switch store.voiceConnectionState {
+        case .live:
+            "waveform"
+        case .muted:
+            "mic.slash.fill"
+        case .requestingPermission, .connecting:
+            "dot.radiowaves.left.and.right"
+        case .ending:
+            "stop.fill"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        case .idle:
+            "mic.fill"
+        }
+    }
+
+    private var voiceStatusColor: Color {
+        switch store.voiceConnectionState {
+        case .live:
+            .green
+        case .muted:
+            .orange
+        case .failed:
+            .red
+        case .requestingPermission, .connecting, .ending:
+            .blue
+        case .idle:
+            .secondary
+        }
     }
 
     private func failureBanner(

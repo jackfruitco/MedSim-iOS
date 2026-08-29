@@ -78,6 +78,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var transportState: ChatRealtimeConnectionState = .idle
     @Published public private(set) var lastRealtimeSignalAt: Date?
     @Published public private(set) var lastEventID: String?
+    @Published public private(set) var voiceConnectionState: ChatVoiceConnectionState = .idle
+    @Published public private(set) var activeVoiceSession: ChatVoiceSession?
 
     /// True when the transport reports `.connected` but no realtime signal has been received
     /// within `foregroundRecoveryGraceSeconds`. The view uses this instead of re-implementing
@@ -102,9 +104,13 @@ public final class ChatRunStore: ObservableObject {
 
     private let service: ChatLabServiceProtocol
     private let realtimeClient: ChatRealtimeClientProtocol
+    private let voiceClient: ChatVoiceRealtimeClientProtocol
     private let currentUserIdentity: ChatCurrentUserIdentity
     private var eventTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
+    private var voiceEventTask: Task<Void, Never>?
+    private var voiceStateTask: Task<Void, Never>?
+    private var voiceSessionTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var typingStopTask: Task<Void, Never>?
     private var hasStarted = false
@@ -132,11 +138,13 @@ public final class ChatRunStore: ObservableObject {
     public init(
         service: ChatLabServiceProtocol,
         realtimeClient: ChatRealtimeClientProtocol,
+        voiceClient: ChatVoiceRealtimeClientProtocol = ChatVoiceRealtimeClient(),
         simulation: ChatSimulation,
         currentUserIdentity: ChatCurrentUserIdentity,
     ) {
         self.service = service
         self.realtimeClient = realtimeClient
+        self.voiceClient = voiceClient
         self.simulation = simulation
         self.currentUserIdentity = currentUserIdentity
         if simulation.status == .failed {
@@ -150,6 +158,9 @@ public final class ChatRunStore: ObservableObject {
     deinit {
         eventTask?.cancel()
         stateTask?.cancel()
+        voiceEventTask?.cancel()
+        voiceStateTask?.cancel()
+        voiceSessionTask?.cancel()
         heartbeatTask?.cancel()
         typingStopTask?.cancel()
         for task in awaitingReplyTasks.values {
@@ -180,6 +191,53 @@ public final class ChatRunStore: ObservableObject {
     public var activeConversationLocked: Bool {
         guard let activeConversation else { return false }
         return isConversationLocked(activeConversation)
+    }
+
+    public var canStartVoiceSession: Bool {
+        guard simulation.status == .inProgress,
+              let activeConversation,
+              isConversationLocked(activeConversation) == false
+        else {
+            return false
+        }
+        switch voiceConnectionState {
+        case .idle, .failed:
+            return true
+        case .requestingPermission, .connecting, .live, .muted, .ending:
+            return false
+        }
+    }
+
+    public var isVoiceSessionActive: Bool {
+        switch voiceConnectionState {
+        case .live, .muted:
+            true
+        case .idle, .requestingPermission, .connecting, .ending, .failed:
+            false
+        }
+    }
+
+    public var isVoiceMuted: Bool {
+        voiceConnectionState == .muted
+    }
+
+    public var voiceStatusText: String? {
+        switch voiceConnectionState {
+        case .idle:
+            nil
+        case .requestingPermission:
+            "Requesting microphone"
+        case .connecting:
+            "Connecting voice"
+        case .live:
+            "Voice live"
+        case .muted:
+            "Mic muted"
+        case .ending:
+            "Ending voice"
+        case let .failed(message):
+            message ?? "Voice failed"
+        }
     }
 
     public var activeAwaitingReplyWarningText: String? {
@@ -232,6 +290,24 @@ public final class ChatRunStore: ObservableObject {
             }
         }
 
+        voiceEventTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in voiceClient.events {
+                await MainActor.run {
+                    self.handleVoiceRealtimeEvent(event)
+                }
+            }
+        }
+
+        voiceStateTask = Task { [weak self] in
+            guard let self else { return }
+            for await state in voiceClient.connectionStates {
+                await MainActor.run {
+                    self.voiceConnectionState = state
+                }
+            }
+        }
+
         heartbeatTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -247,11 +323,17 @@ public final class ChatRunStore: ObservableObject {
         hasStarted = false
         eventTask?.cancel()
         stateTask?.cancel()
+        voiceEventTask?.cancel()
+        voiceStateTask?.cancel()
+        voiceSessionTask?.cancel()
         heartbeatTask?.cancel()
         typingStopTask?.cancel()
         toolRefreshTask?.cancel()
         eventTask = nil
         stateTask = nil
+        voiceEventTask = nil
+        voiceStateTask = nil
+        voiceSessionTask = nil
         heartbeatTask = nil
         typingStopTask = nil
         toolRefreshTask = nil
@@ -259,6 +341,9 @@ public final class ChatRunStore: ObservableObject {
         stopTypingIndicator()
         clearRemoteTypingUsers()
         realtimeClient.disconnect()
+        Task { await voiceClient.disconnect() }
+        activeVoiceSession = nil
+        voiceConnectionState = .idle
         transportState = .idle
         socketDisconnected = true
     }
@@ -428,6 +513,70 @@ public final class ChatRunStore: ObservableObject {
                 }
             } catch {
                 markPendingFailed(localID: localID, errorText: messageText(for: error))
+            }
+        }
+    }
+
+    public func startVoiceSession() {
+        guard canStartVoiceSession, let activeConversationID else { return }
+        let idempotencyKey = "chatlab-voice-\(simulation.id)-\(activeConversationID)-\(UUID().uuidString.lowercased())"
+        voiceConnectionState = .connecting
+
+        voiceSessionTask?.cancel()
+        voiceSessionTask = Task {
+            do {
+                let session = try await service.startVoiceSession(
+                    simulationID: simulation.id,
+                    request: ChatVoiceSessionCreateRequest(
+                        conversationID: activeConversationID,
+                        transport: .webSocket,
+                        idempotencyKey: idempotencyKey,
+                        clientMetadata: [
+                            "client": .string("ios"),
+                            "transport": .string("websocket"),
+                        ],
+                    ),
+                )
+                guard !Task.isCancelled, hasStarted else { return }
+                activeVoiceSession = session
+                try await voiceClient.connect(session: session)
+            } catch {
+                guard !Task.isCancelled else { return }
+                voiceConnectionState = .failed(message: messageText(for: error))
+                presentableError = AppErrorPresenter.present(error)
+            }
+        }
+    }
+
+    public func toggleVoiceMute() {
+        guard isVoiceSessionActive else { return }
+        let nextMuted = !isVoiceMuted
+        Task {
+            await voiceClient.setMuted(nextMuted)
+        }
+    }
+
+    public func endVoiceSession() {
+        guard let session = activeVoiceSession else {
+            Task { await voiceClient.disconnect() }
+            return
+        }
+        voiceConnectionState = .ending
+        voiceSessionTask?.cancel()
+        voiceSessionTask = Task {
+            await voiceClient.disconnect()
+            guard !Task.isCancelled else { return }
+            do {
+                let ended = try await service.endVoiceSession(
+                    simulationID: simulation.id,
+                    voiceSessionUUID: session.uuid,
+                )
+                activeVoiceSession = ended
+                voiceConnectionState = .idle
+            } catch {
+                guard !Task.isCancelled else { return }
+                voiceConnectionState = .failed(message: messageText(for: error))
+                presentableError = AppErrorPresenter.present(error)
             }
         }
     }
@@ -604,8 +753,108 @@ public final class ChatRunStore: ObservableObject {
             Task { await refreshGuardState() }
             return .applied(needsToolRefresh: false)
 
+        case .voiceSessionCreated, .voiceSessionUpdated:
+            handleVoiceSessionEvent(event.payload)
+            return .applied(needsToolRefresh: false)
+
         case .unknown:
             return isDurableEventType(event.eventType) ? .acknowledgedNoOp : .ignored
+        }
+    }
+
+    private func handleVoiceRealtimeEvent(_ event: ChatVoiceRealtimeEvent) {
+        switch event {
+        case let .transcript(transcript):
+            persistVoiceTranscript(transcript)
+
+        case let .toolCall(toolCall):
+            executeVoiceToolCall(toolCall)
+
+        case .outputAudio, .remoteSpeechStarted, .remoteSpeechStopped:
+            break
+
+        case let .error(message):
+            voiceConnectionState = .failed(message: message)
+            presentableError = PresentableAppError(
+                title: "Voice Error",
+                message: message,
+                debugMessage: nil,
+                correlationID: nil,
+                recoveryActionLabel: "Start Again",
+            )
+        }
+    }
+
+    private func persistVoiceTranscript(_ transcript: ChatVoiceTranscriptEvent) {
+        guard let activeVoiceSession else { return }
+        Task {
+            do {
+                let response = try await service.persistVoiceTranscript(
+                    simulationID: simulation.id,
+                    voiceSessionUUID: activeVoiceSession.uuid,
+                    request: ChatVoiceTranscriptCreateRequest(
+                        role: transcript.role,
+                        transcript: transcript.transcript,
+                        providerItemID: transcript.providerItemID,
+                        providerResponseID: transcript.providerResponseID,
+                        providerEventID: transcript.providerEventID,
+                        metadata: transcript.metadata,
+                    ),
+                )
+                if response.persisted {
+                    upsertMessage(mapMessage(response.message))
+                    seenMessageIDs.insert(response.message.id)
+                }
+            } catch {
+                voiceConnectionState = .failed(message: messageText(for: error))
+                presentableError = AppErrorPresenter.present(error)
+            }
+        }
+    }
+
+    private func executeVoiceToolCall(_ toolCall: ChatVoiceToolCallEvent) {
+        guard let activeVoiceSession else { return }
+        Task {
+            do {
+                let response = try await service.executeVoiceToolCall(
+                    simulationID: simulation.id,
+                    voiceSessionUUID: activeVoiceSession.uuid,
+                    request: ChatVoiceToolCallRequest(
+                        toolCallID: toolCall.toolCallID,
+                        name: toolCall.name,
+                        arguments: toolCall.arguments,
+                    ),
+                )
+                try await voiceClient.sendToolResult(
+                    toolCallID: response.toolCallID,
+                    output: response.output,
+                )
+                scheduleToolRefresh(reason: "voice.tool_call")
+            } catch {
+                voiceConnectionState = .failed(message: messageText(for: error))
+                presentableError = AppErrorPresenter.present(error)
+            }
+        }
+    }
+
+    private func handleVoiceSessionEvent(_ payload: [String: JSONValue]) {
+        guard let uuid = string(payload, keys: ["voice_session_uuid"]),
+              uuid == activeVoiceSession?.uuid
+        else {
+            return
+        }
+
+        switch string(payload, keys: ["status"]) {
+        case "ended":
+            voiceConnectionState = .idle
+        case "failed":
+            voiceConnectionState = .failed(message: "Voice session failed.")
+        case "active":
+            if voiceConnectionState != .muted {
+                voiceConnectionState = .live
+            }
+        default:
+            break
         }
     }
 

@@ -52,6 +52,8 @@ public enum SimulationEventType {
 
     public static let guardStateUpdated = "guard.state.updated"
     public static let guardWarningUpdated = "guard.warning.updated"
+    public static let voiceSessionCreated = "voice.session.created"
+    public static let voiceSessionUpdated = "voice.session.updated"
 
     public static let connected = "connected"
     public static let disconnected = "disconnected"
@@ -109,6 +111,8 @@ public enum SimulationEventType {
         patientPulseUpdated,
         guardStateUpdated,
         guardWarningUpdated,
+        voiceSessionCreated,
+        voiceSessionUpdated,
     ]
 
     public static let transientSocketOnly: [String] = [
@@ -694,6 +698,16 @@ public enum SimulationEventRegistry {
             [],
             [.explicitNoOp],
         ),
+        SimulationEventType.voiceSessionCreated: (
+            ["chat.voice"],
+            [],
+            [.chatActivity],
+        ),
+        SimulationEventType.voiceSessionUpdated: (
+            ["chat.voice"],
+            [],
+            [.chatActivity],
+        ),
     ]
 
     public static let runtimeRefreshTriggerEventTypes: Set<String> = [
@@ -991,6 +1005,10 @@ public enum SimulationEventRegistry {
             return "Vital Update"
         case SimulationEventType.patientPulseCreated, SimulationEventType.patientPulseUpdated:
             return "Pulse Update"
+        case SimulationEventType.voiceSessionCreated:
+            return "Voice Session Started"
+        case SimulationEventType.voiceSessionUpdated:
+            return "Voice Session Updated"
         default:
             return humanizedLabel(canonical)
         }
@@ -1026,6 +1044,13 @@ public enum SimulationEventRegistry {
                 return "Message marked \(humanizedLabel(status).lowercased())."
             }
             return "Message delivery updated."
+        case SimulationEventType.voiceSessionCreated:
+            return "Voice conversation connected."
+        case SimulationEventType.voiceSessionUpdated:
+            if let status = payloadString(payload, keys: ["status"]) {
+                return "Voice conversation \(humanizedLabel(status).lowercased())."
+            }
+            return "Voice conversation updated."
         default:
             return payloadPrimaryText(payload) ?? "\(displayTitle(for: canonical, payload: payload, previousStatus: previousStatus)) received."
         }
