@@ -37,6 +37,7 @@ public final class RunSessionStore: ObservableObject {
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
     /// Exposed for debug surfaces and diagnostic tooling.
     @Published public private(set) var lastSnapshotRefreshError: Error?
+    @Published public private(set) var lastRuntimeStateRefreshAt: Date?
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
@@ -254,6 +255,7 @@ public final class RunSessionStore: ObservableObject {
         aiInstructorIntent = nil
         aiInstructorNotes = []
         lastSnapshotRefreshError = nil
+        lastRuntimeStateRefreshAt = nil
         debriefAnnotations = []
         state.causeAnnotations = []
         state.problemAnnotations = []
@@ -306,6 +308,7 @@ public final class RunSessionStore: ObservableObject {
             )
             lastSnapshotRefreshError = nil
             applyRuntimeState(rs, source: reason)
+            lastRuntimeStateRefreshAt = Date()
             return rs
         } catch {
             logger.error(
@@ -757,6 +760,7 @@ public final class RunSessionStore: ObservableObject {
         learningObjective: AnnotationLearningObjective,
         outcome: AnnotationOutcome,
         linkedEventID: Int? = nil,
+        elapsedSecondsAt: Int? = nil,
     ) {
         let trimmed = observationText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -769,7 +773,7 @@ public final class RunSessionStore: ObservableObject {
                 learningObjective: learningObjective,
                 outcome: outcome,
                 linkedEventID: linkedEventID,
-                elapsedSecondsAt: state.stopwatchElapsedSeconds,
+                elapsedSecondsAt: elapsedSecondsAt ?? state.stopwatchElapsedSeconds,
             )
 
             do {
