@@ -559,19 +559,18 @@ public struct RunConsoleView: View {
 
     // MARK: - Conflict banner
 
+    @ViewBuilder
     private var conflictBanner: some View {
-        Group {
-            if let error = store.conflictError {
-                InlineAppErrorView(error: error)
-            } else {
-                Text(store.state.conflictBanner ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(TrainerLabTheme.danger.opacity(0.9))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
+        if let error = store.conflictError {
+            InlineAppErrorView(error: error)
+        } else {
+            Text(store.state.conflictBanner ?? "")
+                .font(.caption)
+                .foregroundStyle(.white)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(TrainerLabTheme.danger.opacity(0.9))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
@@ -640,16 +639,15 @@ public struct RunConsoleView: View {
         )
     }
 
+    @ViewBuilder
     private func avpuControlSection(
         layoutMode: RunConsoleLayoutMode,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
-        Group {
-            if layoutMode == .regular {
-                regularAVPUInlineControl(metrics: .standard)
-            } else {
-                compactAVPUControl(compactMetrics: compactMetrics)
-            }
+        if layoutMode == .regular {
+            regularAVPUInlineControl(metrics: .standard)
+        } else {
+            compactAVPUControl(compactMetrics: compactMetrics)
         }
     }
 
@@ -1121,42 +1119,41 @@ public struct RunConsoleView: View {
         }
     }
 
+    @ViewBuilder
     private var sessionPreparationBanner: some View {
-        Group {
-            if isSeedingSession {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .center, spacing: 12) {
-                        ProgressView()
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Seeding scenario...")
-                                .font(.subheadline.bold())
-                            Text("TrainerLab is preparing the initial scenario. Controls will unlock when the session is ready.")
-                                .font(.caption)
+        if isSeedingSession {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center, spacing: 12) {
+                    ProgressView()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Seeding scenario...")
+                            .font(.subheadline.bold())
+                        Text("TrainerLab is preparing the initial scenario. Controls will unlock when the session is ready.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    if let createdAt = store.state.session?.createdAt {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Elapsed")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            Text(createdAt, style: .timer)
+                                .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
-                        Spacer(minLength: 0)
-                        if let createdAt = store.state.session?.createdAt {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("Elapsed")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.secondary)
-                                Text(createdAt, style: .timer)
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
                     }
-
-                    seedingMilestones
                 }
-                .padding(12)
-                .background(TrainerLabTheme.warning.opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
-                )
+
+                seedingMilestones
             }
+            .padding(12)
+            .background(TrainerLabTheme.warning.opacity(0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
+            )
         }
     }
 
@@ -1410,11 +1407,21 @@ public struct RunConsoleView: View {
 
     private func patientStatusDetailSectionCount(_ status: RuntimePatientStatus) -> Int {
         var count = 0
-        if !status.teachingFlags.isEmpty { count += 1 }
-        if !store.assessmentFindings.isEmpty { count += 1 }
-        if !store.diagnosticResults.isEmpty { count += 1 }
-        if !store.resources.isEmpty { count += 1 }
-        if store.disposition != nil { count += 1 }
+        if !status.teachingFlags.isEmpty {
+            count += 1
+        }
+        if !store.assessmentFindings.isEmpty {
+            count += 1
+        }
+        if !store.diagnosticResults.isEmpty {
+            count += 1
+        }
+        if !store.resources.isEmpty {
+            count += 1
+        }
+        if store.disposition != nil {
+            count += 1
+        }
         return count
     }
 

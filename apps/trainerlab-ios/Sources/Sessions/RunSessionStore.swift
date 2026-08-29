@@ -1352,8 +1352,12 @@ public final class RunSessionStore: ObservableObject {
             let label = eventPrimaryLabel(from: event.payload) ?? "Recommendation"
             let targetProblemID = jsonInt(event.payload["target_problem_id"]).map(String.init)
             var metadata: [String: String] = [:]
-            if let targetProblemID { metadata["target_problem_id"] = targetProblemID }
-            if let priority = jsonString(event.payload["priority"]) { metadata["priority"] = priority }
+            if let targetProblemID {
+                metadata["target_problem_id"] = targetProblemID
+            }
+            if let priority = jsonString(event.payload["priority"]) {
+                metadata["priority"] = priority
+            }
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
                 kind: .recommendation,
@@ -1444,7 +1448,9 @@ public final class RunSessionStore: ObservableObject {
                 "effectiveness": effectiveness,
                 "intervention_status": status,
             ]
-            if let supersedesID { meta["superseded_by"] = supersedesID }
+            if let supersedesID {
+                meta["superseded_by"] = supersedesID
+            }
 
             // Mark any superseded entry
             if let supersedesID {
@@ -1829,8 +1835,12 @@ public final class RunSessionStore: ObservableObject {
             return .down
         }
         if let oldSecondary, let newSecondary {
-            if newSecondary > oldSecondary { return .up }
-            if newSecondary < oldSecondary { return .down }
+            if newSecondary > oldSecondary {
+                return .up
+            }
+            if newSecondary < oldSecondary {
+                return .down
+            }
         }
         return .flat
     }
@@ -2948,7 +2958,9 @@ public final class RunSessionStore: ObservableObject {
         switch value {
         case let .array(values):
             return values.compactMap { element in
-                if let intValue = jsonInt(element) { return intValue }
+                if let intValue = jsonInt(element) {
+                    return intValue
+                }
                 guard case let .object(object) = element else { return nil }
                 return jsonInt(object["recommendation_id"])
             }

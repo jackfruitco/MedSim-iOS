@@ -1455,9 +1455,15 @@ enum RunConsolePatientDiagramSupport {
         }
 
         var parts: [String] = []
-        if let plane { parts.append(plane) }
-        if let resolvedSide { parts.append(resolvedSide) }
-        if let region { parts.append(region) }
+        if let plane {
+            parts.append(plane)
+        }
+        if let resolvedSide {
+            parts.append(resolvedSide)
+        }
+        if let region {
+            parts.append(region)
+        }
 
         if parts.isEmpty {
             return cleaned.replacingOccurrences(of: "_", with: " ").capitalized
@@ -1473,8 +1479,12 @@ enum RunConsolePatientDiagramSupport {
             .uppercased() ?? ""
         let tokens = cleaned.split(separator: "_").map(String.init)
 
-        if tokens.contains("RIGHT") { return "Right" }
-        if tokens.contains("LEFT") { return "Left" }
+        if tokens.contains("RIGHT") {
+            return "Right"
+        }
+        if tokens.contains("LEFT") {
+            return "Left"
+        }
         return nil
     }
 }
@@ -1654,7 +1664,9 @@ struct PulsingModifier: ViewModifier {
                 value: isPulsing,
             )
             .onAppear {
-                if active { isPulsing = true }
+                if active {
+                    isPulsing = true
+                }
             }
             .onChange(of: active) { _, newValue in
                 isPulsing = newValue

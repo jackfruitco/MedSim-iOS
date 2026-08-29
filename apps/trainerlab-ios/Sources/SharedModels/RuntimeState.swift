@@ -106,8 +106,12 @@ public struct InjuryAnnotation: Identifiable, Equatable, Sendable {
     }
 
     public var label: String {
-        if let displayName, !displayName.isEmpty { return displayName }
-        if !title.isEmpty { return title }
+        if let displayName, !displayName.isEmpty {
+            return displayName
+        }
+        if !title.isEmpty {
+            return title
+        }
         return summary
     }
 
@@ -248,7 +252,9 @@ public struct ProblemAnnotation: Identifiable, Equatable, Sendable {
     }
 
     public var label: String {
-        if let displayName, !displayName.isEmpty { return displayName }
+        if let displayName, !displayName.isEmpty {
+            return displayName
+        }
         return title
     }
 
