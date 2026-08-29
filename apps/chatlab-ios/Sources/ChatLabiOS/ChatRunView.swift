@@ -768,32 +768,32 @@ public struct ChatRunView: View {
     private var voiceStatusIcon: String {
         switch store.voiceConnectionState {
         case .live:
-            return "waveform"
+            "waveform"
         case .muted:
-            return "mic.slash.fill"
+            "mic.slash.fill"
         case .requestingPermission, .connecting:
-            return "dot.radiowaves.left.and.right"
+            "dot.radiowaves.left.and.right"
         case .ending:
-            return "stop.fill"
+            "stop.fill"
         case .failed:
-            return "exclamationmark.triangle.fill"
+            "exclamationmark.triangle.fill"
         case .idle:
-            return "mic.fill"
+            "mic.fill"
         }
     }
 
     private var voiceStatusColor: Color {
         switch store.voiceConnectionState {
         case .live:
-            return .green
+            .green
         case .muted:
-            return .orange
+            .orange
         case .failed:
-            return .red
+            .red
         case .requestingPermission, .connecting, .ending:
-            return .blue
+            .blue
         case .idle:
-            return .secondary
+            .secondary
         }
     }
 

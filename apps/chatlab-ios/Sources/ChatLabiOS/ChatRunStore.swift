@@ -211,9 +211,9 @@ public final class ChatRunStore: ObservableObject {
     public var isVoiceSessionActive: Bool {
         switch voiceConnectionState {
         case .live, .muted:
-            return true
+            true
         case .idle, .requestingPermission, .connecting, .ending, .failed:
-            return false
+            false
         }
     }
 
@@ -224,19 +224,19 @@ public final class ChatRunStore: ObservableObject {
     public var voiceStatusText: String? {
         switch voiceConnectionState {
         case .idle:
-            return nil
+            nil
         case .requestingPermission:
-            return "Requesting microphone"
+            "Requesting microphone"
         case .connecting:
-            return "Connecting voice"
+            "Connecting voice"
         case .live:
-            return "Voice live"
+            "Voice live"
         case .muted:
-            return "Mic muted"
+            "Mic muted"
         case .ending:
-            return "Ending voice"
+            "Ending voice"
         case let .failed(message):
-            return message ?? "Voice failed"
+            message ?? "Voice failed"
         }
     }
 

@@ -299,7 +299,9 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                     eventContinuation.yield(event)
                 }
             } catch {
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 voiceLogger.error("Voice realtime receive failed: \(String(describing: error), privacy: .public)")
                 eventContinuation.yield(.error(message: "Voice connection failed."))
                 stateContinuation.yield(.failed(message: "Voice connection failed."))
@@ -362,12 +364,12 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
         let input = engine.inputNode
         let inputFormat = input.inputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
             Task { @MainActor [weak self] in
-                guard let self, self.isMuted == false else { return }
+                guard let self, isMuted == false else { return }
                 let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
-                await self.sendAudioData(data)
+                await sendAudioData(data)
             }
         }
 
@@ -412,7 +414,7 @@ public enum ChatVoiceRealtimeClientError: Error, Equatable {
 }
 
 private enum ChatVoiceAudioCodec {
-    static let sampleRate: Double = 24_000
+    static let sampleRate: Double = 24000
     static let outputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: sampleRate, channels: 1, interleaved: false)!
 
     static func pcm16Data(from buffer: AVAudioPCMBuffer) -> Data {
