@@ -37,6 +37,7 @@ public final class RunSessionStore: ObservableObject {
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
     /// Exposed for debug surfaces and diagnostic tooling.
     @Published public private(set) var lastSnapshotRefreshError: Error?
+    @Published public private(set) var lastRuntimeStateRefreshAt: Date?
 
     private var eventTask: Task<Void, Never>?
     private var transportTask: Task<Void, Never>?
@@ -254,6 +255,7 @@ public final class RunSessionStore: ObservableObject {
         aiInstructorIntent = nil
         aiInstructorNotes = []
         lastSnapshotRefreshError = nil
+        lastRuntimeStateRefreshAt = nil
         debriefAnnotations = []
         state.causeAnnotations = []
         state.problemAnnotations = []
@@ -306,6 +308,7 @@ public final class RunSessionStore: ObservableObject {
             )
             lastSnapshotRefreshError = nil
             applyRuntimeState(rs, source: reason)
+            lastRuntimeStateRefreshAt = Date()
             return rs
         } catch {
             logger.error(
@@ -757,6 +760,7 @@ public final class RunSessionStore: ObservableObject {
         learningObjective: AnnotationLearningObjective,
         outcome: AnnotationOutcome,
         linkedEventID: Int? = nil,
+        elapsedSecondsAt: Int? = nil,
     ) {
         let trimmed = observationText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -769,7 +773,7 @@ public final class RunSessionStore: ObservableObject {
                 learningObjective: learningObjective,
                 outcome: outcome,
                 linkedEventID: linkedEventID,
-                elapsedSecondsAt: state.stopwatchElapsedSeconds,
+                elapsedSecondsAt: elapsedSecondsAt ?? state.stopwatchElapsedSeconds,
             )
 
             do {
@@ -1348,8 +1352,12 @@ public final class RunSessionStore: ObservableObject {
             let label = eventPrimaryLabel(from: event.payload) ?? "Recommendation"
             let targetProblemID = jsonInt(event.payload["target_problem_id"]).map(String.init)
             var metadata: [String: String] = [:]
-            if let targetProblemID { metadata["target_problem_id"] = targetProblemID }
-            if let priority = jsonString(event.payload["priority"]) { metadata["priority"] = priority }
+            if let targetProblemID {
+                metadata["target_problem_id"] = targetProblemID
+            }
+            if let priority = jsonString(event.payload["priority"]) {
+                metadata["priority"] = priority
+            }
             addClinicalTimelineEntry(
                 dedupeKey: "event:\(event.eventID)",
                 kind: .recommendation,
@@ -1440,7 +1448,9 @@ public final class RunSessionStore: ObservableObject {
                 "effectiveness": effectiveness,
                 "intervention_status": status,
             ]
-            if let supersedesID { meta["superseded_by"] = supersedesID }
+            if let supersedesID {
+                meta["superseded_by"] = supersedesID
+            }
 
             // Mark any superseded entry
             if let supersedesID {
@@ -1825,8 +1835,12 @@ public final class RunSessionStore: ObservableObject {
             return .down
         }
         if let oldSecondary, let newSecondary {
-            if newSecondary > oldSecondary { return .up }
-            if newSecondary < oldSecondary { return .down }
+            if newSecondary > oldSecondary {
+                return .up
+            }
+            if newSecondary < oldSecondary {
+                return .down
+            }
         }
         return .flat
     }
@@ -2944,7 +2958,9 @@ public final class RunSessionStore: ObservableObject {
         switch value {
         case let .array(values):
             return values.compactMap { element in
-                if let intValue = jsonInt(element) { return intValue }
+                if let intValue = jsonInt(element) {
+                    return intValue
+                }
                 guard case let .object(object) = element else { return nil }
                 return jsonInt(object["recommendation_id"])
             }

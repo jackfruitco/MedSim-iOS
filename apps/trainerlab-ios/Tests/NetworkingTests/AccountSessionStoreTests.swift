@@ -92,7 +92,9 @@ private actor BootstrapBarrier {
     }
 
     func waitUntilStarted() async {
-        if didStart { return }
+        if didStart {
+            return
+        }
         await withCheckedContinuation { continuation in
             startContinuation = continuation
         }

@@ -966,7 +966,9 @@ public final class ChatRunStore: ObservableObject {
         var ordered: [ChatMessageItem] = []
         for item in items {
             let key = item.serverID.map { "server-\($0)" } ?? item.id
-            if seen.contains(key) { continue }
+            if seen.contains(key) {
+                continue
+            }
             seen.insert(key)
             ordered.append(item)
         }

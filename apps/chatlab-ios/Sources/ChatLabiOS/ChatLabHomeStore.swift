@@ -221,7 +221,9 @@ public final class ChatLabHomeStore: ObservableObject {
         autoRefreshTask = Task { [weak self] in
             while let self, !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
-                if Task.isCancelled { break }
+                if Task.isCancelled {
+                    break
+                }
                 await refresh()
             }
         }
