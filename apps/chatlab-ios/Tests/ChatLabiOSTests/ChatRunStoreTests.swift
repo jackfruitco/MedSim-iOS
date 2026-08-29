@@ -9,6 +9,13 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var messagesByConversation: [Int: [ChatMessage]] = [:]
     var createdMessage: ChatMessage?
     var markReadCalls: [(simulationID: Int, messageID: Int)] = []
+    var startedVoiceSessions: [(simulationID: Int, request: ChatVoiceSessionCreateRequest)] = []
+    var voiceSession: ChatVoiceSession?
+    var endedVoiceSessions: [(simulationID: Int, uuid: String)] = []
+    var persistedVoiceTranscripts: [(simulationID: Int, uuid: String, request: ChatVoiceTranscriptCreateRequest)] = []
+    var voiceTranscriptResponse: ChatVoiceTranscriptResponse?
+    var executedVoiceToolCalls: [(simulationID: Int, uuid: String, request: ChatVoiceToolCallRequest)] = []
+    var voiceToolCallResponse: ChatVoiceToolCallResponse?
 
     func listSimulations(
         limit _: Int,
@@ -116,6 +123,46 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func submitLabOrders(simulationID _: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
         ChatLabOrdersResponse(status: "accepted", callID: "call-1", orders: request.orders)
+    }
+
+    func startVoiceSession(simulationID: Int, request: ChatVoiceSessionCreateRequest) async throws -> ChatVoiceSession {
+        startedVoiceSessions.append((simulationID, request))
+        guard let voiceSession else {
+            throw NSError(domain: "missing-voice-session", code: 404)
+        }
+        return voiceSession
+    }
+
+    func endVoiceSession(simulationID: Int, voiceSessionUUID: String) async throws -> ChatVoiceSession {
+        endedVoiceSessions.append((simulationID, voiceSessionUUID))
+        guard let voiceSession else {
+            throw NSError(domain: "missing-voice-session", code: 404)
+        }
+        return voiceSession
+    }
+
+    func persistVoiceTranscript(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceTranscriptCreateRequest,
+    ) async throws -> ChatVoiceTranscriptResponse {
+        persistedVoiceTranscripts.append((simulationID, voiceSessionUUID, request))
+        guard let voiceTranscriptResponse else {
+            throw NSError(domain: "missing-voice-transcript", code: 404)
+        }
+        return voiceTranscriptResponse
+    }
+
+    func executeVoiceToolCall(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceToolCallRequest,
+    ) async throws -> ChatVoiceToolCallResponse {
+        executedVoiceToolCalls.append((simulationID, voiceSessionUUID, request))
+        guard let voiceToolCallResponse else {
+            throw NSError(domain: "missing-voice-tool-call", code: 404)
+        }
+        return voiceToolCallResponse
     }
 
     func listModifierGroups(labType _: String) async throws -> [ModifierGroup] {
@@ -226,6 +273,63 @@ private final class TestRealtimeClient: ChatRealtimeClientProtocol, @unchecked S
 }
 
 @MainActor
+private final class TestVoiceRealtimeClient: ChatVoiceRealtimeClientProtocol, @unchecked Sendable {
+    let events: AsyncStream<ChatVoiceRealtimeEvent>
+    let connectionStates: AsyncStream<ChatVoiceConnectionState>
+
+    private let eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation
+    private let stateContinuation: AsyncStream<ChatVoiceConnectionState>.Continuation
+
+    private(set) var connectCalls: [ChatVoiceSession] = []
+    private(set) var mutedValues: [Bool] = []
+    private(set) var toolResults: [(toolCallID: String, output: [String: JSONValue])] = []
+    private(set) var disconnectCount = 0
+
+    init() {
+        var eventCont: AsyncStream<ChatVoiceRealtimeEvent>.Continuation!
+        events = AsyncStream<ChatVoiceRealtimeEvent> { continuation in
+            eventCont = continuation
+        }
+        eventContinuation = eventCont
+
+        var stateCont: AsyncStream<ChatVoiceConnectionState>.Continuation!
+        connectionStates = AsyncStream<ChatVoiceConnectionState> { continuation in
+            stateCont = continuation
+            continuation.yield(.idle)
+        }
+        stateContinuation = stateCont
+    }
+
+    func connect(session: ChatVoiceSession) async throws {
+        connectCalls.append(session)
+        stateContinuation.yield(.connecting)
+        stateContinuation.yield(.live)
+    }
+
+    func setMuted(_ isMuted: Bool) async {
+        mutedValues.append(isMuted)
+        stateContinuation.yield(isMuted ? .muted : .live)
+    }
+
+    func sendToolResult(toolCallID: String, output: [String: JSONValue]) async throws {
+        toolResults.append((toolCallID, output))
+    }
+
+    func disconnect() async {
+        disconnectCount += 1
+        stateContinuation.yield(.idle)
+    }
+
+    func pushEvent(_ event: ChatVoiceRealtimeEvent) {
+        eventContinuation.yield(event)
+    }
+
+    func pushState(_ state: ChatVoiceConnectionState) {
+        stateContinuation.yield(state)
+    }
+}
+
+@MainActor
 final class ChatRunStoreTests: XCTestCase {
     func testBootstrapUsesSimulationLatestEventIDForInitialStart() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
@@ -248,6 +352,142 @@ final class ChatRunStoreTests: XCTestCase {
         try await waitUntil {
             realtime.startCalls.first?.lastEventID == "evt-bootstrap" && store.lastEventID == "evt-bootstrap"
         }
+    }
+
+    func testStartVoiceSessionUsesWebSocketTransportAndConnectsVoiceClient() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.voiceSession = makeVoiceSession(conversationID: patientConversation.id)
+
+        let realtime = TestRealtimeClient()
+        let voice = TestVoiceRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            voiceClient: voice,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        store.startVoiceSession()
+
+        try await waitUntil { voice.connectCalls.count == 1 && store.voiceConnectionState == .live }
+        XCTAssertEqual(service.startedVoiceSessions.first?.simulationID, simulation.id)
+        XCTAssertEqual(service.startedVoiceSessions.first?.request.conversationID, patientConversation.id)
+        XCTAssertEqual(service.startedVoiceSessions.first?.request.transport, .webSocket)
+        XCTAssertFalse(service.startedVoiceSessions.first?.request.idempotencyKey.isEmpty ?? true)
+    }
+
+    func testVoiceTranscriptEventPersistsThroughBackendAndUpsertsMessage() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.voiceSession = makeVoiceSession(conversationID: patientConversation.id)
+        service.voiceTranscriptResponse = ChatVoiceTranscriptResponse(
+            persisted: true,
+            message: makeMessage(
+                id: 990,
+                conversationID: patientConversation.id,
+                isFromAI: false,
+                role: "user",
+                content: "I feel dizzy.",
+                displayName: "Learner",
+                deliveryStatus: .delivered,
+            ),
+        )
+
+        let realtime = TestRealtimeClient()
+        let voice = TestVoiceRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            voiceClient: voice,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        store.startVoiceSession()
+        try await waitUntil { voice.connectCalls.count == 1 }
+
+        voice.pushEvent(
+            .transcript(
+                ChatVoiceTranscriptEvent(
+                    role: "user",
+                    transcript: "I feel dizzy.",
+                    providerItemID: "item-user-1",
+                    providerResponseID: nil,
+                    providerEventID: "event-user-1",
+                    metadata: ["provider_event_type": .string("conversation.item.input_audio_transcription.completed")],
+                ),
+            ),
+        )
+
+        try await waitUntil { store.activeMessages.contains(where: { $0.serverID == 990 }) }
+        XCTAssertEqual(service.persistedVoiceTranscripts.first?.uuid, service.voiceSession?.uuid)
+        XCTAssertEqual(service.persistedVoiceTranscripts.first?.request.providerItemID, "item-user-1")
+        XCTAssertEqual(store.activeMessages.last?.content, "I feel dizzy.")
+    }
+
+    func testVoiceToolCallExecutesBackendAndReturnsOutputToRealtime() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.voiceSession = makeVoiceSession(conversationID: patientConversation.id)
+        service.voiceToolCallResponse = ChatVoiceToolCallResponse(
+            toolCallID: "call-1",
+            name: "patient_history",
+            status: "completed",
+            output: ["name": .string("patient_history"), "data": .array([])],
+        )
+
+        let realtime = TestRealtimeClient()
+        let voice = TestVoiceRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            voiceClient: voice,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        store.startVoiceSession()
+        try await waitUntil { voice.connectCalls.count == 1 }
+
+        voice.pushEvent(
+            .toolCall(
+                ChatVoiceToolCallEvent(
+                    toolCallID: "call-1",
+                    name: "patient_history",
+                    arguments: [:],
+                    providerResponseID: "response-1",
+                    providerEventID: "event-tool-1",
+                ),
+            ),
+        )
+
+        try await waitUntil { voice.toolResults.count == 1 }
+        XCTAssertEqual(service.executedVoiceToolCalls.first?.request.name, "patient_history")
+        XCTAssertEqual(voice.toolResults.first?.toolCallID, "call-1")
+        XCTAssertEqual(voice.toolResults.first?.output["name"], .string("patient_history"))
     }
 
     func testDurableEventAdvancesLastEventIDAndReplayAnchor() async throws {
@@ -820,6 +1060,30 @@ final class ChatRunStoreTests: XCTestCase {
             displayInitials: "JL",
             isLocked: false,
             createdAt: Date(),
+        )
+    }
+
+    private func makeVoiceSession(conversationID: Int) -> ChatVoiceSession {
+        ChatVoiceSession(
+            id: 501,
+            uuid: "voice-session-uuid",
+            simulationID: 42,
+            conversationID: conversationID,
+            status: .active,
+            transport: .webSocket,
+            provider: "openai",
+            providerSessionID: "realtime-session-1",
+            model: "gpt-realtime-test",
+            voice: "verse",
+            createdAt: Date(),
+            updatedAt: Date(),
+            endedAt: nil,
+            expiresAt: Date().addingTimeInterval(300),
+            realtimeURL: "https://api.openai.test/v1/realtime/client_secrets",
+            callsURL: nil,
+            websocketURL: "wss://api.openai.test/v1/realtime",
+            clientSecret: ["value": .string("ek_test")],
+            sessionConfig: ["type": .string("realtime"), "model": .string("gpt-realtime-test")],
         )
     }
 

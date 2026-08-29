@@ -39,10 +39,53 @@ public protocol ChatLabServiceProtocol: Sendable {
     func signOrders(simulationID: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse
     func submitLabOrders(simulationID: Int, request: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse
 
+    func startVoiceSession(simulationID: Int, request: ChatVoiceSessionCreateRequest) async throws -> ChatVoiceSession
+    func endVoiceSession(simulationID: Int, voiceSessionUUID: String) async throws -> ChatVoiceSession
+    func persistVoiceTranscript(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceTranscriptCreateRequest,
+    ) async throws -> ChatVoiceTranscriptResponse
+    func executeVoiceToolCall(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceToolCallRequest,
+    ) async throws -> ChatVoiceToolCallResponse
+
     func getGuardState(simulationID: Int) async throws -> GuardStateDTO
     func sendHeartbeat(simulationID: Int) async throws -> GuardStateDTO
 
     func listModifierGroups(labType: String) async throws -> [ModifierGroup]
+}
+
+public extension ChatLabServiceProtocol {
+    func startVoiceSession(simulationID _: Int, request _: ChatVoiceSessionCreateRequest) async throws -> ChatVoiceSession {
+        throw ChatLabServiceUnsupportedOperationError.voiceSession
+    }
+
+    func endVoiceSession(simulationID _: Int, voiceSessionUUID _: String) async throws -> ChatVoiceSession {
+        throw ChatLabServiceUnsupportedOperationError.voiceSession
+    }
+
+    func persistVoiceTranscript(
+        simulationID _: Int,
+        voiceSessionUUID _: String,
+        request _: ChatVoiceTranscriptCreateRequest,
+    ) async throws -> ChatVoiceTranscriptResponse {
+        throw ChatLabServiceUnsupportedOperationError.voiceSession
+    }
+
+    func executeVoiceToolCall(
+        simulationID _: Int,
+        voiceSessionUUID _: String,
+        request _: ChatVoiceToolCallRequest,
+    ) async throws -> ChatVoiceToolCallResponse {
+        throw ChatLabServiceUnsupportedOperationError.voiceSession
+    }
+}
+
+public enum ChatLabServiceUnsupportedOperationError: Error, Sendable {
+    case voiceSession
 }
 
 public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
@@ -210,6 +253,60 @@ public final class ChatLabService: ChatLabServiceProtocol, @unchecked Sendable {
         return try await apiClient.request(
             ChatLabAPI.submitLabOrders(simulationID: simulationID, body: body),
             as: ChatLabOrdersResponse.self,
+        )
+    }
+
+    public func startVoiceSession(simulationID: Int, request: ChatVoiceSessionCreateRequest) async throws -> ChatVoiceSession {
+        let body = try encoder.encode(request)
+        return try await apiClient.request(
+            ChatLabAPI.startVoiceSession(
+                simulationID: simulationID,
+                body: body,
+                idempotencyKey: request.idempotencyKey,
+            ),
+            as: ChatVoiceSession.self,
+        )
+    }
+
+    public func endVoiceSession(simulationID: Int, voiceSessionUUID: String) async throws -> ChatVoiceSession {
+        try await apiClient.request(
+            ChatLabAPI.endVoiceSession(
+                simulationID: simulationID,
+                voiceSessionUUID: voiceSessionUUID,
+            ),
+            as: ChatVoiceSession.self,
+        )
+    }
+
+    public func persistVoiceTranscript(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceTranscriptCreateRequest,
+    ) async throws -> ChatVoiceTranscriptResponse {
+        let body = try encoder.encode(request)
+        return try await apiClient.request(
+            ChatLabAPI.persistVoiceTranscript(
+                simulationID: simulationID,
+                voiceSessionUUID: voiceSessionUUID,
+                body: body,
+            ),
+            as: ChatVoiceTranscriptResponse.self,
+        )
+    }
+
+    public func executeVoiceToolCall(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        request: ChatVoiceToolCallRequest,
+    ) async throws -> ChatVoiceToolCallResponse {
+        let body = try encoder.encode(request)
+        return try await apiClient.request(
+            ChatLabAPI.executeVoiceToolCall(
+                simulationID: simulationID,
+                voiceSessionUUID: voiceSessionUUID,
+                body: body,
+            ),
+            as: ChatVoiceToolCallResponse.self,
         )
     }
 

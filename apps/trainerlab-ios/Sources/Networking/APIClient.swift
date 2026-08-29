@@ -689,6 +689,47 @@ public enum ChatLabAPI {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/lab-orders/", method: .post, body: body)
     }
 
+    public static func startVoiceSession(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/simulations/\(simulationID)/voice/session/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
+    public static func endVoiceSession(simulationID: Int, voiceSessionUUID: String) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/simulations/\(simulationID)/voice/sessions/\(voiceSessionUUID)/end/",
+            method: .post,
+            body: Data(),
+        )
+    }
+
+    public static func persistVoiceTranscript(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        body: Data,
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/simulations/\(simulationID)/voice/sessions/\(voiceSessionUUID)/transcripts/",
+            method: .post,
+            body: body,
+        )
+    }
+
+    public static func executeVoiceToolCall(
+        simulationID: Int,
+        voiceSessionUUID: String,
+        body: Data,
+    ) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/simulations/\(simulationID)/voice/sessions/\(voiceSessionUUID)/tool-calls/",
+            method: .post,
+            body: body,
+        )
+    }
+
     public static func guardState(simulationID: Int) -> Endpoint {
         Endpoint(path: "/api/v1/simulations/\(simulationID)/guard-state/")
     }

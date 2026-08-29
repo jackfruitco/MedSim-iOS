@@ -176,6 +176,58 @@ final class ChatLabContractTests: XCTestCase {
         XCTAssertTrue(response.hasMore)
     }
 
+    func testVoiceSessionDecodesWebSocketConnectionMaterial() throws {
+        let json = """
+        {
+          "id": 501,
+          "uuid": "voice-session-uuid",
+          "simulation_id": 42,
+          "conversation_id": 3,
+          "status": "active",
+          "transport": "websocket",
+          "provider": "openai",
+          "provider_session_id": "realtime-session-1",
+          "model": "gpt-realtime-test",
+          "voice": "verse",
+          "created_at": "2026-03-12T12:00:00Z",
+          "updated_at": "2026-03-12T12:00:01Z",
+          "ended_at": null,
+          "expires_at": "2026-03-12T12:05:00Z",
+          "realtime_url": "https://api.openai.test/v1/realtime/client_secrets",
+          "calls_url": null,
+          "websocket_url": "wss://api.openai.test/v1/realtime",
+          "client_secret": { "value": "ek_test" },
+          "session_config": { "type": "realtime", "model": "gpt-realtime-test" }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let session = try decoder.decode(ChatVoiceSession.self, from: Data(json.utf8))
+
+        XCTAssertEqual(session.uuid, "voice-session-uuid")
+        XCTAssertEqual(session.transport, .webSocket)
+        XCTAssertEqual(session.websocketURL, "wss://api.openai.test/v1/realtime")
+        XCTAssertEqual(session.clientSecret?["value"], .string("ek_test"))
+        XCTAssertEqual(session.sessionConfig?["model"], .string("gpt-realtime-test"))
+    }
+
+    func testVoiceCreateRequestEncodesIdempotencyKey() throws {
+        let request = ChatVoiceSessionCreateRequest(
+            conversationID: 3,
+            transport: .webSocket,
+            idempotencyKey: "voice-start-1",
+            clientMetadata: ["client": .string("ios")],
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["conversation_id"] as? Int, 3)
+        XCTAssertEqual(object["transport"] as? String, "websocket")
+        XCTAssertEqual(object["idempotency_key"] as? String, "voice-start-1")
+        XCTAssertEqual((object["client_metadata"] as? [String: Any])?["client"] as? String, "ios")
+    }
+
     func testModifierGroupDecodesBackendCatalogShape() throws {
         let json = """
         [
@@ -245,5 +297,63 @@ final class ChatLabContractTests: XCTestCase {
 
         XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/config/modifier-groups/")
         XCTAssertEqual(api.capturedEndpoints.last?.query, [URLQueryItem(name: "lab_type", value: "chatlab")])
+    }
+
+    func testVoiceServiceMethodsUseBackendRoutes() async throws {
+        let api = ChatRecordingAPIClient()
+        let service = ChatLabService(apiClient: api)
+
+        do {
+            _ = try await service.startVoiceSession(
+                simulationID: 7,
+                request: ChatVoiceSessionCreateRequest(
+                    conversationID: 9,
+                    idempotencyKey: "voice-start-1",
+                ),
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/voice/session/")
+        XCTAssertEqual(api.capturedEndpoints.last?.idempotencyKey, "voice-start-1")
+
+        do {
+            _ = try await service.endVoiceSession(simulationID: 7, voiceSessionUUID: "voice-uuid")
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/voice/sessions/voice-uuid/end/")
+
+        do {
+            _ = try await service.persistVoiceTranscript(
+                simulationID: 7,
+                voiceSessionUUID: "voice-uuid",
+                request: ChatVoiceTranscriptCreateRequest(
+                    role: "user",
+                    transcript: "hello",
+                    providerItemID: "item-1",
+                    providerResponseID: nil,
+                    providerEventID: "event-1",
+                ),
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/voice/sessions/voice-uuid/transcripts/")
+
+        do {
+            _ = try await service.executeVoiceToolCall(
+                simulationID: 7,
+                voiceSessionUUID: "voice-uuid",
+                request: ChatVoiceToolCallRequest(toolCallID: "call-1", name: "patient_history", arguments: [:]),
+            )
+            XCTFail("Expected intercepted error")
+        } catch {
+            XCTAssertTrue(error is ChatRecordingError)
+        }
+        XCTAssertEqual(api.capturedEndpoints.last?.path, "/api/v1/simulations/7/voice/sessions/voice-uuid/tool-calls/")
     }
 }
