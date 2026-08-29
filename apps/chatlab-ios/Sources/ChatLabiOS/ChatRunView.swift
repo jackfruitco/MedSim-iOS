@@ -158,58 +158,57 @@ public struct ChatRunView: View {
         }
     }
 
+    @ViewBuilder
     private func compactMessengerPanel(layoutMode: ChatRunLayoutMode, chromeMode: ChatRunChromeMode) -> some View {
-        Group {
-            if store.showsInitialGenerationFailureScreen {
-                initialGenerationFailureState(layoutMode: layoutMode)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    .padding(.horizontal, horizontalInset(for: layoutMode))
-                    .padding(.vertical, 24)
-            } else {
-                // Message timeline is the root view; header and composer are safe-area insets
-                // so content scrolls behind the translucent overlays (Messages-style).
-                messageTimeline(layoutMode: layoutMode, chromeMode: chromeMode)
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
-                            VStack(spacing: 0) {
-                                overlayHeader(layoutMode: layoutMode)
-                                if chromeMode == .standard {
-                                    compactFailureBanners
-                                }
-                                if store.conversations.count > 1 {
-                                    conversationTabs(layoutMode: layoutMode)
-                                        .padding(.top, 4)
-                                        .padding(.bottom, 4)
-                                }
-                                Divider()
-                                    .overlay(Color.secondary.opacity(0.18))
+        if store.showsInitialGenerationFailureScreen {
+            initialGenerationFailureState(layoutMode: layoutMode)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding(.horizontal, horizontalInset(for: layoutMode))
+                .padding(.vertical, 24)
+        } else {
+            // Message timeline is the root view; header and composer are safe-area insets
+            // so content scrolls behind the translucent overlays (Messages-style).
+            messageTimeline(layoutMode: layoutMode, chromeMode: chromeMode)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
+                        VStack(spacing: 0) {
+                            overlayHeader(layoutMode: layoutMode)
+                            if chromeMode == .standard {
+                                compactFailureBanners
                             }
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                    }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
-                            VStack(spacing: 6) {
-                                awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
-                                typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                                voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                                composer(layoutMode: layoutMode)
+                            if store.conversations.count > 1 {
+                                conversationTabs(layoutMode: layoutMode)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 4)
                             }
-                            .padding(.horizontal, horizontalInset(for: layoutMode))
-                            .padding(.top, 8)
-                            .padding(.bottom, 8)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
-                        .background {
-                            Rectangle()
-                                .fill(.ultraThinMaterial)
-                                .opacity(0.35)
-                                .ignoresSafeArea(edges: .bottom)
+                            Divider()
+                                .overlay(Color.secondary.opacity(0.18))
                         }
                     }
-            }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
+                        VStack(spacing: 6) {
+                            awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
+                            typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                            voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                            composer(layoutMode: layoutMode)
+                        }
+                        .padding(.horizontal, horizontalInset(for: layoutMode))
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 4)
+                    .background {
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.35)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
+                }
         }
     }
 
@@ -346,7 +345,9 @@ public struct ChatRunView: View {
     }
 
     private var isConnectionFailed: Bool {
-        if case .failed = store.transportState { return true }
+        if case .failed = store.transportState {
+            return true
+        }
         return false
     }
 

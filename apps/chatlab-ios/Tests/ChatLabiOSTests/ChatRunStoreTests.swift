@@ -11,6 +11,7 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var markReadCalls: [(simulationID: Int, messageID: Int)] = []
     var startedVoiceSessions: [(simulationID: Int, request: ChatVoiceSessionCreateRequest)] = []
     var voiceSession: ChatVoiceSession?
+    var startVoiceSessionDelayNanoseconds: UInt64?
     var endedVoiceSessions: [(simulationID: Int, uuid: String)] = []
     var persistedVoiceTranscripts: [(simulationID: Int, uuid: String, request: ChatVoiceTranscriptCreateRequest)] = []
     var voiceTranscriptResponse: ChatVoiceTranscriptResponse?
@@ -127,6 +128,9 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
 
     func startVoiceSession(simulationID: Int, request: ChatVoiceSessionCreateRequest) async throws -> ChatVoiceSession {
         startedVoiceSessions.append((simulationID, request))
+        if let startVoiceSessionDelayNanoseconds {
+            try await Task.sleep(nanoseconds: startVoiceSessionDelayNanoseconds)
+        }
         guard let voiceSession else {
             throw NSError(domain: "missing-voice-session", code: 404)
         }
@@ -383,6 +387,38 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertEqual(service.startedVoiceSessions.first?.request.conversationID, patientConversation.id)
         XCTAssertEqual(service.startedVoiceSessions.first?.request.transport, .webSocket)
         XCTAssertFalse(service.startedVoiceSessions.first?.request.idempotencyKey.isEmpty ?? true)
+    }
+
+    func testStopCancelsInFlightVoiceStartBeforeConnecting() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.voiceSession = makeVoiceSession(conversationID: patientConversation.id)
+        service.startVoiceSessionDelayNanoseconds = 300_000_000
+
+        let realtime = TestRealtimeClient()
+        let voice = TestVoiceRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            voiceClient: voice,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        store.start()
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        store.startVoiceSession()
+        try await waitUntil { service.startedVoiceSessions.count == 1 }
+        store.stop()
+        try await Task.sleep(nanoseconds: 450_000_000)
+
+        XCTAssertTrue(voice.connectCalls.isEmpty)
+        XCTAssertNil(store.activeVoiceSession)
+        XCTAssertEqual(store.voiceConnectionState, .idle)
     }
 
     func testVoiceTranscriptEventPersistsThroughBackendAndUpsertsMessage() async throws {

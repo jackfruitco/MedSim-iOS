@@ -22,6 +22,7 @@ public struct RunConsoleView: View {
     @State private var showStopConfirmation = false
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
+    @State private var annotationLaunchContext: DebriefAnnotationLaunchContext?
 
     @State private var quickActionInjury: InjuryAnnotation?
     @State private var selectedProblem: ProblemAnnotation?
@@ -34,6 +35,7 @@ public struct RunConsoleView: View {
     @State private var expandedTimelineEntryKey: String?
     @State private var activeInfoPanel: ActiveInfoPanel? = .scenarioBrief
     @State private var isLoadingRuntimeState = false
+    @State private var arePatientStatusDetailsExpanded = false
     @State private var showScenarioBriefEditSheet = false
     @State private var showAIDebugDetails = false
     @State private var scenarioBriefEditDraft: ScenarioBriefEditDraft?
@@ -145,13 +147,19 @@ public struct RunConsoleView: View {
                 .presentationDetents([.fraction(0.35)])
         }
         .sheet(isPresented: $showAnnotationSheet) {
-            DebriefAnnotationSheet { observationText, learningObjective, outcome in
+            DebriefAnnotationSheet(context: annotationLaunchContext) { observationText, learningObjective, outcome, linkedEventID, elapsedSecondsAt in
                 store.createDebriefAnnotation(
                     observationText: observationText,
                     learningObjective: learningObjective,
                     outcome: outcome,
+                    linkedEventID: linkedEventID,
+                    elapsedSecondsAt: elapsedSecondsAt,
                 )
+                annotationLaunchContext = nil
                 showAnnotationSheet = false
+            }
+            .onDisappear {
+                annotationLaunchContext = nil
             }
             .presentationDetents([.fraction(0.55)])
         }
@@ -366,6 +374,7 @@ public struct RunConsoleView: View {
 
                 TransportChip(banner: store.state.transportBanner)
                 regularStopwatchStatus
+                sessionStateExplainerChip
                 adminControlMenu(controlSize: .regular)
             }
 
@@ -516,12 +525,14 @@ public struct RunConsoleView: View {
             HStack(spacing: compactMetrics.gridSpacing) {
                 TransportChip(banner: store.state.transportBanner)
                 stopwatchStatus
+                sessionStateExplainerChip
                 Spacer(minLength: 0)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 TransportChip(banner: store.state.transportBanner)
                 stopwatchStatus
+                sessionStateExplainerChip
             }
         }
     }
@@ -548,19 +559,18 @@ public struct RunConsoleView: View {
 
     // MARK: - Conflict banner
 
+    @ViewBuilder
     private var conflictBanner: some View {
-        Group {
-            if let error = store.conflictError {
-                InlineAppErrorView(error: error)
-            } else {
-                Text(store.state.conflictBanner ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(TrainerLabTheme.danger.opacity(0.9))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
+        if let error = store.conflictError {
+            InlineAppErrorView(error: error)
+        } else {
+            Text(store.state.conflictBanner ?? "")
+                .font(.caption)
+                .foregroundStyle(.white)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(TrainerLabTheme.danger.opacity(0.9))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
     }
 
@@ -629,22 +639,36 @@ public struct RunConsoleView: View {
         )
     }
 
+    @ViewBuilder
     private func avpuControlSection(
         layoutMode: RunConsoleLayoutMode,
         compactMetrics: RunConsoleCompactMetrics,
     ) -> some View {
-        Group {
-            if layoutMode == .regular {
-                regularAVPUInlineControl(metrics: .standard)
-            } else {
-                compactAVPUControl(compactMetrics: compactMetrics)
-            }
+        if layoutMode == .regular {
+            regularAVPUInlineControl(metrics: .standard)
+        } else {
+            compactAVPUControl(compactMetrics: compactMetrics)
         }
     }
 
     // MARK: - Combined Info Panel (Scenario Brief + Patient Status + AI Instructor)
 
     private enum ActiveInfoPanel: Equatable { case scenarioBrief, patientStatus, aiInstructor, annotations }
+
+    private var activeInfoPanelTitle: String {
+        switch activeInfoPanel {
+        case .scenarioBrief:
+            "Scenario Brief"
+        case .patientStatus:
+            "Patient Status"
+        case .aiInstructor:
+            "AI Instructor"
+        case .annotations:
+            "Annotations"
+        case .none:
+            ""
+        }
+    }
 
     private var combinedInfoPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -681,6 +705,7 @@ public struct RunConsoleView: View {
             if activeInfoPanel != nil {
                 Divider()
                     .padding(.vertical, 8)
+                infoPanelStatusHeader
 
                 if activeInfoPanel == .scenarioBrief {
                     scenarioBriefContent
@@ -694,15 +719,6 @@ public struct RunConsoleView: View {
             }
         }
         .trainerCardStyle(background: TrainerLabTheme.tacticalSurfaceElevated)
-        .task(id: activeInfoPanel) {
-            // Auto-collapse Scenario Brief after 2 minutes
-            guard activeInfoPanel == .scenarioBrief else { return }
-            try? await Task.sleep(nanoseconds: 120_000_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                if activeInfoPanel == .scenarioBrief { activeInfoPanel = nil }
-            }
-        }
     }
 
     @ViewBuilder
@@ -723,6 +739,15 @@ public struct RunConsoleView: View {
                 if isLoadingRuntimeState, panel != .annotations {
                     ProgressView().controlSize(.mini)
                 }
+                if panel == .annotations, !store.debriefAnnotations.isEmpty {
+                    Text("\(store.debriefAnnotations.count)")
+                        .font(.caption2.monospacedDigit().weight(.bold))
+                        .foregroundStyle(isActive ? TrainerLabTheme.accentBlue : .secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(isActive ? 0.16 : 0.08))
+                        .clipShape(Capsule())
+                }
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
@@ -738,6 +763,65 @@ public struct RunConsoleView: View {
         .buttonStyle(.plain)
         .foregroundStyle(isActive ? TrainerLabTheme.accentBlue : Color.white.opacity(0.78))
         .animation(.spring(duration: 0.25), value: activeInfoPanel)
+    }
+
+    private var infoPanelStatusHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(activeInfoPanelTitle)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            if activeInfoPanel != .annotations, let runtimeState = store.runtimeState {
+                Text("rev \(runtimeState.runtimeSnapshot.stateRevision)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(TrainerLabTheme.accentBlue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(TrainerLabTheme.accentBlue.opacity(0.14))
+                    .clipShape(Capsule())
+            }
+
+            Spacer(minLength: 0)
+
+            if isLoadingRuntimeState, activeInfoPanel != .annotations {
+                Label("Updating", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(TrainerLabTheme.accentBlue)
+            } else if let refreshError = store.lastSnapshotRefreshError, activeInfoPanel != .annotations {
+                Label("Refresh failed", systemImage: "exclamationmark.triangle")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(TrainerLabTheme.warning)
+                    .help(String(describing: refreshError))
+            } else if activeInfoPanel == .annotations {
+                if !store.debriefAnnotations.isEmpty {
+                    Text("\(store.debriefAnnotations.count) captured")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            } else if let refreshedAt = store.lastRuntimeStateRefreshAt {
+                Label {
+                    Text(refreshedAt, style: .relative)
+                } icon: {
+                    Image(systemName: "clock")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+
+            if activeInfoPanel != .annotations {
+                Button {
+                    Task { await fetchRuntimeState() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption.bold())
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Refresh \(activeInfoPanelTitle)")
+            }
+        }
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder private var scenarioBriefContent: some View {
@@ -816,6 +900,18 @@ public struct RunConsoleView: View {
 
             if hasStatusContent {
                 VStack(alignment: .leading, spacing: 10) {
+                    let alertRows = patientAlertRows(status)
+                    if !alertRows.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Critical Now")
+                                .font(.caption.bold())
+                                .foregroundStyle(TrainerLabTheme.warning)
+                            ForEach(alertRows, id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                    }
+
                     if let avpu = status.avpu, !avpu.isEmpty {
                         briefRow(label: "AVPU", value: avpu.uppercased())
                     }
@@ -824,43 +920,16 @@ public struct RunConsoleView: View {
                             .font(.subheadline)
                     }
 
-                    let alertRows = patientAlertRows(status)
-                    if !alertRows.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Flags")
+                    let detailSectionCount = patientStatusDetailSectionCount(status)
+                    if detailSectionCount > 0 {
+                        DisclosureGroup(isExpanded: $arePatientStatusDetailsExpanded) {
+                            patientStatusDetailSections(status)
+                                .padding(.top, 6)
+                        } label: {
+                            Text("Additional Details (\(detailSectionCount))")
                                 .font(.caption.bold())
                                 .foregroundStyle(.secondary)
-                            ForEach(alertRows, id: \.label) { row in
-                                patientStatusBadge(label: row.label, color: row.color)
-                            }
                         }
-                    }
-
-                    if !status.teachingFlags.isEmpty {
-                        statusListSection(title: "Teaching Flags", values: status.teachingFlags)
-                    }
-                    if !store.assessmentFindings.isEmpty {
-                        statusListSection(
-                            title: "Assessment Findings",
-                            values: store.assessmentFindings.compactMap(runtimeDisplayText),
-                        )
-                    }
-                    if !store.diagnosticResults.isEmpty {
-                        statusListSection(
-                            title: "Diagnostic Results",
-                            values: store.diagnosticResults.compactMap(runtimeDisplayText),
-                        )
-                    }
-                    if !store.resources.isEmpty {
-                        statusListSection(
-                            title: "Resources",
-                            values: store.resources.compactMap(runtimeDisplayText),
-                        )
-                    }
-                    if let disposition = store.disposition,
-                       let dispositionSummary = runtimeDisplayText(disposition)
-                    {
-                        statusListSection(title: "Disposition", values: [dispositionSummary])
                     }
                 }
             } else {
@@ -1050,9 +1119,10 @@ public struct RunConsoleView: View {
         }
     }
 
+    @ViewBuilder
     private var sessionPreparationBanner: some View {
-        Group {
-            if isSeedingSession {
+        if isSeedingSession {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 12) {
                     ProgressView()
                     VStack(alignment: .leading, spacing: 4) {
@@ -1063,15 +1133,137 @@ public struct RunConsoleView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
+                    if let createdAt = store.state.session?.createdAt {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Elapsed")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            Text(createdAt, style: .timer)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                .padding(12)
-                .background(TrainerLabTheme.warning.opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
-                )
+
+                seedingMilestones
             }
+            .padding(12)
+            .background(TrainerLabTheme.warning.opacity(0.14))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(TrainerLabTheme.warning.opacity(0.35), lineWidth: 1),
+            )
+        }
+    }
+
+    private var seedingMilestones: some View {
+        let fallbackSteps = ["Creating scenario", "Loading runtime snapshot", "Unlocking controls"]
+        let debugSteps = store.controlPlaneDebug?.executionPlan
+            .prefix(3)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+        let steps = debugSteps.isEmpty ? fallbackSteps : debugSteps
+        let currentStepIndex = min(max(store.controlPlaneDebug?.currentStepIndex ?? 0, 0), max(steps.count - 1, 0))
+
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                HStack(spacing: 8) {
+                    Image(systemName: seedingMilestoneIcon(index: index, currentStepIndex: currentStepIndex))
+                        .font(.caption2.bold())
+                        .foregroundStyle(index <= currentStepIndex ? TrainerLabTheme.warning : .secondary)
+                        .frame(width: 14)
+                    Text(step)
+                        .font(.caption)
+                        .foregroundStyle(index <= currentStepIndex ? Color.white.opacity(0.82) : .secondary)
+                    if index == currentStepIndex {
+                        Text("now")
+                            .font(.caption2.bold())
+                            .foregroundStyle(TrainerLabTheme.warning)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(TrainerLabTheme.warning.opacity(0.14))
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            if let error = store.lastSnapshotRefreshError {
+                Label("Snapshot refresh failed. Pull to retry or reopen this run.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(TrainerLabTheme.warning)
+                    .help(String(describing: error))
+            }
+        }
+    }
+
+    private func seedingMilestoneIcon(index: Int, currentStepIndex: Int) -> String {
+        if index < currentStepIndex {
+            return "checkmark.circle.fill"
+        }
+        if index == currentStepIndex {
+            return "circle.dotted"
+        }
+        return "circle"
+    }
+
+    private var sessionStateExplainerChip: some View {
+        Label(sessionStateExplainerText, systemImage: sessionStateExplainerIcon)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(sessionStateExplainerColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(sessionStateExplainerColor.opacity(0.14))
+            .clipShape(Capsule())
+    }
+
+    private var sessionStateExplainerText: String {
+        switch sessionStatus {
+        case .seeding:
+            "Preparing"
+        case .seeded:
+            "Ready to start"
+        case .running:
+            "Live"
+        case .paused:
+            "Paused"
+        case .completed:
+            "Completed"
+        case .failed:
+            canRetryInitialSimulation ? "Retry available" : "Failed"
+        case .none:
+            "No session"
+        }
+    }
+
+    private var sessionStateExplainerIcon: String {
+        switch sessionStatus {
+        case .seeding:
+            "hourglass"
+        case .seeded, .running:
+            "checkmark.circle"
+        case .paused:
+            "pause.circle"
+        case .completed:
+            "flag.checkered"
+        case .failed:
+            "exclamationmark.triangle"
+        case .none:
+            "questionmark.circle"
+        }
+    }
+
+    private var sessionStateExplainerColor: Color {
+        switch sessionStatus {
+        case .seeding, .paused:
+            TrainerLabTheme.warning
+        case .seeded, .running, .completed:
+            TrainerLabTheme.success
+        case .failed:
+            TrainerLabTheme.danger
+        case .none:
+            Color.secondary
         }
     }
 
@@ -1100,6 +1292,7 @@ public struct RunConsoleView: View {
                 if canMutate {
                     let annotationAction = RunConsoleQuickAction.annotation
                     Button {
+                        annotationLaunchContext = nil
                         showAnnotationSheet = true
                     } label: {
                         Label(annotationAction.title, systemImage: annotationAction.systemImage)
@@ -1141,6 +1334,11 @@ public struct RunConsoleView: View {
                             .font(.subheadline)
                         if let linkedEventID = annotation.linkedEventID {
                             Text("Linked event #\(linkedEventID)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let elapsedSecondsAt = annotation.elapsedSecondsAt {
+                            Text("Run time \(formattedElapsedSeconds(elapsedSecondsAt))")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -1203,6 +1401,57 @@ public struct RunConsoleView: View {
                     .font(.caption)
                     .foregroundStyle(Color(white: 0.70))
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func patientStatusDetailSectionCount(_ status: RuntimePatientStatus) -> Int {
+        var count = 0
+        if !status.teachingFlags.isEmpty {
+            count += 1
+        }
+        if !store.assessmentFindings.isEmpty {
+            count += 1
+        }
+        if !store.diagnosticResults.isEmpty {
+            count += 1
+        }
+        if !store.resources.isEmpty {
+            count += 1
+        }
+        if store.disposition != nil {
+            count += 1
+        }
+        return count
+    }
+
+    private func patientStatusDetailSections(_ status: RuntimePatientStatus) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !status.teachingFlags.isEmpty {
+                statusListSection(title: "Teaching Flags", values: status.teachingFlags)
+            }
+            if !store.assessmentFindings.isEmpty {
+                statusListSection(
+                    title: "Assessment Findings",
+                    values: store.assessmentFindings.compactMap(runtimeDisplayText),
+                )
+            }
+            if !store.diagnosticResults.isEmpty {
+                statusListSection(
+                    title: "Diagnostic Results",
+                    values: store.diagnosticResults.compactMap(runtimeDisplayText),
+                )
+            }
+            if !store.resources.isEmpty {
+                statusListSection(
+                    title: "Resources",
+                    values: store.resources.compactMap(runtimeDisplayText),
+                )
+            }
+            if let disposition = store.disposition,
+               let dispositionSummary = runtimeDisplayText(disposition)
+            {
+                statusListSection(title: "Disposition", values: [dispositionSummary])
             }
         }
     }
@@ -1352,87 +1601,120 @@ public struct RunConsoleView: View {
             expandedEntryKey: expandedTimelineEntryKey,
         )
 
-        return Button {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                timelineKindChip(item.kind)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(RunConsoleTimelinePresentation.title(for: item))
+                        .font(.subheadline.bold())
+                        .lineLimit(2)
+                        .strikethrough(isSuperseded, color: .secondary)
+                        .foregroundStyle(isSuperseded ? Color.secondary : Color.white)
+                    Text(item.message)
+                        .font(.caption)
+                        .lineLimit(isExpanded ? nil : 1)
+                        .foregroundStyle(isSuperseded ? Color(white: 0.45) : Color(white: 0.70))
+                        .strikethrough(isSuperseded, color: Color(white: 0.45))
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text(item.createdAt.formatted(date: .omitted, time: .standard))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if isExpanded {
+                timelineEntryExpandedContent(item, isSuperseded: isSuperseded)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSuperseded
+            ? TrainerLabTheme.tacticalSurfaceElevated.opacity(0.5)
+            : TrainerLabTheme.tacticalSurfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
+        )
+        .opacity(isSuperseded ? 0.65 : 1.0)
+        .contentShape(Rectangle())
+        .onTapGesture {
             withAnimation(.easeInOut(duration: 0.2)) {
                 expandedTimelineEntryKey = RunConsoleTimelineAccordion.toggledExpandedEntryKey(
                     current: expandedTimelineEntryKey,
                     tapped: item,
                 )
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 8) {
-                    timelineKindChip(item.kind)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(RunConsoleTimelinePresentation.title(for: item))
-                            .font(.subheadline.bold())
-                            .lineLimit(2)
-                            .strikethrough(isSuperseded, color: .secondary)
-                            .foregroundStyle(isSuperseded ? Color.secondary : Color.white)
-                        Text(item.message)
-                            .font(.caption)
-                            .lineLimit(isExpanded ? nil : 1)
-                            .foregroundStyle(isSuperseded ? Color(white: 0.45) : Color(white: 0.70))
-                            .strikethrough(isSuperseded, color: Color(white: 0.45))
-                    }
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Text(item.createdAt.formatted(date: .omitted, time: .standard))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if isExpanded {
-                    timelineEntryExpandedContent(item, isSuperseded: isSuperseded)
-                }
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSuperseded
-                ? TrainerLabTheme.tacticalSurfaceElevated.opacity(0.5)
-                : TrainerLabTheme.tacticalSurfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(TrainerLabTheme.tacticalBorder.opacity(0.6), lineWidth: 1),
-            )
-            .opacity(isSuperseded ? 0.65 : 1.0)
         }
-        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
     }
 
-    @ViewBuilder
     private func timelineEntryExpandedContent(
         _ item: ClinicalTimelineEntry,
         isSuperseded: Bool,
     ) -> some View {
-        if item.kind == .intervention {
-            HStack(spacing: 6) {
-                if let effectiveness = item.metadata["effectiveness"] {
-                    effectivenessBadge(effectiveness)
+        VStack(alignment: .leading, spacing: 8) {
+            if item.kind == .intervention {
+                HStack(spacing: 6) {
+                    if let effectiveness = item.metadata["effectiveness"] {
+                        effectivenessBadge(effectiveness)
+                    }
+                    if let status = item.metadata["intervention_status"] {
+                        interventionStatusBadge(status)
+                    }
+                    if isSuperseded {
+                        Text("Updated")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
                 }
-                if let status = item.metadata["intervention_status"] {
-                    interventionStatusBadge(status)
-                }
-                if isSuperseded {
-                    Text("Updated")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.secondary.opacity(0.15))
-                        .clipShape(Capsule())
-                }
+            } else if isSuperseded {
+                Text("Updated by a newer event")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
-        } else if isSuperseded {
-            Text("Updated by a newer event")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+
+            if canMutate {
+                Button {
+                    annotationLaunchContext = annotationContext(for: item)
+                    showAnnotationSheet = true
+                } label: {
+                    Label("Mark Moment", systemImage: "note.text.badge.plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(TrainerLabTheme.accentBlue)
+            }
         }
+    }
+
+    private func annotationContext(for item: ClinicalTimelineEntry) -> DebriefAnnotationLaunchContext {
+        DebriefAnnotationLaunchContext(
+            linkedEventID: linkedEventID(from: item),
+            elapsedSecondsAt: elapsedSeconds(for: item.createdAt),
+            prefilledObservation: "\(RunConsoleTimelinePresentation.title(for: item)): \(item.message)",
+        )
+    }
+
+    private func linkedEventID(from item: ClinicalTimelineEntry) -> Int? {
+        guard item.dedupeKey.hasPrefix("event:") else { return nil }
+        return Int(item.dedupeKey.dropFirst("event:".count))
+    }
+
+    private func elapsedSeconds(for date: Date) -> Int? {
+        guard let startedAt = store.state.session?.runStartedAt else { return nil }
+        return max(Int(date.timeIntervalSince(startedAt)), 0)
     }
 
     private func effectivenessBadge(_ value: String) -> some View {
@@ -2303,6 +2585,14 @@ public struct RunConsoleView: View {
         return h > 0 ? String(format: "%02d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
     }
 
+    private func formattedElapsedSeconds(_ seconds: Int) -> String {
+        let safeSeconds = max(seconds, 0)
+        let h = safeSeconds / 3600
+        let m = (safeSeconds % 3600) / 60
+        let s = safeSeconds % 60
+        return h > 0 ? String(format: "%02d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
+
     private func timelineKindChip(_ kind: ClinicalTimelineKind) -> some View {
         Text(RunConsoleTimelinePresentation.chipText(for: kind))
             .font(.caption2.bold())
@@ -2389,6 +2679,33 @@ public struct RunConsoleView: View {
         }
     }
 
+    private func controlMenuTitle(for control: RunConsoleControlItem) -> String {
+        guard let reason = controlUnavailableReason(control), !controlEnabled(control) else {
+            return control.title
+        }
+        return "\(control.title) — \(reason)"
+    }
+
+    private func controlUnavailableReason(_ control: RunConsoleControlItem) -> String? {
+        guard !controlEnabled(control) else { return nil }
+        if isSeedingSession {
+            return "Unlocks after seeding"
+        }
+        if control.requiresCommandChannel, !store.state.commandChannelAvailable {
+            return "Command channel offline"
+        }
+        switch sessionStatus {
+        case .completed:
+            return "Session complete"
+        case .failed:
+            return "Session failed"
+        case .none:
+            return "No active session"
+        case .seeded, .running, .paused, .seeding:
+            return nil
+        }
+    }
+
     private func performControl(_ control: RunConsoleControlItem) {
         switch control {
         case .exit:
@@ -2416,6 +2733,7 @@ public struct RunConsoleView: View {
             case .steer:
                 showSteerSheet = true
             case .annotation:
+                annotationLaunchContext = nil
                 showAnnotationSheet = true
             case .presets:
                 onOpenPresets()
@@ -2438,18 +2756,30 @@ public struct RunConsoleView: View {
         multiline: Bool = false,
         prominent: Bool? = nil,
     ) -> some View {
+        let isEnabled = controlEnabled(control)
+        let unavailableReason = controlUnavailableReason(control)
         let button = Button {
             performControl(control)
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: control.systemImage)
-                Text(control.title)
-                    .lineLimit(multiline ? 2 : 1)
-                    .multilineTextAlignment(fullWidth ? .center : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                if isPendingInterventionControl(control) {
-                    ProgressView()
-                        .controlSize(.mini)
+            VStack(spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: control.systemImage)
+                    Text(control.title)
+                        .lineLimit(multiline ? 2 : 1)
+                        .multilineTextAlignment(fullWidth ? .center : .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if isPendingInterventionControl(control) {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                }
+
+                if !isEnabled, let unavailableReason {
+                    Text(unavailableReason)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
                 }
             }
             .font(compact ? compactMetrics.buttonFont : .body)
@@ -2462,14 +2792,16 @@ public struct RunConsoleView: View {
             button
                 .trainerGlassButtonStyle(prominent: true)
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
-                .disabled(!controlEnabled(control))
+                .disabled(!isEnabled)
                 .accessibilityLabel(control.title)
+                .accessibilityHint(unavailableReason ?? "")
         } else {
             button
                 .trainerGlassButtonStyle()
                 .controlSize(compact ? compactMetrics.buttonControlSize : .regular)
-                .disabled(!controlEnabled(control))
+                .disabled(!isEnabled)
                 .accessibilityLabel(control.title)
+                .accessibilityHint(unavailableReason ?? "")
         }
     }
 
@@ -2483,7 +2815,7 @@ public struct RunConsoleView: View {
                 Button {
                     performControl(control)
                 } label: {
-                    Label(control.title, systemImage: control.systemImage)
+                    Label(controlMenuTitle(for: control), systemImage: control.systemImage)
                 }
                 .disabled(!controlEnabled(control))
             }
@@ -2503,7 +2835,7 @@ public struct RunConsoleView: View {
                 Button {
                     performControl(control)
                 } label: {
-                    Label(control.title, systemImage: control.systemImage)
+                    Label(controlMenuTitle(for: control), systemImage: control.systemImage)
                 }
                 .disabled(!controlEnabled(control))
             }
@@ -3041,8 +3373,15 @@ enum DebriefAnnotationCatalog {
     }
 }
 
+private struct DebriefAnnotationLaunchContext {
+    let linkedEventID: Int?
+    let elapsedSecondsAt: Int?
+    let prefilledObservation: String
+}
+
 private struct DebriefAnnotationSheet: View {
-    let onSubmit: (String, AnnotationLearningObjective, AnnotationOutcome) -> Void
+    let context: DebriefAnnotationLaunchContext?
+    let onSubmit: (String, AnnotationLearningObjective, AnnotationOutcome, Int?, Int?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var observationText = ""
@@ -3052,6 +3391,21 @@ private struct DebriefAnnotationSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let context, context.linkedEventID != nil || context.elapsedSecondsAt != nil {
+                    Section("Linked Moment") {
+                        if let elapsedSecondsAt = context.elapsedSecondsAt {
+                            Text("Run time \(formattedElapsedSeconds(elapsedSecondsAt))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let linkedEventID = context.linkedEventID {
+                            Text("Event #\(linkedEventID)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section("Observation") {
                     TextField("What should be captured for debrief?", text: $observationText, axis: .vertical)
                         .lineLimit(3 ... 6)
@@ -3086,6 +3440,8 @@ private struct DebriefAnnotationSheet: View {
                             observationText.trimmingCharacters(in: .whitespacesAndNewlines),
                             learningObjective,
                             outcome,
+                            context?.linkedEventID,
+                            context?.elapsedSecondsAt,
                         )
                         dismiss()
                     }
@@ -3094,6 +3450,17 @@ private struct DebriefAnnotationSheet: View {
             }
         }
         .foregroundStyle(.primary)
+        .onAppear {
+            guard observationText.isEmpty else { return }
+            observationText = context?.prefilledObservation ?? ""
+        }
+    }
+
+    private func formattedElapsedSeconds(_ seconds: Int) -> String {
+        let safeSeconds = max(seconds, 0)
+        let minutes = safeSeconds / 60
+        let remainder = safeSeconds % 60
+        return String(format: "%02d:%02d", minutes, remainder)
     }
 }
 

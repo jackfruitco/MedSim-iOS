@@ -127,8 +127,12 @@ struct AvailableAccessInventory: Equatable {
         if let newestIV = ivSites.first, let newestIO = ioSites.first {
             return newestIV.updatedAt >= newestIO.updatedAt ? "IV" : "IO"
         }
-        if hasIV { return "IV" }
-        if hasIO { return "IO" }
+        if hasIV {
+            return "IV"
+        }
+        if hasIO {
+            return "IO"
+        }
         return nil
     }
 

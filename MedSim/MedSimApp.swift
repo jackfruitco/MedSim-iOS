@@ -29,18 +29,16 @@ private struct MedSimRootView: View {
     private let orientationCoordinator = OrientationCoordinator.shared
 
     var body: some View {
-        Group {
-            if let demoScreen = ReadmeScreenshotScreen.current {
-                ReadmeScreenshotView(screen: demoScreen)
-            } else {
-                AppShellRootView()
-                    .onPreferenceChange(AppShellOrientationPreferenceKey.self) { lock in
-                        orientationCoordinator.apply(lock: lock)
-                    }
-                    .onAppear {
-                        orientationCoordinator.reset()
-                    }
-            }
+        if let demoScreen = ReadmeScreenshotScreen.current {
+            ReadmeScreenshotView(screen: demoScreen)
+        } else {
+            AppShellRootView()
+                .onPreferenceChange(AppShellOrientationPreferenceKey.self) { lock in
+                    orientationCoordinator.apply(lock: lock)
+                }
+                .onAppear {
+                    orientationCoordinator.reset()
+                }
         }
     }
 }

@@ -620,7 +620,9 @@ enum ChatFeedbackPresentation {
     /// Checks the static label map first; falls back to stripping the `hotwash_`
     /// prefix and converting snake_case to Title Case.
     static func humanizedLabel(for key: String) -> String {
-        if let mapped = labelMap[key] { return mapped }
+        if let mapped = labelMap[key] {
+            return mapped
+        }
         var normalized = key
         if normalized.hasPrefix("hotwash_") {
             normalized = String(normalized.dropFirst("hotwash_".count))

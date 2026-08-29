@@ -110,6 +110,7 @@ public final class ChatRunStore: ObservableObject {
     private var stateTask: Task<Void, Never>?
     private var voiceEventTask: Task<Void, Never>?
     private var voiceStateTask: Task<Void, Never>?
+    private var voiceSessionTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
     private var typingStopTask: Task<Void, Never>?
     private var hasStarted = false
@@ -159,6 +160,7 @@ public final class ChatRunStore: ObservableObject {
         stateTask?.cancel()
         voiceEventTask?.cancel()
         voiceStateTask?.cancel()
+        voiceSessionTask?.cancel()
         heartbeatTask?.cancel()
         typingStopTask?.cancel()
         for task in awaitingReplyTasks.values {
@@ -321,6 +323,9 @@ public final class ChatRunStore: ObservableObject {
         hasStarted = false
         eventTask?.cancel()
         stateTask?.cancel()
+        voiceEventTask?.cancel()
+        voiceStateTask?.cancel()
+        voiceSessionTask?.cancel()
         heartbeatTask?.cancel()
         typingStopTask?.cancel()
         toolRefreshTask?.cancel()
@@ -328,6 +333,7 @@ public final class ChatRunStore: ObservableObject {
         stateTask = nil
         voiceEventTask = nil
         voiceStateTask = nil
+        voiceSessionTask = nil
         heartbeatTask = nil
         typingStopTask = nil
         toolRefreshTask = nil
@@ -516,7 +522,8 @@ public final class ChatRunStore: ObservableObject {
         let idempotencyKey = "chatlab-voice-\(simulation.id)-\(activeConversationID)-\(UUID().uuidString.lowercased())"
         voiceConnectionState = .connecting
 
-        Task {
+        voiceSessionTask?.cancel()
+        voiceSessionTask = Task {
             do {
                 let session = try await service.startVoiceSession(
                     simulationID: simulation.id,
@@ -530,9 +537,11 @@ public final class ChatRunStore: ObservableObject {
                         ],
                     ),
                 )
+                guard !Task.isCancelled, hasStarted else { return }
                 activeVoiceSession = session
                 try await voiceClient.connect(session: session)
             } catch {
+                guard !Task.isCancelled else { return }
                 voiceConnectionState = .failed(message: messageText(for: error))
                 presentableError = AppErrorPresenter.present(error)
             }
@@ -553,8 +562,10 @@ public final class ChatRunStore: ObservableObject {
             return
         }
         voiceConnectionState = .ending
-        Task {
+        voiceSessionTask?.cancel()
+        voiceSessionTask = Task {
             await voiceClient.disconnect()
+            guard !Task.isCancelled else { return }
             do {
                 let ended = try await service.endVoiceSession(
                     simulationID: simulation.id,
@@ -563,6 +574,7 @@ public final class ChatRunStore: ObservableObject {
                 activeVoiceSession = ended
                 voiceConnectionState = .idle
             } catch {
+                guard !Task.isCancelled else { return }
                 voiceConnectionState = .failed(message: messageText(for: error))
                 presentableError = AppErrorPresenter.present(error)
             }
@@ -1203,7 +1215,9 @@ public final class ChatRunStore: ObservableObject {
         var ordered: [ChatMessageItem] = []
         for item in items {
             let key = item.serverID.map { "server-\($0)" } ?? item.id
-            if seen.contains(key) { continue }
+            if seen.contains(key) {
+                continue
+            }
             seen.insert(key)
             ordered.append(item)
         }

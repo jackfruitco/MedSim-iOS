@@ -17,8 +17,12 @@ public extension InterventionSite {
     /// "left" or "right" extracted from the code prefix, nil if not bilateral
     var laterality: String? {
         let lower = code.lowercased()
-        if lower.hasPrefix("right_") { return "right" }
-        if lower.hasPrefix("left_") { return "left" }
+        if lower.hasPrefix("right_") {
+            return "right"
+        }
+        if lower.hasPrefix("left_") {
+            return "left"
+        }
         return nil
     }
 
