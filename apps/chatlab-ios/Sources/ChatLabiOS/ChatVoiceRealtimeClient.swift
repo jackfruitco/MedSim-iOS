@@ -237,7 +237,9 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
             withJSONObject: output.mapValues(\.rawValue),
             options: [.sortedKeys],
         )
-        let outputText = String(decoding: outputData, as: UTF8.self)
+        guard let outputText = String(bytes: outputData, encoding: .utf8) else {
+            throw ChatVoiceRealtimeClientError.invalidUTF8
+        }
         try await sendJSONObject([
             "type": "conversation.item.create",
             "item": [
@@ -315,7 +317,10 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         case let .string(text):
             return text
         case let .data(data):
-            return String(decoding: data, as: UTF8.self)
+            guard let text = String(bytes: data, encoding: .utf8) else {
+                throw ChatVoiceRealtimeClientError.invalidUTF8
+            }
+            return text
         @unknown default:
             throw ChatVoiceRealtimeClientError.unsupportedMessage
         }
@@ -338,7 +343,9 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
             throw ChatVoiceRealtimeClientError.notConnected
         }
         let data = try JSONSerialization.data(withJSONObject: object, options: [])
-        let text = String(decoding: data, as: UTF8.self)
+        guard let text = String(bytes: data, encoding: .utf8) else {
+            throw ChatVoiceRealtimeClientError.invalidUTF8
+        }
         try await socketTask.send(.string(text))
     }
 
@@ -411,6 +418,7 @@ public enum ChatVoiceRealtimeClientError: Error, Equatable {
     case missingClientSecret
     case notConnected
     case unsupportedMessage
+    case invalidUTF8
 }
 
 private enum ChatVoiceAudioCodec {
