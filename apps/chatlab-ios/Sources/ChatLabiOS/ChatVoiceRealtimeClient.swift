@@ -202,7 +202,9 @@ public enum ChatVoiceRealtimeEventParser {
             guard let base64 = voiceString(object["delta"]),
                   let data = Data(base64Encoded: base64)
             else {
-                return nil
+                throw ChatVoiceRealtimeClientError.protocolFailure(
+                    message: "Voice service returned invalid audio data.",
+                )
             }
             return .outputAudio(data)
 
@@ -241,6 +243,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var isMuted = false
+    private var hasReportedTerminalFailure = false
 
     private let eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation
     private let stateContinuation: AsyncStream<ChatVoiceConnectionState>.Continuation
@@ -297,6 +300,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
     public func connect(session voiceSession: ChatVoiceSession) async throws {
         await disconnect()
+        hasReportedTerminalFailure = false
         stateContinuation.yield(.requestingPermission)
         guard await ChatVoicePermissionBridge.request() else {
             stateContinuation.yield(.failed(message: "Microphone access is required for voice chat."))
@@ -328,8 +332,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
             stateContinuation.yield(.live)
         } catch {
             let connectionError = normalizedConnectionError(error)
-            cleanupTransport()
-            stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
+            surfaceFailure(connectionError)
             throw connectionError
         }
     }
@@ -364,6 +367,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         stateContinuation.yield(.ending)
         cleanupTransport()
         isMuted = false
+        hasReportedTerminalFailure = false
         stateContinuation.yield(.idle)
     }
 
@@ -398,27 +402,19 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                 let text = try text(from: message)
                 if let event = try ChatVoiceRealtimeEventParser.parse(text) {
                     if case let .outputAudio(data) = event {
-                        playAudio(data)
+                        try playAudio(data)
                     }
-                    eventContinuation.yield(event)
                     if case let .error(providerError) = event {
-                        let connectionError = ChatVoiceRealtimeClientError.providerError(providerError)
-                        cleanupTransport()
-                        stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
+                        surfaceFailure(ChatVoiceRealtimeClientError.providerError(providerError))
                         return
                     }
+                    eventContinuation.yield(event)
                 }
             } catch {
                 if Task.isCancelled {
                     return
                 }
-                let connectionError = normalizedConnectionError(error)
-                voiceLogger.error(
-                    "Voice realtime receive failed: \(connectionError.logDescription, privacy: .public)",
-                )
-                cleanupTransport()
-                eventContinuation.yield(.error(ChatVoiceProviderError(message: connectionError.userFacingMessage)))
-                stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
+                surfaceFailure(error)
                 return
             }
         }
@@ -438,16 +434,12 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         }
     }
 
-    private func sendAudioData(_ data: Data) async {
+    private func sendAudioData(_ data: Data) async throws {
         guard socketTask != nil, data.isEmpty == false else { return }
-        do {
-            try await sendJSONObject([
-                "type": "input_audio_buffer.append",
-                "audio": data.base64EncodedString(),
-            ])
-        } catch {
-            voiceLogger.error("Voice audio send failed: \(String(describing: error), privacy: .public)")
-        }
+        try await sendJSONObject([
+            "type": "input_audio_buffer.append",
+            "audio": data.base64EncodedString(),
+        ])
     }
 
     private func sendJSONObject(_ object: [String: Any]) async throws {
@@ -583,6 +575,14 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
             try audioStartOverride()
             return
         }
+
+        #if os(iOS)
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+            try? audioSession.setPreferredSampleRate(ChatVoiceAudioCodec.sampleRate)
+            try audioSession.setActive(true)
+        #endif
+
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
         engine.attach(player)
@@ -592,20 +592,21 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
         let input = engine.inputNode
         let inputFormat = input.inputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
-            guard let self else { return }
+        let scheduleInputAudio: @Sendable (Data) -> Void = { [weak self] data in
+            guard data.isEmpty == false else { return }
             Task { @MainActor [weak self] in
                 guard let self, isMuted == false else { return }
-                let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
-                await sendAudioData(data)
+                do {
+                    try await sendAudioData(data)
+                } catch {
+                    surfaceFailure(error)
+                }
             }
         }
-
-        #if os(iOS)
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
-            try audioSession.setActive(true)
-        #endif
+        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { buffer, _ in
+            let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
+            scheduleInputAudio(data)
+        }
 
         try engine.start()
         player.play()
@@ -628,12 +629,41 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         #endif
     }
 
-    private func playAudio(_ data: Data) {
-        guard let playerNode, let buffer = ChatVoiceAudioCodec.audioBuffer(fromPCM16: data) else { return }
+    private func playAudio(_ data: Data) throws {
+        guard let playerNode else {
+            throw ChatVoiceRealtimeClientError.protocolFailure(message: "Voice audio player is unavailable.")
+        }
+        guard let buffer = ChatVoiceAudioCodec.audioBuffer(fromPCM16: data) else {
+            throw ChatVoiceRealtimeClientError.protocolFailure(message: "Voice service returned invalid PCM audio.")
+        }
         if playerNode.isPlaying == false {
             playerNode.play()
         }
         playerNode.scheduleBuffer(buffer, completionHandler: nil)
+    }
+
+    private func surfaceFailure(_ error: Error) {
+        guard hasReportedTerminalFailure == false else { return }
+        hasReportedTerminalFailure = true
+        let connectionError = normalizedConnectionError(error)
+        voiceLogger.error(
+            "Voice realtime failed: \(connectionError.logDescription, privacy: .public)",
+        )
+        cleanupTransport()
+        switch connectionError {
+        case let .providerError(providerError):
+            eventContinuation.yield(.error(providerError))
+        default:
+            eventContinuation.yield(
+                .error(
+                    ChatVoiceProviderError(
+                        type: "client_error",
+                        message: connectionError.userFacingMessage,
+                    ),
+                ),
+            )
+        }
+        stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
     }
 }
 

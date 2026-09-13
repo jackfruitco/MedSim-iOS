@@ -85,6 +85,22 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
         XCTAssertEqual(event, .outputAudio(Data([1, 2, 3, 4])))
     }
 
+    func testInvalidOutputAudioDeltaSurfacesProtocolFailure() {
+        let json = """
+        {
+          "type": "response.output_audio.delta",
+          "delta": "not-valid-base64"
+        }
+        """
+
+        XCTAssertThrowsError(try ChatVoiceRealtimeEventParser.parse(json)) { error in
+            XCTAssertEqual(
+                error as? ChatVoiceRealtimeClientError,
+                .protocolFailure(message: "Voice service returned invalid audio data."),
+            )
+        }
+    }
+
     func testParsesProviderErrorWithCodeAndType() throws {
         let json = """
         {
