@@ -32,13 +32,52 @@ public struct ChatVoiceToolCallEvent: Sendable, Equatable {
     public let providerEventID: String?
 }
 
+public struct ChatVoiceProviderError: Sendable, Equatable {
+    public let type: String?
+    public let code: String?
+    public let message: String
+
+    public init(type: String? = nil, code: String? = nil, message: String) {
+        self.type = type
+        self.code = code
+        self.message = message
+    }
+
+    public var displayMessage: String {
+        if let code, code.isEmpty == false {
+            return "\(message) (\(code))"
+        }
+        return message
+    }
+}
+
 public enum ChatVoiceRealtimeEvent: Sendable, Equatable {
     case transcript(ChatVoiceTranscriptEvent)
     case toolCall(ChatVoiceToolCallEvent)
     case outputAudio(Data)
     case remoteSpeechStarted
     case remoteSpeechStopped
-    case error(message: String)
+    case error(ChatVoiceProviderError)
+}
+
+private func decodeVoiceObject(_ text: String) throws -> [String: JSONValue] {
+    try JSONDecoder().decode([String: JSONValue].self, from: Data(text.utf8))
+}
+
+private func voiceString(_ value: JSONValue?) -> String? {
+    guard case let .string(value)? = value else { return nil }
+    return value
+}
+
+private func voiceProviderError(from object: [String: JSONValue]) -> ChatVoiceProviderError {
+    guard case let .object(error)? = object["error"] else {
+        return ChatVoiceProviderError(message: "Realtime voice reported an error.")
+    }
+    return ChatVoiceProviderError(
+        type: voiceString(error["type"]),
+        code: voiceString(error["code"]),
+        message: voiceString(error["message"]) ?? "Realtime voice reported an error.",
+    )
 }
 
 @MainActor
@@ -52,15 +91,47 @@ public protocol ChatVoiceRealtimeClientProtocol: AnyObject {
     func disconnect() async
 }
 
+protocol ChatVoiceWebSocketTask: AnyObject, Sendable {
+    func resume()
+    func send(_ message: URLSessionWebSocketTask.Message) async throws
+    func receive() async throws -> URLSessionWebSocketTask.Message
+    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
+    var closeCode: URLSessionWebSocketTask.CloseCode { get }
+    var closeReason: Data? { get }
+}
+
+extension URLSessionWebSocketTask: ChatVoiceWebSocketTask {}
+
+enum ChatVoicePermissionBridge {
+    static func request() async -> Bool {
+        #if os(iOS)
+            return await request { completion in
+                AVAudioSession.sharedInstance().requestRecordPermission(completion)
+            }
+        #else
+            return true
+        #endif
+    }
+
+    static func request(
+        register: @Sendable (@escaping @Sendable (Bool) -> Void) -> Void,
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            register { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+}
+
 public enum ChatVoiceRealtimeEventParser {
     public static func parse(_ text: String) throws -> ChatVoiceRealtimeEvent? {
-        let data = Data(text.utf8)
-        let object = try JSONDecoder().decode([String: JSONValue].self, from: data)
-        guard let type = string(object["type"]) else { return nil }
+        let object = try decodeVoiceObject(text)
+        guard let type = voiceString(object["type"]) else { return nil }
 
         switch type {
         case "conversation.item.input_audio_transcription.completed":
-            let transcript = string(object["transcript"]) ?? ""
+            let transcript = voiceString(object["transcript"]) ?? ""
             guard transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                 return nil
             }
@@ -68,15 +139,15 @@ public enum ChatVoiceRealtimeEventParser {
                 ChatVoiceTranscriptEvent(
                     role: "user",
                     transcript: transcript,
-                    providerItemID: string(object["item_id"]),
+                    providerItemID: voiceString(object["item_id"]),
                     providerResponseID: nil,
-                    providerEventID: string(object["event_id"]),
+                    providerEventID: voiceString(object["event_id"]),
                     metadata: ["provider_event_type": .string(type)],
                 ),
             )
 
         case "response.output_audio_transcript.done":
-            let transcript = string(object["transcript"]) ?? ""
+            let transcript = voiceString(object["transcript"]) ?? ""
             guard transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
                 return nil
             }
@@ -84,17 +155,17 @@ public enum ChatVoiceRealtimeEventParser {
                 ChatVoiceTranscriptEvent(
                     role: "assistant",
                     transcript: transcript,
-                    providerItemID: string(object["item_id"]),
-                    providerResponseID: string(object["response_id"]),
-                    providerEventID: string(object["event_id"]),
+                    providerItemID: voiceString(object["item_id"]),
+                    providerResponseID: voiceString(object["response_id"]),
+                    providerEventID: voiceString(object["event_id"]),
                     metadata: ["provider_event_type": .string(type)],
                 ),
             )
 
         case "response.content_part.done":
             guard case let .object(part)? = object["part"],
-                  string(part["type"]) == "audio",
-                  let transcript = string(part["transcript"]),
+                  voiceString(part["type"]) == "audio",
+                  let transcript = voiceString(part["transcript"]),
                   transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             else {
                 return nil
@@ -103,32 +174,32 @@ public enum ChatVoiceRealtimeEventParser {
                 ChatVoiceTranscriptEvent(
                     role: "assistant",
                     transcript: transcript,
-                    providerItemID: string(object["item_id"]),
-                    providerResponseID: string(object["response_id"]),
-                    providerEventID: string(object["event_id"]),
+                    providerItemID: voiceString(object["item_id"]),
+                    providerResponseID: voiceString(object["response_id"]),
+                    providerEventID: voiceString(object["event_id"]),
                     metadata: ["provider_event_type": .string(type)],
                 ),
             )
 
         case "response.function_call_arguments.done":
-            guard let toolCallID = string(object["call_id"]),
-                  let name = string(object["name"])
+            guard let toolCallID = voiceString(object["call_id"]),
+                  let name = voiceString(object["name"])
             else {
                 return nil
             }
-            let arguments = try decodeArguments(string(object["arguments"]) ?? "{}")
+            let arguments = try decodeArguments(voiceString(object["arguments"]) ?? "{}")
             return .toolCall(
                 ChatVoiceToolCallEvent(
                     toolCallID: toolCallID,
                     name: name,
                     arguments: arguments,
-                    providerResponseID: string(object["response_id"]),
-                    providerEventID: string(object["event_id"]),
+                    providerResponseID: voiceString(object["response_id"]),
+                    providerEventID: voiceString(object["event_id"]),
                 ),
             )
 
         case "response.output_audio.delta":
-            guard let base64 = string(object["delta"]),
+            guard let base64 = voiceString(object["delta"]),
                   let data = Data(base64Encoded: base64)
             else {
                 return nil
@@ -142,10 +213,7 @@ public enum ChatVoiceRealtimeEventParser {
             return .remoteSpeechStopped
 
         case "error":
-            if case let .object(error)? = object["error"] {
-                return .error(message: string(error["message"]) ?? "Realtime voice reported an error.")
-            }
-            return .error(message: "Realtime voice reported an error.")
+            return .error(voiceProviderError(from: object))
 
         default:
             return nil
@@ -160,10 +228,6 @@ public enum ChatVoiceRealtimeEventParser {
         return try JSONDecoder().decode([String: JSONValue].self, from: data)
     }
 
-    private static func string(_ value: JSONValue?) -> String? {
-        guard case let .string(value)? = value else { return nil }
-        return value
-    }
 }
 
 @MainActor
@@ -171,8 +235,8 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     public let events: AsyncStream<ChatVoiceRealtimeEvent>
     public let connectionStates: AsyncStream<ChatVoiceConnectionState>
 
-    private let session: URLSession
-    private var socketTask: URLSessionWebSocketTask?
+    private let makeWebSocketTask: (URLRequest) -> any ChatVoiceWebSocketTask
+    private var socketTask: (any ChatVoiceWebSocketTask)?
     private var receiveTask: Task<Void, Never>?
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
@@ -180,9 +244,41 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
     private let eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation
     private let stateContinuation: AsyncStream<ChatVoiceConnectionState>.Continuation
+    private let handshakeTimeoutNanoseconds: UInt64
+    private let audioStartOverride: (() throws -> Void)?
+    private let audioStopOverride: (() -> Void)?
 
     public init(session: URLSession = .shared) {
-        self.session = session
+        makeWebSocketTask = { session.webSocketTask(with: $0) }
+
+        var eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation!
+        events = AsyncStream<ChatVoiceRealtimeEvent> { continuation in
+            eventContinuation = continuation
+        }
+        self.eventContinuation = eventContinuation
+
+        var stateContinuation: AsyncStream<ChatVoiceConnectionState>.Continuation!
+        connectionStates = AsyncStream<ChatVoiceConnectionState> { continuation in
+            stateContinuation = continuation
+        }
+        self.stateContinuation = stateContinuation
+        handshakeTimeoutNanoseconds = 10_000_000_000
+        audioStartOverride = nil
+        audioStopOverride = nil
+
+        super.init()
+    }
+
+    init(
+        makeWebSocketTask: @escaping (URLRequest) -> any ChatVoiceWebSocketTask,
+        handshakeTimeoutNanoseconds: UInt64 = 10_000_000_000,
+        audioStartOverride: (() throws -> Void)? = nil,
+        audioStopOverride: (() -> Void)? = nil,
+    ) {
+        self.makeWebSocketTask = makeWebSocketTask
+        self.handshakeTimeoutNanoseconds = handshakeTimeoutNanoseconds
+        self.audioStartOverride = audioStartOverride
+        self.audioStopOverride = audioStopOverride
 
         var eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation!
         events = AsyncStream<ChatVoiceRealtimeEvent> { continuation in
@@ -202,29 +298,40 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     public func connect(session voiceSession: ChatVoiceSession) async throws {
         await disconnect()
         stateContinuation.yield(.requestingPermission)
-        guard await requestMicrophonePermission() else {
+        guard await ChatVoicePermissionBridge.request() else {
             stateContinuation.yield(.failed(message: "Microphone access is required for voice chat."))
             throw ChatVoiceRealtimeClientError.microphonePermissionDenied
         }
 
         stateContinuation.yield(.connecting)
-        let request = try makeProviderRequest(for: voiceSession)
-        let socketTask = session.webSocketTask(with: request)
-        self.socketTask = socketTask
-        socketTask.resume()
+        do {
+            let request = try makeProviderRequest(for: voiceSession)
+            let socketTask = makeWebSocketTask(request)
+            self.socketTask = socketTask
+            socketTask.resume()
 
-        if let config = voiceSession.sessionConfig, !config.isEmpty {
-            try await sendJSONObject([
-                "type": "session.update",
-                "session": config.mapValues(\.rawValue),
-            ])
-        }
+            try await awaitSessionCreated()
 
-        try startAudio()
-        receiveTask = Task { [weak self] in
-            await self?.receiveLoop()
+            let config = sanitizedSessionConfig(voiceSession.sessionConfig)
+            if config.isEmpty == false {
+                try await sendJSONObject([
+                    "type": "session.update",
+                    "session": config.mapValues(\.rawValue),
+                ])
+                try await awaitSessionUpdated()
+            }
+
+            try startAudio()
+            receiveTask = Task { [weak self] in
+                await self?.receiveLoop()
+            }
+            stateContinuation.yield(.live)
+        } catch {
+            let connectionError = normalizedConnectionError(error)
+            cleanupTransport()
+            stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
+            throw connectionError
         }
-        stateContinuation.yield(.live)
     }
 
     public func setMuted(_ isMuted: Bool) async {
@@ -255,11 +362,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
     public func disconnect() async {
         stateContinuation.yield(.ending)
-        receiveTask?.cancel()
-        receiveTask = nil
-        stopAudio()
-        socketTask?.cancel(with: .normalClosure, reason: nil)
-        socketTask = nil
+        cleanupTransport()
         isMuted = false
         stateContinuation.yield(.idle)
     }
@@ -299,14 +402,24 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                         playAudio(data)
                     }
                     eventContinuation.yield(event)
+                    if case let .error(providerError) = event {
+                        let connectionError = ChatVoiceRealtimeClientError.providerError(providerError)
+                        cleanupTransport()
+                        stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
+                        return
+                    }
                 }
             } catch {
                 if Task.isCancelled {
                     return
                 }
-                voiceLogger.error("Voice realtime receive failed: \(String(describing: error), privacy: .public)")
-                eventContinuation.yield(.error(message: "Voice connection failed."))
-                stateContinuation.yield(.failed(message: "Voice connection failed."))
+                let connectionError = normalizedConnectionError(error)
+                voiceLogger.error(
+                    "Voice realtime receive failed: \(connectionError.logDescription, privacy: .public)",
+                )
+                cleanupTransport()
+                eventContinuation.yield(.error(ChatVoiceProviderError(message: connectionError.userFacingMessage)))
+                stateContinuation.yield(.failed(message: connectionError.userFacingMessage))
                 return
             }
         }
@@ -349,19 +462,127 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         try await socketTask.send(.string(text))
     }
 
-    private func requestMicrophonePermission() async -> Bool {
-        #if os(iOS)
-            return await withCheckedContinuation { continuation in
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
+    private func awaitSessionCreated() async throws {
+        while true {
+            switch try await receiveHandshakeEvent() {
+            case .sessionCreated:
+                return
+            case .sessionUpdated:
+                continue
+            case let .providerError(providerError):
+                throw ChatVoiceRealtimeClientError.providerError(providerError)
+            case .ignored:
+                continue
             }
-        #else
-            return true
-        #endif
+        }
+    }
+
+    private func awaitSessionUpdated() async throws {
+        while true {
+            switch try await receiveHandshakeEvent() {
+            case .sessionUpdated:
+                return
+            case .sessionCreated:
+                continue
+            case let .providerError(providerError):
+                throw ChatVoiceRealtimeClientError.providerError(providerError)
+            case .ignored:
+                continue
+            }
+        }
+    }
+
+    private enum HandshakeEvent {
+        case sessionCreated
+        case sessionUpdated
+        case providerError(ChatVoiceProviderError)
+        case ignored
+    }
+
+    private func receiveHandshakeEvent() async throws -> HandshakeEvent {
+        let text = try await receiveTextWithTimeout()
+        let object = try decodeVoiceObject(text)
+        guard let type = voiceString(object["type"]) else {
+            throw ChatVoiceRealtimeClientError.protocolFailure(message: "Voice service returned an invalid event.")
+        }
+        switch type {
+        case "session.created":
+            return .sessionCreated
+        case "session.updated":
+            return .sessionUpdated
+        case "error":
+            return .providerError(voiceProviderError(from: object))
+        default:
+            return .ignored
+        }
+    }
+
+    private func receiveTextWithTimeout() async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask { [weak self] in
+                guard let self else {
+                    throw ChatVoiceRealtimeClientError.notConnected
+                }
+                return try await self.receiveText()
+            }
+            group.addTask { [handshakeTimeoutNanoseconds] in
+                try await Task.sleep(nanoseconds: handshakeTimeoutNanoseconds)
+                throw ChatVoiceRealtimeClientError.handshakeTimedOut
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+    }
+
+    private func receiveText() async throws -> String {
+        guard let socketTask else {
+            throw ChatVoiceRealtimeClientError.notConnected
+        }
+        return try text(from: await socketTask.receive())
+    }
+
+    private func sanitizedSessionConfig(_ config: [String: JSONValue]?) -> [String: JSONValue] {
+        (config ?? [:]).filter { key, _ in
+            key != "type" && key != "model"
+        }
+    }
+
+    private func normalizedConnectionError(_ error: Error) -> ChatVoiceRealtimeClientError {
+        if let error = error as? ChatVoiceRealtimeClientError {
+            return error
+        }
+        if let closeCode = socketTask?.closeCode, closeCode != .invalid {
+            let reason = socketTask?.closeReason.flatMap { String(data: $0, encoding: .utf8) }
+            return .socketClosed(code: closeCode.rawValue, reason: reason)
+        }
+        if let urlError = error as? URLError {
+            let message: String
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut:
+                message = "Voice connection is unavailable. Check your connection and try again."
+            case .userAuthenticationRequired, .userCancelledAuthentication, .secureConnectionFailed:
+                message = "Voice authentication failed. Please start again."
+            default:
+                message = "Voice connection failed. Please try again."
+            }
+            return .transportFailure(message: message)
+        }
+        return .transportFailure(message: "The voice connection closed unexpectedly.")
+    }
+
+    private func cleanupTransport() {
+        receiveTask?.cancel()
+        receiveTask = nil
+        stopAudio()
+        socketTask?.cancel(with: .normalClosure, reason: nil)
+        socketTask = nil
     }
 
     private func startAudio() throws {
+        if let audioStartOverride {
+            try audioStartOverride()
+            return
+        }
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
         engine.attach(player)
@@ -393,6 +614,10 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     }
 
     private func stopAudio() {
+        if let audioStopOverride {
+            audioStopOverride()
+            return
+        }
         audioEngine?.inputNode.removeTap(onBus: 0)
         playerNode?.stop()
         audioEngine?.stop()
@@ -412,13 +637,58 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     }
 }
 
-public enum ChatVoiceRealtimeClientError: Error, Equatable {
+public enum ChatVoiceRealtimeClientError: Error, Equatable, Sendable {
     case microphonePermissionDenied
     case missingWebSocketURL
     case missingClientSecret
     case notConnected
     case unsupportedMessage
     case invalidUTF8
+    case handshakeTimedOut
+    case providerError(ChatVoiceProviderError)
+    case socketClosed(code: Int, reason: String?)
+    case transportFailure(message: String)
+    case protocolFailure(message: String)
+
+    public var userFacingMessage: String {
+        switch self {
+        case .microphonePermissionDenied:
+            "Microphone access is required for voice chat."
+        case .missingWebSocketURL, .missingClientSecret:
+            "Voice session setup is incomplete. Please start again."
+        case .notConnected:
+            "Voice is not connected. Please start again."
+        case .unsupportedMessage, .invalidUTF8, .protocolFailure:
+            "Voice service returned an unexpected response. Please start again."
+        case .handshakeTimedOut:
+            "Voice service did not respond. Please try again."
+        case let .providerError(providerError):
+            providerError.displayMessage
+        case let .socketClosed(code, _):
+            if code == URLSessionWebSocketTask.CloseCode.normalClosure.rawValue {
+                "Voice connection ended."
+            } else {
+                "Voice connection closed unexpectedly. Please try again."
+            }
+        case let .transportFailure(message):
+            message.isEmpty ? "Voice connection failed. Check your connection and try again." : message
+        }
+    }
+
+    fileprivate var logDescription: String {
+        switch self {
+        case let .socketClosed(code, reason):
+            "socket_closed code=\(code) reason=\(reason ?? "none")"
+        case let .providerError(providerError):
+            "provider_error type=\(providerError.type ?? "unknown") code=\(providerError.code ?? "none") message=\(providerError.message)"
+        case let .transportFailure(message):
+            "transport_failure message=\(message)"
+        case let .protocolFailure(message):
+            "protocol_failure message=\(message)"
+        default:
+            String(describing: self)
+        }
+    }
 }
 
 private enum ChatVoiceAudioCodec {
