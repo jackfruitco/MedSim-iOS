@@ -256,6 +256,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var isMuted = false
+    private var isRemoteSpeaking = false
     private var hasReportedTerminalFailure = false
 
     private let eventContinuation: AsyncStream<ChatVoiceRealtimeEvent>.Continuation
@@ -415,11 +416,17 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                 let text = try text(from: message)
                 if let event = try ChatVoiceRealtimeEventParser.parse(text) {
                     if case let .outputAudio(data) = event {
+                        isRemoteSpeaking = true
                         try playAudio(data)
                     }
                     if case let .error(providerError) = event {
                         surfaceFailure(ChatVoiceRealtimeClientError.providerError(providerError))
                         return
+                    }
+                    if case .remoteSpeechStarted = event {
+                        isRemoteSpeaking = true
+                    } else if case .remoteSpeechStopped = event {
+                        isRemoteSpeaking = false
                     }
                     eventContinuation.yield(event)
                 }
@@ -604,6 +611,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         engine.connect(player, to: engine.mainMixerNode, format: outputFormat)
 
         let input = engine.inputNode
+        try input.setVoiceProcessingEnabled(true)
         let inputFormat = input.inputFormat(forBus: 0)
         var inputAudioContinuation: AsyncStream<Data>.Continuation!
         let inputAudioStream = AsyncStream<Data> { continuation in
@@ -612,7 +620,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         self.inputAudioContinuation = inputAudioContinuation
         inputAudioTask = Task { @MainActor [weak self] in
             for await data in inputAudioStream {
-                guard let self, isMuted == false else { continue }
+                guard let self, isMuted == false, isRemoteSpeaking == false else { continue }
                 do {
                     try await sendAudioData(data)
                 } catch {
@@ -639,6 +647,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         inputAudioContinuation = nil
         inputAudioTask?.cancel()
         inputAudioTask = nil
+        isRemoteSpeaking = false
         if let audioStopOverride {
             audioStopOverride()
             return

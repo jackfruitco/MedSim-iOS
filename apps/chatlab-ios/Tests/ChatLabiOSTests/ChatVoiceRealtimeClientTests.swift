@@ -101,6 +101,18 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
         }
     }
 
+    func testParsesRemoteSpeechLifecycleEvents() throws {
+        let started = try XCTUnwrap(ChatVoiceRealtimeEventParser.parse("""
+        {"type":"output_audio_buffer.started"}
+        """))
+        let stopped = try XCTUnwrap(ChatVoiceRealtimeEventParser.parse("""
+        {"type":"response.output_audio.done"}
+        """))
+
+        XCTAssertEqual(started, .remoteSpeechStarted)
+        XCTAssertEqual(stopped, .remoteSpeechStopped)
+    }
+
     func testParsesProviderErrorWithCodeAndType() throws {
         let json = """
         {
