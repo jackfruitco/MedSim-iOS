@@ -80,6 +80,17 @@ private func voiceProviderError(from object: [String: JSONValue]) -> ChatVoicePr
     )
 }
 
+private func makeVoiceInputTap(
+    continuation: AsyncStream<Data>.Continuation,
+) -> AVAudioNodeTapBlock {
+    { buffer, _ in
+        let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
+        if data.isEmpty == false {
+            continuation.yield(data)
+        }
+    }
+}
+
 @MainActor
 public protocol ChatVoiceRealtimeClientProtocol: AnyObject {
     var events: AsyncStream<ChatVoiceRealtimeEvent> { get }
@@ -610,12 +621,12 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                 }
             }
         }
-        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { buffer, _ in
-            let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
-            if data.isEmpty == false {
-                inputAudioContinuation.yield(data)
-            }
-        }
+        input.installTap(
+            onBus: 0,
+            bufferSize: 2048,
+            format: inputFormat,
+            block: makeVoiceInputTap(continuation: inputAudioContinuation),
+        )
 
         try engine.start()
         player.play()
