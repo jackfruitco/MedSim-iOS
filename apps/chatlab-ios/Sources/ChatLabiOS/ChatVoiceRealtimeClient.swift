@@ -387,7 +387,6 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
-        request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
         return request
     }
 

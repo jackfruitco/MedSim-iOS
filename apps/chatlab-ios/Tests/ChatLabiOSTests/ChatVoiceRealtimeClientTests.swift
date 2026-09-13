@@ -120,6 +120,7 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
 
     func testConnectWaitsForHandshakeAndFiltersImmutableSessionFields() async throws {
         let socket = TestVoiceWebSocketTask()
+        var capturedRequest: URLRequest?
         await socket.enqueue(.string("""
         {"type":"session.created"}
         """))
@@ -128,7 +129,10 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
         """))
 
         let client = ChatVoiceRealtimeClient(
-            makeWebSocketTask: { _ in socket },
+            makeWebSocketTask: { request in
+                capturedRequest = request
+                return socket
+            },
             audioStartOverride: {},
             audioStopOverride: {},
         )
@@ -147,6 +151,7 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
         let states = await stateTask.value
 
         XCTAssertTrue(states.contains(.live))
+        XCTAssertNil(capturedRequest?.value(forHTTPHeaderField: "OpenAI-Beta"))
         XCTAssertEqual(socket.sentMessages.count, 1)
         guard case let .string(payload) = socket.sentMessages[0],
               let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
