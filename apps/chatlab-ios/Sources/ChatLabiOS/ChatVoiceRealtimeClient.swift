@@ -541,9 +541,10 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     }
 
     private func sanitizedSessionConfig(_ config: [String: JSONValue]?) -> [String: JSONValue] {
-        (config ?? [:]).filter { key, _ in
-            key != "type" && key != "model"
-        }
+        var sanitized = config ?? [:]
+        sanitized["type"] = .string("realtime")
+        sanitized.removeValue(forKey: "model")
+        return sanitized
     }
 
     private func normalizedConnectionError(_ error: Error) -> ChatVoiceRealtimeClientError {

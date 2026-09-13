@@ -159,7 +159,7 @@ final class ChatVoiceRealtimeClientTests: XCTestCase {
         else {
             return XCTFail("Expected session.update payload")
         }
-        XCTAssertNil(config["type"])
+        XCTAssertEqual(config["type"] as? String, "realtime")
         XCTAssertNil(config["model"])
         XCTAssertEqual(config["instructions"] as? String, "Test voice session")
 
