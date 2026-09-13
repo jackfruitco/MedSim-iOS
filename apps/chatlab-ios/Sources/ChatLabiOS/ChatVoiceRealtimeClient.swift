@@ -240,6 +240,8 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     private let makeWebSocketTask: (URLRequest) -> any ChatVoiceWebSocketTask
     private var socketTask: (any ChatVoiceWebSocketTask)?
     private var receiveTask: Task<Void, Never>?
+    private var inputAudioTask: Task<Void, Never>?
+    private var inputAudioContinuation: AsyncStream<Data>.Continuation?
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var isMuted = false
@@ -592,20 +594,27 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
 
         let input = engine.inputNode
         let inputFormat = input.inputFormat(forBus: 0)
-        let scheduleInputAudio: @Sendable (Data) -> Void = { [weak self] data in
-            guard data.isEmpty == false else { return }
-            Task { @MainActor [weak self] in
-                guard let self, isMuted == false else { return }
+        var inputAudioContinuation: AsyncStream<Data>.Continuation!
+        let inputAudioStream = AsyncStream<Data> { continuation in
+            inputAudioContinuation = continuation
+        }
+        self.inputAudioContinuation = inputAudioContinuation
+        inputAudioTask = Task { @MainActor [weak self] in
+            for await data in inputAudioStream {
+                guard let self, isMuted == false else { continue }
                 do {
                     try await sendAudioData(data)
                 } catch {
                     surfaceFailure(error)
+                    return
                 }
             }
         }
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { buffer, _ in
             let data = ChatVoiceAudioCodec.pcm16Data(from: buffer)
-            scheduleInputAudio(data)
+            if data.isEmpty == false {
+                inputAudioContinuation.yield(data)
+            }
         }
 
         try engine.start()
@@ -615,6 +624,10 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
     }
 
     private func stopAudio() {
+        inputAudioContinuation?.finish()
+        inputAudioContinuation = nil
+        inputAudioTask?.cancel()
+        inputAudioTask = nil
         if let audioStopOverride {
             audioStopOverride()
             return
