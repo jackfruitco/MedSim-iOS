@@ -198,12 +198,6 @@ public struct ChatRunView: View {
                     .padding(.horizontal, horizontalInset(for: layoutMode))
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .background {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .opacity(0.35)
-                            .ignoresSafeArea(edges: .bottom)
-                    }
                 }
         }
     }
@@ -665,14 +659,9 @@ public struct ChatRunView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 22, weight: .regular))
                         .frame(width: 44, height: 44)
-                        .background(Color.secondary.opacity(0.14))
-                        .clipShape(Circle())
-                        .overlay {
-                            Circle()
-                                .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
-                        }
                 }
-                .buttonStyle(.plain)
+                .trainerGlassButtonStyle()
+                .buttonBorderShape(.circle)
                 .accessibilityLabel("More tools")
                 .accessibilityIdentifier("chat-more-tools-button")
             }
@@ -751,12 +740,11 @@ public struct ChatRunView: View {
             }
             .padding(.trailing, 5)
             .frame(minHeight: 44)
-            .background(Color.secondary.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-            }
+            .trainerGlassSurface(
+                role: .floatingOverlay,
+                cornerRadius: 22,
+                interactive: true,
+            )
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
         .frame(maxWidth: .infinity)
