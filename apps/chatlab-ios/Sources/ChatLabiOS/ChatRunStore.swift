@@ -303,6 +303,9 @@ public final class ChatRunStore: ObservableObject {
             guard let self else { return }
             for await state in voiceClient.connectionStates {
                 await MainActor.run {
+                    if case .failed = state {
+                        self.activeVoiceSession = nil
+                    }
                     self.voiceConnectionState = state
                 }
             }
@@ -341,9 +344,14 @@ public final class ChatRunStore: ObservableObject {
         stopTypingIndicator()
         clearRemoteTypingUsers()
         realtimeClient.disconnect()
-        Task { await voiceClient.disconnect() }
-        activeVoiceSession = nil
-        voiceConnectionState = .idle
+        voiceConnectionState = .ending
+        let voiceClient = self.voiceClient
+        Task { @MainActor [weak self] in
+            await voiceClient.disconnect()
+            guard let self, self.hasStarted == false else { return }
+            self.activeVoiceSession = nil
+            self.voiceConnectionState = .idle
+        }
         transportState = .idle
         socketDisconnected = true
     }
@@ -542,8 +550,16 @@ public final class ChatRunStore: ObservableObject {
                 try await voiceClient.connect(session: session)
             } catch {
                 guard !Task.isCancelled else { return }
-                voiceConnectionState = .failed(message: messageText(for: error))
-                presentableError = AppErrorPresenter.present(error)
+                activeVoiceSession = nil
+                let message = voiceErrorText(for: error)
+                voiceConnectionState = .failed(message: message)
+                presentableError = PresentableAppError(
+                    title: "Voice Error",
+                    message: message,
+                    debugMessage: String(reflecting: error),
+                    correlationID: nil,
+                    recoveryActionLabel: "Start Again",
+                )
             }
         }
     }
@@ -773,7 +789,9 @@ public final class ChatRunStore: ObservableObject {
         case .outputAudio, .remoteSpeechStarted, .remoteSpeechStopped:
             break
 
-        case let .error(message):
+        case let .error(providerError):
+            let message = providerError.displayMessage
+            activeVoiceSession = nil
             voiceConnectionState = .failed(message: message)
             presentableError = PresentableAppError(
                 title: "Voice Error",
@@ -1341,6 +1359,13 @@ public final class ChatRunStore: ObservableObject {
 
     private func messageText(for error: Error) -> String {
         AppErrorPresenter.present(error)?.message ?? "Something went wrong."
+    }
+
+    private func voiceErrorText(for error: Error) -> String {
+        if let voiceError = error as? ChatVoiceRealtimeClientError {
+            return voiceError.userFacingMessage
+        }
+        return messageText(for: error)
     }
 
     private func reconcileLocalEcho(

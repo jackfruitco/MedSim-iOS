@@ -389,6 +389,49 @@ final class ChatRunStoreTests: XCTestCase {
         XCTAssertFalse(service.startedVoiceSessions.first?.request.idempotencyKey.isEmpty ?? true)
     }
 
+    func testVoiceConnectionFailureClearsActiveSessionForRetry() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
+        let patientConversation = makeConversation()
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [patientConversation])
+        service.messagesByConversation[patientConversation.id] = []
+        service.voiceSession = makeVoiceSession(conversationID: patientConversation.id)
+
+        let realtime = TestRealtimeClient()
+        let voice = TestVoiceRealtimeClient()
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: realtime,
+            voiceClient: voice,
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        store.start()
+        defer { store.stop() }
+
+        try await waitUntil { store.activeConversationID == patientConversation.id }
+        store.startVoiceSession()
+        try await waitUntil { voice.connectCalls.count == 1 && store.activeVoiceSession != nil }
+
+        voice.pushEvent(
+            .error(
+                ChatVoiceProviderError(
+                    type: "invalid_request_error",
+                    code: "session_expired",
+                    message: "The voice session expired.",
+                ),
+            ),
+        )
+
+        try await waitUntil {
+            if case .failed = store.voiceConnectionState {
+                return store.activeVoiceSession == nil
+            }
+            return false
+        }
+    }
+
     func testStopCancelsInFlightVoiceStartBeforeConnecting() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()
@@ -417,6 +460,7 @@ final class ChatRunStoreTests: XCTestCase {
         try await Task.sleep(nanoseconds: 450_000_000)
 
         XCTAssertTrue(voice.connectCalls.isEmpty)
+        XCTAssertEqual(voice.disconnectCount, 1)
         XCTAssertNil(store.activeVoiceSession)
         XCTAssertEqual(store.voiceConnectionState, .idle)
     }
