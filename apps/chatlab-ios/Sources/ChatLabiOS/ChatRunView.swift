@@ -189,25 +189,15 @@ public struct ChatRunView: View {
                     .padding(.top, 4)
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    compactGlassChrome(cornerRadius: 24, tint: Color.blue.opacity(0.05)) {
-                        VStack(spacing: 6) {
-                            awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
-                            typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                            voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
-                            composer(layoutMode: layoutMode)
-                        }
-                        .padding(.horizontal, horizontalInset(for: layoutMode))
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
+                    VStack(spacing: 6) {
+                        awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
+                        typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                        voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
+                        composer(layoutMode: layoutMode)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 4)
-                    .background {
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                            .opacity(0.35)
-                            .ignoresSafeArea(edges: .bottom)
-                    }
+                    .padding(.horizontal, horizontalInset(for: layoutMode))
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
                 }
         }
     }
@@ -662,26 +652,44 @@ public struct ChatRunView: View {
 
     private func composer(layoutMode: ChatRunLayoutMode) -> some View {
         HStack(spacing: 8) {
-            // Tools button lives in the composer bar for phone layouts (not the header),
-            // keeping the chat header minimal per design requirements.
             if layoutMode != .padWorkspace {
                 Button {
                     showToolsSheet = true
                 } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .regular))
+                        .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Tools")
+                .trainerGlassButtonStyle()
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("More tools")
+                .accessibilityIdentifier("chat-more-tools-button")
             }
 
-            HStack(spacing: 8) {
+            HStack(alignment: .bottom, spacing: 6) {
+                TextField(
+                    store.activeConversationLocked ? "This conversation is read-only" : "Message",
+                    text: $store.draftText,
+                    axis: .vertical,
+                )
+                .lineLimit(1 ... 4)
+                .textFieldStyle(.plain)
+                .padding(.leading, 10)
+                .padding(.vertical, 10)
+                .disabled(store.activeConversationLocked)
+                .focused($composerIsFocused)
+                .onChange(of: store.draftText) { _, _ in
+                    store.notifyTypingChanged()
+                }
+
                 if store.isVoiceSessionActive {
                     Button {
                         store.toggleVoiceMute()
                     } label: {
                         Image(systemName: store.isVoiceMuted ? "mic.slash.fill" : "mic.fill")
+                            .frame(width: 34, height: 34)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .accessibilityLabel(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
                     .help(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
 
@@ -689,60 +697,54 @@ public struct ChatRunView: View {
                         store.endVoiceSession()
                     } label: {
                         Image(systemName: "stop.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Color.red)
+                            .clipShape(Circle())
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .accessibilityLabel("End voice")
                     .help("End voice")
+                } else if ChatComposerTrailingAction.resolve(
+                    draftText: store.draftText,
+                    conversationIsLocked: store.activeConversationLocked,
+                ) == .send {
+                    Button {
+                        store.sendDraft()
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Color.accentColor)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Send message")
+                    .accessibilityIdentifier("chat-send-button")
                 } else {
                     Button {
                         store.startVoiceSession()
                     } label: {
                         Image(systemName: "mic.fill")
+                            .font(.system(size: 19, weight: .medium))
+                            .frame(width: 34, height: 34)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .disabled(store.canStartVoiceSession == false)
                     .accessibilityLabel("Start voice")
+                    .accessibilityIdentifier("chat-voice-button")
                     .help("Start voice")
                 }
-
-                TextField(
-                    store.activeConversationLocked ? "This conversation is read-only" : "Message",
-                    text: $store.draftText,
-                    axis: .vertical,
-                )
-                .lineLimit(1 ... 4)
-                .textFieldStyle(.roundedBorder)
-                .disabled(store.activeConversationLocked)
-                .focused($composerIsFocused)
-                .onChange(of: store.draftText) { _, _ in
-                    store.notifyTypingChanged()
-                }
-
-                if isKeyboardPresented {
-                    Button {
-                        dismissKeyboard()
-                    } label: {
-                        Image(systemName: "keyboard.chevron.compact.down")
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Hide keyboard")
-                }
-
-                Button {
-                    store.sendDraft()
-                } label: {
-                    Image(systemName: "paperplane.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    store.activeConversationLocked ||
-                        store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                )
-                .accessibilityLabel("Send message")
             }
-            .padding(layoutMode == .padWorkspace ? 14 : 0)
-            .background(layoutMode == .padWorkspace ? chatSystemBackgroundColor() : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.trailing, 5)
+            .frame(minHeight: 44)
+            .trainerGlassSurface(
+                role: .floatingOverlay,
+                cornerRadius: 22,
+                interactive: true,
+            )
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
         .frame(maxWidth: .infinity)
@@ -1131,13 +1133,6 @@ public struct ChatRunView: View {
         }
         toolsStore.stageOrder(trimmed)
         stagedOrderText = ""
-    }
-
-    private func dismissKeyboard() {
-        composerIsFocused = false
-        #if os(iOS)
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        #endif
     }
 
     private func tabFont(for layoutMode: ChatRunLayoutMode) -> Font {

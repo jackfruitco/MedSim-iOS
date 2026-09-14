@@ -56,6 +56,19 @@ enum ChatRunChromeMode: Equatable {
     }
 }
 
+enum ChatComposerTrailingAction: Equatable {
+    case voice
+    case send
+
+    static func resolve(draftText: String, conversationIsLocked: Bool) -> Self {
+        guard conversationIsLocked == false else {
+            return .voice
+        }
+
+        return draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .voice : .send
+    }
+}
+
 enum ChatToolsSection: String, CaseIterable {
     case activity
     case patientHistory

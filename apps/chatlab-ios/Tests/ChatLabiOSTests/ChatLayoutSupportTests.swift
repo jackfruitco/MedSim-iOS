@@ -36,6 +36,28 @@ final class ChatLayoutSupportTests: XCTestCase {
         XCTAssertEqual(ChatRunChromeMode.resolve(isKeyboardPresented: false), .standard)
     }
 
+    func testComposerUsesVoiceForEmptyDraftAndSendForText() {
+        XCTAssertEqual(
+            ChatComposerTrailingAction.resolve(draftText: "", conversationIsLocked: false),
+            .voice,
+        )
+        XCTAssertEqual(
+            ChatComposerTrailingAction.resolve(draftText: "  \n", conversationIsLocked: false),
+            .voice,
+        )
+        XCTAssertEqual(
+            ChatComposerTrailingAction.resolve(draftText: "Check distal pulses", conversationIsLocked: false),
+            .send,
+        )
+    }
+
+    func testComposerDoesNotOfferSendForLockedConversation() {
+        XCTAssertEqual(
+            ChatComposerTrailingAction.resolve(draftText: "Unsent text", conversationIsLocked: true),
+            .voice,
+        )
+    }
+
     func testBubbleFooterPrefersInlineOnlyWhenMetadataFits() {
         XCTAssertTrue(
             ChatBubbleFooterLayout.prefersInline(
