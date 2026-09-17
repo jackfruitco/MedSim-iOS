@@ -96,7 +96,9 @@ enum ChatPhoneToolDestination: String, CaseIterable, Identifiable {
     case simulationMetadata
     case simulationFeedback
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {

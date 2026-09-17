@@ -347,12 +347,12 @@ public final class ChatRunStore: ObservableObject {
         clearRemoteTypingUsers()
         realtimeClient.disconnect()
         voiceConnectionState = .ending
-        let voiceClient = self.voiceClient
+        let voiceClient = voiceClient
         Task { @MainActor [weak self] in
             await voiceClient.disconnect()
-            guard let self, self.hasStarted == false else { return }
-            self.activeVoiceSession = nil
-            self.voiceConnectionState = .idle
+            guard let self, hasStarted == false else { return }
+            activeVoiceSession = nil
+            voiceConnectionState = .idle
         }
         transportState = .idle
         socketDisconnected = true

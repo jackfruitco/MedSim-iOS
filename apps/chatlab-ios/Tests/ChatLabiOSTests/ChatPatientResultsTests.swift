@@ -248,7 +248,9 @@ final class ChatPatientResultsTests: XCTestCase {
 
         let firstSubmission = Task { await store.signOrders() }
         for _ in 0 ..< 20 {
-            if store.isSubmittingOrders { break }
+            if store.isSubmittingOrders {
+                break
+            }
             await Task.yield()
         }
         XCTAssertTrue(store.isSubmittingOrders)

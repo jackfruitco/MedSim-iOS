@@ -72,8 +72,8 @@ public struct ChatRunView: View {
                     compactMessengerPanel(layoutMode: layoutMode, chromeMode: chromeMode)
                         .sheet(isPresented: $showToolsSheet) {
                             phoneToolsSheet(layoutMode: layoutMode)
-                            .presentationDetents([.medium, .large], selection: $toolsSheetDetent)
-                            .presentationDragIndicator(.visible)
+                                .presentationDetents([.medium, .large], selection: $toolsSheetDetent)
+                                .presentationDragIndicator(.visible)
                         }
                 }
             }
@@ -1341,7 +1341,6 @@ public struct ChatRunView: View {
         }
     }
 
-    @ViewBuilder
     private func phoneToolDetail(
         _ destination: ChatPhoneToolDestination,
         layoutMode: ChatRunLayoutMode,
@@ -1774,7 +1773,6 @@ private struct ChatKeyboardStateModifier: ViewModifier {
 private struct ChatTimelinePositionModifier: ViewModifier {
     @Binding var isNearBottom: Bool
 
-    @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 18.0, macOS 15.0, *) {
             content.onScrollGeometryChange(for: Bool.self) { geometry in
