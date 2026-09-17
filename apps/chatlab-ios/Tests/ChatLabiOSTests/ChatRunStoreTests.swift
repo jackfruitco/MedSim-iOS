@@ -17,6 +17,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var voiceTranscriptResponse: ChatVoiceTranscriptResponse?
     var executedVoiceToolCalls: [(simulationID: Int, uuid: String, request: ChatVoiceToolCallRequest)] = []
     var voiceToolCallResponse: ChatVoiceToolCallResponse?
+    var endSimulationCallCount = 0
+    var endSimulationDelayNanoseconds: UInt64?
+    var createConversationCallCount = 0
+    var createConversationDelayNanoseconds: UInt64?
 
     func listSimulations(
         limit _: Int,
@@ -40,6 +44,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func endSimulation(simulationID: Int) async throws -> ChatSimulation {
+        endSimulationCallCount += 1
+        if let endSimulationDelayNanoseconds {
+            try await Task.sleep(nanoseconds: endSimulationDelayNanoseconds)
+        }
         try await getSimulation(simulationID: simulationID)
     }
 
@@ -56,6 +64,10 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     }
 
     func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
+        createConversationCallCount += 1
+        if let createConversationDelayNanoseconds {
+            try await Task.sleep(nanoseconds: createConversationDelayNanoseconds)
+        }
         conversations.items.first ?? fallbackConversation()
     }
 
@@ -335,6 +347,46 @@ private final class TestVoiceRealtimeClient: ChatVoiceRealtimeClientProtocol, @u
 
 @MainActor
 final class ChatRunStoreTests: XCTestCase {
+    func testEndSimulationIgnoresDuplicateRequestWhileInFlight() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.endSimulationDelayNanoseconds = 80_000_000
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: TestRealtimeClient(),
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+
+        store.endSimulation()
+        store.endSimulation()
+
+        try await waitUntil { service.endSimulationCallCount == 1 && !store.isEndingSimulation }
+        XCTAssertEqual(service.endSimulationCallCount, 1)
+    }
+
+    func testCreateStitchIgnoresDuplicateRequestWhileInFlight() async throws {
+        let simulation = makeSimulation(status: .completed, retryable: false)
+        let created = makeConversation(id: 2, type: "simulated_feedback", name: "Stitch")
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.conversations = ChatConversationListResponse(items: [created])
+        service.createConversationDelayNanoseconds = 80_000_000
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: TestRealtimeClient(),
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+
+        store.createStitchConversationIfNeeded()
+        store.createStitchConversationIfNeeded()
+
+        try await waitUntil { service.createConversationCallCount == 1 && !store.isCreatingStitchConversation }
+        XCTAssertEqual(service.createConversationCallCount, 1)
+    }
+
     func testBootstrapUsesSimulationLatestEventIDForInitialStart() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil, latestEventID: "evt-bootstrap")
         let patientConversation = makeConversation()

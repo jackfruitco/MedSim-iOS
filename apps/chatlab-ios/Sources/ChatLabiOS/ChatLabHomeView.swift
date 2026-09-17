@@ -33,8 +33,16 @@ public struct ChatLabHomeView: View {
                 VStack(alignment: .leading, spacing: layoutMode == .pad ? 18 : 12) {
                     header(layoutMode: layoutMode)
 
-                    Toggle("Include message content in search", isOn: $store.includeMessageSearch)
-                        .font(.footnote)
+                    Menu {
+                        Toggle("Include Message Content", isOn: includeMessageSearchBinding)
+                    } label: {
+                        Label(
+                            store.includeMessageSearch ? "Searching Messages" : "Simulation Search",
+                            systemImage: store.includeMessageSearch ? "text.bubble.fill" : "line.3.horizontal.decrease.circle",
+                        )
+                        .font(.footnote.weight(.medium))
+                    }
+                    .trainerGlassButtonStyle()
 
                     if let error = store.presentableError {
                         InlineAppErrorView(error: error)
@@ -52,6 +60,15 @@ public struct ChatLabHomeView: View {
             }
             .background(Color.secondary.opacity(0.04).ignoresSafeArea())
             .navigationTitle("ChatLab")
+            .searchable(text: $store.searchQuery, prompt: "Search simulations")
+            .onSubmit(of: .search) {
+                Task { await store.search() }
+            }
+            .onChange(of: store.searchQuery) { oldValue, newValue in
+                if !oldValue.isEmpty, newValue.isEmpty {
+                    Task { await store.search() }
+                }
+            }
             .sheet(isPresented: $showCreateSheet) {
                 ChatCreateSimulationSheet(
                     store: store,
@@ -74,6 +91,16 @@ public struct ChatLabHomeView: View {
         }
     }
 
+    private var includeMessageSearchBinding: Binding<Bool> {
+        Binding(
+            get: { store.includeMessageSearch },
+            set: { newValue in
+                store.includeMessageSearch = newValue
+                Task { await store.search() }
+            },
+        )
+    }
+
     @ViewBuilder
     private func header(layoutMode: ChatLabSurfaceMode) -> some View {
         switch layoutMode {
@@ -85,20 +112,9 @@ public struct ChatLabHomeView: View {
                     Text("Search existing patient conversations or launch a new simulation.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    TextField("Search simulations", text: $store.searchQuery)
-                        .textFieldStyle(.roundedBorder)
-                        .submitLabel(.search)
-                        .onSubmit {
-                            Task { await store.search() }
-                        }
                 }
 
                 VStack(alignment: .trailing, spacing: 10) {
-                    Button("Search") {
-                        Task { await store.search() }
-                    }
-                    .trainerGlassButtonStyle()
-
                     Button("New Simulation") {
                         showCreateSheet = true
                     }
@@ -115,50 +131,22 @@ public struct ChatLabHomeView: View {
             .shadow(color: Color.primary.opacity(0.04), radius: 18, y: 8)
 
         case .phone:
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Search simulations", text: $store.searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .submitLabel(.search)
-                    .onSubmit {
-                        Task { await store.search() }
-                    }
-
-                HStack(spacing: 10) {
-                    Button("Search") {
-                        Task { await store.search() }
-                    }
-                    .buttonStyle(.bordered)
+            Button {
+                showCreateSheet = true
+            } label: {
+                Label("New Simulation", systemImage: "plus")
                     .frame(maxWidth: .infinity)
-
-                    Button("New Simulation") {
-                        showCreateSheet = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                }
             }
+            .trainerGlassButtonStyle(prominent: true)
 
         case .narrowPhone:
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Search simulations", text: $store.searchQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .submitLabel(.search)
-                    .onSubmit {
-                        Task { await store.search() }
-                    }
-
-                Button("Search") {
-                    Task { await store.search() }
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-
-                Button("New Simulation") {
-                    showCreateSheet = true
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
+            Button {
+                showCreateSheet = true
+            } label: {
+                Label("New Simulation", systemImage: "plus")
+                    .frame(maxWidth: .infinity)
             }
+            .trainerGlassButtonStyle(prominent: true)
         }
     }
 

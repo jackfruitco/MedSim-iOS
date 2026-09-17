@@ -98,6 +98,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var guardState: GuardStateDTO?
     @Published public private(set) var guardDenial: GuardSignal?
     @Published public private(set) var toolRefreshToken = UUID()
+    @Published public private(set) var isEndingSimulation = false
+    @Published public private(set) var isCreatingStitchConversation = false
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
     @Published public var draftText = ""
@@ -386,7 +388,10 @@ public final class ChatRunStore: ObservableObject {
             switchConversation(existing.id)
             return
         }
+        guard !isCreatingStitchConversation else { return }
+        isCreatingStitchConversation = true
         Task {
+            defer { isCreatingStitchConversation = false }
             do {
                 // Backend dependency: ChatCreateConversationRequest does not yet accept
                 // simulation context (feedback summary, run ID) to seed the Stitch opener.
@@ -574,7 +579,13 @@ public final class ChatRunStore: ObservableObject {
 
     public func endVoiceSession() {
         guard let session = activeVoiceSession else {
-            Task { await voiceClient.disconnect() }
+            voiceConnectionState = .ending
+            voiceSessionTask?.cancel()
+            voiceSessionTask = Task {
+                await voiceClient.disconnect()
+                guard !Task.isCancelled else { return }
+                voiceConnectionState = .idle
+            }
             return
         }
         voiceConnectionState = .ending
@@ -649,7 +660,10 @@ public final class ChatRunStore: ObservableObject {
     }
 
     public func endSimulation() {
+        guard simulation.status == .inProgress, !isEndingSimulation else { return }
+        isEndingSimulation = true
         Task {
+            defer { isEndingSimulation = false }
             do {
                 let updated = try await service.endSimulation(simulationID: simulation.id)
                 applySimulation(updated)

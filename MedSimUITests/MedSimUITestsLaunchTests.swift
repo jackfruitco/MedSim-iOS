@@ -64,6 +64,72 @@ final class MedSimUITestsLaunchTests: XCTestCase {
     }
 
     @MainActor
+    func testChatRunAndToolsTrayScreenshots() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-readme-screenshot-screen", "chat-run"]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat-more-tools-button"].waitForExistence(timeout: 5))
+        attachScreenshot(from: app, named: "ChatRun Conversation")
+
+        app.buttons["chat-more-tools-button"].tap()
+        XCTAssertTrue(app.buttons["chat-tool-patientResults"].waitForExistence(timeout: 3))
+        attachScreenshot(from: app, named: "ChatRun Tools Tray")
+    }
+
+    @MainActor
+    func testChatRunDarkModeScreenshot() {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-readme-screenshot-screen", "chat-run",
+            "-AppleInterfaceStyle", "Dark",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
+        attachScreenshot(from: app, named: "ChatRun Dark Mode")
+    }
+
+    @MainActor
+    func testChatRunAccessibilityTextScreenshot() {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-readme-screenshot-screen", "chat-run",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat-more-tools-button"].isHittable)
+        attachScreenshot(from: app, named: "ChatRun Accessibility Text")
+    }
+
+    @MainActor
+    func testChatRunLandscapeScreenshot() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-readme-screenshot-screen", "chat-run"]
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        defer { XCUIDevice.shared.orientation = .portrait }
+
+        XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
+        attachScreenshot(from: app, named: "ChatRun Landscape")
+    }
+
+    @MainActor
+    func testChatRunAccessibilityAudit() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-readme-screenshot-screen", "chat-run"]
+        app.launch()
+
+        XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
+        try app.performAccessibilityAudit(
+            for: [.contrast, .dynamicType, .hitRegion, .sufficientElementDescription, .textClipped],
+        )
+    }
+
+    @MainActor
     private func attachScreenshot(from app: XCUIApplication, named name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

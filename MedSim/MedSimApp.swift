@@ -47,6 +47,7 @@ private enum ReadmeScreenshotScreen: String {
     case auth
     case trainerHub = "trainer-hub"
     case chatLab = "chat-lab"
+    case chatRun = "chat-run"
 
     static var current: Self? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -81,7 +82,43 @@ private struct ReadmeScreenshotView: View {
                     onOpenSimulation: { _ in },
                 )
             }
+        case .chatRun:
+            ReadmeChatRunScreenshotView()
         }
+    }
+}
+
+private struct ReadmeChatRunScreenshotView: View {
+    @StateObject private var runStore: ChatRunStore
+    @StateObject private var toolsStore: ChatToolsStore
+
+    init() {
+        let service = ReadmeDemoChatService()
+        let simulation = ReadmeDemoChatService.activeSimulation
+        _runStore = StateObject(
+            wrappedValue: ChatRunStore(
+                service: service,
+                realtimeClient: ReadmeDemoRealtimeClient(),
+                voiceClient: ReadmeDemoVoiceClient(),
+                simulation: simulation,
+                currentUserIdentity: ChatCurrentUserIdentity(id: simulation.userID),
+            ),
+        )
+        _toolsStore = StateObject(
+            wrappedValue: ChatToolsStore(service: service, simulationID: simulation.id),
+        )
+    }
+
+    var body: some View {
+        ChatRunView(
+            store: runStore,
+            toolsStore: toolsStore,
+            feedbackService: ReadmeDemoFeedbackService(),
+            feedbackHeaderProvider: FeedbackRequestHeaderProvider(sessionID: "readme-demo"),
+            mediaLoader: ReadmeDemoMediaLoader(),
+            haptics: ReadmeDemoHaptics(),
+            onBack: {},
+        )
     }
 }
 
@@ -351,24 +388,72 @@ private struct ReadmeDemoTrainerService: TrainerLabServiceProtocol {
     }
 }
 
+private final class ReadmeDemoRealtimeClient: ChatRealtimeClientProtocol, @unchecked Sendable {
+    let events = AsyncStream<ChatEventEnvelope> { _ in }
+    let connectionStates = AsyncStream<ChatRealtimeConnectionState> { continuation in
+        continuation.yield(.connected)
+    }
+
+    func start(simulationID _: Int, initialLastEventID _: String?) async {}
+    func reconnect(simulationID _: Int, lastEventID _: String?) async {}
+    func updateReplayAnchor(_: String?) async {}
+    func disconnect() {}
+    func send(eventType _: String, payload _: [String: JSONValue]) async {}
+}
+
+@MainActor
+private final class ReadmeDemoVoiceClient: ChatVoiceRealtimeClientProtocol {
+    let events = AsyncStream<ChatVoiceRealtimeEvent> { _ in }
+    let connectionStates = AsyncStream<ChatVoiceConnectionState> { continuation in
+        continuation.yield(.idle)
+    }
+
+    func connect(session _: ChatVoiceSession) async throws {}
+    func setMuted(_: Bool) async {}
+    func sendToolResult(toolCallID _: String, output _: [String: JSONValue]) async throws {}
+    func disconnect() async {}
+}
+
+private struct ReadmeDemoFeedbackService: FeedbackServiceProtocol {
+    func fetchFeedbackCategories() async throws -> [FeedbackCategoryDTO] {
+        []
+    }
+
+    func submitFeedback(_: FeedbackCreateRequest) async throws -> FeedbackResponse {
+        fatalError("The screenshot demo does not submit feedback.")
+    }
+}
+
+private struct ReadmeDemoMediaLoader: ChatMediaLoading {
+    func loadMediaData(for _: ChatMessageMedia) async throws -> Data {
+        throw URLError(.fileDoesNotExist)
+    }
+}
+
+private struct ReadmeDemoHaptics: ChatHapticFeedbackProviding {
+    func play(_: ChatHapticEvent) {}
+}
+
 private struct ReadmeDemoChatService: ChatLabServiceProtocol {
-    private let sampleSimulations = [
-        ChatSimulation(
-            id: 901,
-            userID: 7,
-            startTimestamp: Date().addingTimeInterval(-900),
-            endTimestamp: nil,
-            timeLimitSeconds: 1800,
-            diagnosis: "Acute asthma exacerbation",
-            chiefComplaint: "Shortness of breath after exertion",
-            patientDisplayName: "Jordan Alvarez",
-            patientInitials: "JA",
-            status: .inProgress,
-            terminalReasonCode: "",
-            terminalReasonText: "",
-            terminalAt: nil,
-            retryable: nil,
-        ),
+    static let activeSimulation = ChatSimulation(
+        id: 901,
+        userID: 7,
+        startTimestamp: Date().addingTimeInterval(-900),
+        endTimestamp: nil,
+        timeLimitSeconds: 1800,
+        diagnosis: "Acute asthma exacerbation",
+        chiefComplaint: "Shortness of breath after exertion",
+        patientDisplayName: "Jordan Alvarez",
+        patientInitials: "JA",
+        status: .inProgress,
+        terminalReasonCode: "",
+        terminalReasonText: "",
+        terminalAt: nil,
+        retryable: nil,
+    )
+
+    private static let sampleSimulations = [
+        activeSimulation,
         ChatSimulation(
             id: 894,
             userID: 7,
@@ -403,6 +488,119 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         ),
     ]
 
+    private static let patientConversation = ChatConversation(
+        id: 1201,
+        uuid: "demo-patient-conversation",
+        simulationID: activeSimulation.id,
+        conversationType: "simulated_patient",
+        conversationTypeDisplay: "Patient",
+        icon: "person.crop.circle",
+        displayName: activeSimulation.patientDisplayName,
+        displayInitials: activeSimulation.patientInitials,
+        isLocked: false,
+        createdAt: Date().addingTimeInterval(-900),
+    )
+
+    private static let sampleMessages = [
+        ChatMessage(
+            id: 1,
+            simulationID: activeSimulation.id,
+            conversationID: patientConversation.id,
+            conversationType: patientConversation.conversationType,
+            senderID: 100,
+            content: "I was running when my chest tightened up. I can talk, but I feel short of breath.",
+            role: "assistant",
+            messageType: "text",
+            timestamp: Date().addingTimeInterval(-720),
+            isFromAI: true,
+            displayName: activeSimulation.patientDisplayName,
+            deliveryStatus: .delivered,
+            deliveryErrorCode: "",
+            deliveryErrorText: "",
+            deliveryRetryable: false,
+            deliveryRetryCount: 0,
+            isRead: true,
+            mediaList: [],
+        ),
+        ChatMessage(
+            id: 2,
+            simulationID: activeSimulation.id,
+            conversationID: patientConversation.id,
+            conversationType: patientConversation.conversationType,
+            senderID: activeSimulation.userID,
+            content: "Have you used your rescue inhaler today?",
+            role: "user",
+            messageType: "text",
+            timestamp: Date().addingTimeInterval(-660),
+            isFromAI: false,
+            displayName: "Learner",
+            deliveryStatus: .delivered,
+            deliveryErrorCode: "",
+            deliveryErrorText: "",
+            deliveryRetryable: false,
+            deliveryRetryCount: 0,
+            isRead: true,
+            mediaList: [],
+        ),
+        ChatMessage(
+            id: 3,
+            simulationID: activeSimulation.id,
+            conversationID: patientConversation.id,
+            conversationType: patientConversation.conversationType,
+            senderID: 100,
+            content: "Twice. It helped for a few minutes, then the tightness came back.",
+            role: "assistant",
+            messageType: "text",
+            timestamp: Date().addingTimeInterval(-600),
+            isFromAI: true,
+            displayName: activeSimulation.patientDisplayName,
+            deliveryStatus: .delivered,
+            deliveryErrorCode: "",
+            deliveryErrorText: "",
+            deliveryRetryable: false,
+            deliveryRetryCount: 0,
+            isRead: true,
+            mediaList: [],
+        ),
+    ]
+
+    private static let sampleTools = [
+        ChatToolState(
+            name: "patient_history",
+            displayName: "Patient History",
+            data: [[
+                "label": .string("Symptom onset"),
+                "value": .string("During exertion approximately 20 minutes ago"),
+            ]],
+            isGeneric: false,
+            checksum: "history-1",
+        ),
+        ChatToolState(
+            name: "patient_results",
+            displayName: "Patient Results",
+            data: [[
+                "id": .number(301),
+                "result_name": .string("Peak Expiratory Flow"),
+                "value": .number(240),
+                "unit": .string("L/min"),
+                "flag": .string("abnormal"),
+                "type": .string("assessment"),
+            ]],
+            isGeneric: false,
+            checksum: "results-1",
+        ),
+        ChatToolState(
+            name: "simulation_metadata",
+            displayName: "Simulation Details",
+            data: [
+                ["key": .string("Setting"), "value": .string("Urgent care")],
+                ["key": .string("Difficulty"), "value": .string("Intermediate")],
+            ],
+            isGeneric: false,
+            checksum: "metadata-1",
+        ),
+    ]
+
     func listSimulations(
         limit _: Int,
         cursor _: String?,
@@ -410,31 +608,31 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         query _: String?,
         searchMessages _: Bool,
     ) async throws -> PaginatedResponse<ChatSimulation> {
-        PaginatedResponse(items: sampleSimulations, nextCursor: nil, hasMore: false)
+        PaginatedResponse(items: Self.sampleSimulations, nextCursor: nil, hasMore: false)
     }
 
     func quickCreateSimulation(request _: ChatQuickCreateRequest) async throws -> ChatSimulation {
-        sampleSimulations[0]
+        Self.sampleSimulations[0]
     }
 
     func getSimulation(simulationID _: Int) async throws -> ChatSimulation {
-        sampleSimulations[0]
+        Self.sampleSimulations[0]
     }
 
     func endSimulation(simulationID _: Int) async throws -> ChatSimulation {
-        sampleSimulations[1]
+        Self.sampleSimulations[1]
     }
 
     func retryInitial(simulationID _: Int) async throws -> ChatSimulation {
-        sampleSimulations[0]
+        Self.sampleSimulations[0]
     }
 
     func retryFeedback(simulationID _: Int) async throws -> ChatSimulation {
-        sampleSimulations[0]
+        Self.sampleSimulations[0]
     }
 
     func listConversations(simulationID _: Int) async throws -> ChatConversationListResponse {
-        fatalError("Readme demo does not call listConversations().")
+        ChatConversationListResponse(items: [Self.patientConversation])
     }
 
     func createConversation(simulationID _: Int, request _: ChatCreateConversationRequest) async throws -> ChatConversation {
@@ -452,7 +650,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         order _: String,
         limit _: Int,
     ) async throws -> PaginatedResponse<ChatMessage> {
-        fatalError("Readme demo does not call listMessages().")
+        PaginatedResponse(items: Array(Self.sampleMessages.reversed()), nextCursor: nil, hasMore: false)
     }
 
     func createMessage(simulationID _: Int, request _: ChatCreateMessageRequest) async throws -> ChatMessage {
@@ -464,23 +662,23 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
     }
 
     func getMessage(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        fatalError("Readme demo does not call getMessage().")
+        Self.sampleMessages[0]
     }
 
     func markMessageRead(simulationID _: Int, messageID _: Int) async throws -> ChatMessage {
-        fatalError("Readme demo does not call markMessageRead().")
+        Self.sampleMessages[0]
     }
 
     func listEvents(simulationID _: Int, lastEventID _: String?, limit _: Int) async throws -> ChatEventReplayResponse {
-        fatalError("Readme demo does not call listEvents().")
+        ChatEventReplayResponse(items: [], nextEventID: nil, hasMore: false)
     }
 
     func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
-        fatalError("Readme demo does not call listTools().")
+        ChatToolListResponse(items: Self.sampleTools)
     }
 
     func getTool(simulationID _: Int, toolName _: String) async throws -> ChatToolState {
-        fatalError("Readme demo does not call getTool().")
+        Self.sampleTools.first { $0.name == toolName } ?? Self.sampleTools[0]
     }
 
     func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
@@ -510,10 +708,19 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
     }
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        fatalError("Readme demo does not call getGuardState().")
+        GuardStateDTO(
+            guardState: "active",
+            guardReason: "none",
+            engineRunnable: true,
+            activeElapsedSeconds: 900,
+            runtimeCapSeconds: 1800,
+            wallClockExpiresAt: nil,
+            warnings: [],
+            denial: nil,
+        )
     }
 
     func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
-        fatalError("Readme demo does not call sendHeartbeat().")
+        try await getGuardState(simulationID: Self.activeSimulation.id)
     }
 }
