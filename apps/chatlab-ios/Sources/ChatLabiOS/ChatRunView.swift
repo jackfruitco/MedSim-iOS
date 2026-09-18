@@ -498,8 +498,9 @@ public struct ChatRunView: View {
         Button(action: requestRunExit) {
             Image(systemName: "chevron.left")
                 .font(.body.weight(.semibold))
-                .frame(width: 44, height: 44)
         }
+        .frame(minWidth: 48, minHeight: 48)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .accessibilityLabel("Back")
     }
