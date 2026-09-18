@@ -136,7 +136,7 @@ private struct ReadmeAuthScreenshotView: View {
         )
         .task {
             try? await Task.sleep(for: .milliseconds(250))
-            await MainActor.run {
+            _ = await MainActor.run {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
         }
@@ -677,7 +677,7 @@ private struct ReadmeDemoChatService: ChatLabServiceProtocol {
         ChatToolListResponse(items: Self.sampleTools)
     }
 
-    func getTool(simulationID _: Int, toolName _: String) async throws -> ChatToolState {
+    func getTool(simulationID _: Int, toolName: String) async throws -> ChatToolState {
         Self.sampleTools.first { $0.name == toolName } ?? Self.sampleTools[0]
     }
 
