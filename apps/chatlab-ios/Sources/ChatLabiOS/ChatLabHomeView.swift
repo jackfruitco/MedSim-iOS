@@ -156,12 +156,24 @@ public struct ChatLabHomeView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 220)
         } else if store.simulations.isEmpty {
-            ContentUnavailableView(
-                "No Simulations",
-                systemImage: "bubble.left.and.bubble.right",
-                description: Text("Create a simulation to start ChatLab."),
-            )
-            .frame(maxWidth: .infinity, minHeight: 260)
+            if store.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView(
+                    "No Simulations",
+                    systemImage: "bubble.left.and.bubble.right",
+                    description: Text("Create a simulation to start ChatLab."),
+                )
+                .frame(maxWidth: .infinity, minHeight: 260)
+            } else {
+                VStack(spacing: 12) {
+                    ContentUnavailableView.search(text: store.searchQuery)
+                    Button("Clear Search") {
+                        store.searchQuery = ""
+                        Task { await store.search() }
+                    }
+                    .trainerGlassButtonStyle()
+                }
+                .frame(maxWidth: .infinity, minHeight: 260)
+            }
         } else {
             LazyVStack(spacing: layoutMode == .pad ? 14 : 10) {
                 ForEach(store.simulations) { simulation in

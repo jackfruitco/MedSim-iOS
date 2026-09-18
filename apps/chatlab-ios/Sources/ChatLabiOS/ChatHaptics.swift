@@ -27,9 +27,9 @@ public struct SystemChatHaptics: ChatHapticFeedbackProviding {
             case .voiceStarted, .voiceEnded:
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             case .resultsUpdated:
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             case .simulationEnded:
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
         #endif
     }

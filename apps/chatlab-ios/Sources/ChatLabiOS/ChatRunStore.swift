@@ -659,7 +659,7 @@ public final class ChatRunStore: ObservableObject {
         scheduleTypingStop()
     }
 
-    public func endSimulation() {
+    public func endSimulation(onSuccess: @escaping @MainActor () -> Void = {}) {
         guard simulation.status == .inProgress, !isEndingSimulation else { return }
         isEndingSimulation = true
         Task {
@@ -667,6 +667,7 @@ public final class ChatRunStore: ObservableObject {
             do {
                 let updated = try await service.endSimulation(simulationID: simulation.id)
                 applySimulation(updated)
+                onSuccess()
             } catch {
                 presentableError = AppErrorPresenter.present(error)
             }

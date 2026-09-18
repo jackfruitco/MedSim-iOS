@@ -37,6 +37,8 @@ public struct ChatRunView: View {
     @State private var showActivityLog = false
     @State private var isTimelineNearBottom = true
     @State private var pendingNewMessageCount = 0
+    @State private var historyAnchorMessageID: String?
+    @State private var historyAnchorConversationID: Int?
     @FocusState private var composerIsFocused: Bool
 
     public init(
@@ -197,9 +199,10 @@ public struct ChatRunView: View {
             titleVisibility: .visible,
         ) {
             Button("End Simulation", role: .destructive) {
-                toolsStore.discardStagedOrders()
-                store.endSimulation()
-                haptics.play(.simulationEnded)
+                store.endSimulation {
+                    toolsStore.discardStagedOrders()
+                    haptics.play(.simulationEnded)
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -434,7 +437,7 @@ public struct ChatRunView: View {
             .padding(.top, 8)
             .padding(.bottom, isDisconnectedOrDegraded ? 4 : 8)
 
-            if isDisconnectedOrDegraded {
+            if isDisconnectedOrDegraded || store.activeConversationLocked {
                 HStack(spacing: 8) {
                     disconnectedIndicator
                     if store.activeConversationLocked {
@@ -671,10 +674,14 @@ public struct ChatRunView: View {
                         if store.hasMoreByConversation[store.activeConversationID ?? -1] == true {
                             Button {
                                 let currentTopMessageID = store.activeMessages.first?.id
+                                let previousMessageCount = store.activeMessages.count
+                                historyAnchorMessageID = currentTopMessageID
+                                historyAnchorConversationID = store.activeConversationID
                                 Task {
                                     await store.loadOlderMessages()
-                                    if let currentTopMessageID {
-                                        proxy.scrollTo(currentTopMessageID, anchor: .top)
+                                    if store.activeMessages.count == previousMessageCount {
+                                        historyAnchorMessageID = nil
+                                        historyAnchorConversationID = nil
                                     }
                                 }
                             } label: {
@@ -687,6 +694,7 @@ public struct ChatRunView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+                            .disabled(store.isOlderLoading)
                             .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
                         }
 
@@ -731,6 +739,17 @@ public struct ChatRunView: View {
                 }
             }
             .onChange(of: store.activeMessages.count) { oldCount, newCount in
+                if let historyAnchorMessageID,
+                   historyAnchorConversationID == store.activeConversationID
+                {
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(historyAnchorMessageID, anchor: .top)
+                        self.historyAnchorMessageID = nil
+                        historyAnchorConversationID = nil
+                    }
+                    return
+                }
                 let decision = ChatTimelineUpdateDecision.resolve(
                     addedCount: newCount - oldCount,
                     isNearBottom: isTimelineNearBottom,
@@ -751,6 +770,8 @@ public struct ChatRunView: View {
             }
             .onChange(of: store.activeConversationID) { _, _ in
                 pendingNewMessageCount = 0
+                historyAnchorMessageID = nil
+                historyAnchorConversationID = nil
                 Task { @MainActor in
                     proxy.scrollTo("chat-timeline-bottom", anchor: .bottom)
                 }
@@ -1330,10 +1351,11 @@ public struct ChatRunView: View {
             titleVisibility: .visible,
         ) {
             Button("End Simulation", role: .destructive) {
-                toolsStore.discardStagedOrders()
-                store.endSimulation()
-                haptics.play(.simulationEnded)
-                showToolsSheet = false
+                store.endSimulation {
+                    toolsStore.discardStagedOrders()
+                    haptics.play(.simulationEnded)
+                    showToolsSheet = false
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -1489,28 +1511,8 @@ public struct ChatRunView: View {
         }
     }
 
-    private func toolsHeader(layoutMode: ChatRunLayoutMode) -> some View {
+    private func toolsHeader(layoutMode _: ChatRunLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // End Simulation is a primary action for phone layouts — it lives here
-            // rather than in the overlay header to keep the chat header minimal.
-            // On iPad the button is in the padWorkspace fixed header instead.
-            if layoutMode != .padWorkspace, store.simulation.status == .inProgress {
-                Button("End Simulation") {
-                    store.endSimulation()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .frame(maxWidth: .infinity)
-            }
-
-            if layoutMode != .padWorkspace {
-                Button("Send Feedback") {
-                    activeFeedbackContext = feedbackLaunchContext()
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-            }
-
             if isInStitchConversation {
                 // Currently in the Stitch debrief — show a clear indicator instead of a button.
                 Label("Stitch Debrief", systemImage: "bubble.left.and.text.bubble.right.fill")
@@ -1570,6 +1572,7 @@ public struct ChatRunView: View {
                                 Image(systemName: "minus.circle.fill")
                             }
                             .buttonStyle(.plain)
+                            .disabled(toolsStore.isSubmittingOrders)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
@@ -1594,6 +1597,7 @@ public struct ChatRunView: View {
             .onSubmit {
                 stageCurrentOrder()
             }
+            .disabled(toolsStore.isSubmittingOrders)
     }
 
     private func feedbackLaunchContext() -> FeedbackLaunchContext {
@@ -1614,7 +1618,10 @@ public struct ChatRunView: View {
             stageCurrentOrder()
         }
         .buttonStyle(.borderedProminent)
-        .disabled(stagedOrderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(
+            stagedOrderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || toolsStore.isSubmittingOrders,
+        )
     }
 
     private func submitOrdersPanel(compact: Bool) -> some View {

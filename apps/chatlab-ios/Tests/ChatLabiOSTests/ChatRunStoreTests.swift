@@ -19,6 +19,8 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
     var voiceToolCallResponse: ChatVoiceToolCallResponse?
     var endSimulationCallCount = 0
     var endSimulationDelayNanoseconds: UInt64?
+    var endSimulationError: Error?
+    var endSimulationResult: ChatSimulation?
     var createConversationCallCount = 0
     var createConversationDelayNanoseconds: UInt64?
 
@@ -47,6 +49,12 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         endSimulationCallCount += 1
         if let endSimulationDelayNanoseconds {
             try await Task.sleep(nanoseconds: endSimulationDelayNanoseconds)
+        }
+        if let endSimulationError {
+            throw endSimulationError
+        }
+        if let endSimulationResult {
+            return endSimulationResult
         }
         return try await getSimulation(simulationID: simulationID)
     }
@@ -347,6 +355,47 @@ private final class TestVoiceRealtimeClient: ChatVoiceRealtimeClientProtocol, @u
 
 @MainActor
 final class ChatRunStoreTests: XCTestCase {
+    func testEndSimulationRunsSuccessActionOnlyAfterSuccessfulResponse() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.endSimulationResult = makeSimulation(status: .completed, retryable: false)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: TestRealtimeClient(),
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        var successCallCount = 0
+
+        store.endSimulation { successCallCount += 1 }
+
+        try await waitUntil { !store.isEndingSimulation }
+        XCTAssertEqual(successCallCount, 1)
+        XCTAssertEqual(store.simulation.status, .completed)
+    }
+
+    func testEndSimulationFailureDoesNotRunSuccessAction() async throws {
+        let simulation = makeSimulation(status: .inProgress, retryable: nil)
+        let service = TestChatService()
+        service.simulations[simulation.id] = simulation
+        service.endSimulationError = NSError(domain: "end-failed", code: 500)
+        let store = ChatRunStore(
+            service: service,
+            realtimeClient: TestRealtimeClient(),
+            simulation: simulation,
+            currentUserIdentity: ChatCurrentUserIdentity(),
+        )
+        var successCallCount = 0
+
+        store.endSimulation { successCallCount += 1 }
+
+        try await waitUntil { !store.isEndingSimulation }
+        XCTAssertEqual(successCallCount, 0)
+        XCTAssertEqual(store.simulation.status, .inProgress)
+        XCTAssertNotNil(store.presentableError)
+    }
+
     func testEndSimulationIgnoresDuplicateRequestWhileInFlight() async throws {
         let simulation = makeSimulation(status: .inProgress, retryable: nil)
         let service = TestChatService()

@@ -305,5 +305,5 @@ jobs:
             -destination "$IOS_SIMULATOR_DESTINATION" \
             -derivedDataPath "$DERIVED_DATA_PATH" \
             -clonedSourcePackagesDirPath "$CLONED_SOURCE_PACKAGES_DIR" \
-            -only-testing:MedSimUITests/testLaunchShowsMedSimBrandingOnAuthGate \
+            -only-testing:MedSimUITests \
             CODE_SIGNING_ALLOWED=NO

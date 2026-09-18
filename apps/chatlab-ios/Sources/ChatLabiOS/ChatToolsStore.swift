@@ -16,6 +16,7 @@ public final class ChatToolsStore: ObservableObject {
 
     private let service: ChatLabServiceProtocol
     private let simulationID: Int
+    private var refreshRequestedWhileBusy = false
 
     public init(service: ChatLabServiceProtocol, simulationID: Int) {
         self.service = service
@@ -27,30 +28,41 @@ public final class ChatToolsStore: ObservableObject {
     }
 
     public func loadTools() async {
+        guard !isLoading else { return }
         isLoading = true
         presentableError = nil
-        defer { isLoading = false }
         do {
             let response = try await service.listTools(simulationID: simulationID, names: nil)
             apply(response.items)
             hasLoadedTools = true
         } catch {
             presentableError = AppErrorPresenter.present(error)
+        }
+        isLoading = false
+        if refreshRequestedWhileBusy {
+            refreshRequestedWhileBusy = false
+            await refreshTools()
         }
     }
 
     public func refreshTools() async {
-        guard !isLoading, !isRefreshing else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
-        do {
-            let response = try await service.listTools(simulationID: simulationID, names: nil)
-            apply(response.items)
-            hasLoadedTools = true
-            presentableError = nil
-        } catch {
-            presentableError = AppErrorPresenter.present(error)
+        guard !isLoading, !isRefreshing else {
+            refreshRequestedWhileBusy = true
+            return
         }
+        repeat {
+            refreshRequestedWhileBusy = false
+            isRefreshing = true
+            do {
+                let response = try await service.listTools(simulationID: simulationID, names: nil)
+                apply(response.items)
+                hasLoadedTools = true
+                presentableError = nil
+            } catch {
+                presentableError = AppErrorPresenter.present(error)
+            }
+            isRefreshing = false
+        } while refreshRequestedWhileBusy
     }
 
     public func stageOrder(_ text: String) {
@@ -80,12 +92,13 @@ public final class ChatToolsStore: ObservableObject {
         isSubmittingOrders = true
         presentableError = nil
         defer { isSubmittingOrders = false }
+        let submittedOrders = stagedOrders
         do {
             _ = try await service.signOrders(
                 simulationID: simulationID,
-                request: ChatSignOrdersRequest(submittedOrders: stagedOrders),
+                request: ChatSignOrdersRequest(submittedOrders: submittedOrders),
             )
-            stagedOrders.removeAll()
+            stagedOrders.removeAll { submittedOrders.contains($0) }
             await refreshTools()
         } catch {
             presentableError = AppErrorPresenter.present(error)
@@ -101,7 +114,7 @@ public final class ChatToolsStore: ObservableObject {
         let normalized = Dictionary(uniqueKeysWithValues: tools.map { ($0.name, $0) })
         toolsByName = normalized
         patientResults = normalized["patient_results"]?.patientResults ?? []
-        if let previousResultsChecksum,
+        if hasLoadedTools,
            let currentResultsChecksum = normalized["patient_results"]?.checksum,
            previousResultsChecksum != currentResultsChecksum
         {
