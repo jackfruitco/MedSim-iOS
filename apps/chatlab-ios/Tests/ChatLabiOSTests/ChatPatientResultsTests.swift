@@ -89,7 +89,7 @@ private final class PatientResultsService: ChatLabServiceProtocol, @unchecked Se
         if let listToolsDelayNanoseconds {
             try await Task.sleep(nanoseconds: listToolsDelayNanoseconds)
         }
-        ChatToolListResponse(items: toolItems)
+        return ChatToolListResponse(items: toolItems)
     }
 
     func getTool(simulationID _: Int, toolName _: String) async throws -> ChatToolState {
