@@ -48,7 +48,7 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         if let endSimulationDelayNanoseconds {
             try await Task.sleep(nanoseconds: endSimulationDelayNanoseconds)
         }
-        try await getSimulation(simulationID: simulationID)
+        return try await getSimulation(simulationID: simulationID)
     }
 
     func retryInitial(simulationID: Int) async throws -> ChatSimulation {
@@ -68,7 +68,7 @@ private final class TestChatService: ChatLabServiceProtocol, @unchecked Sendable
         if let createConversationDelayNanoseconds {
             try await Task.sleep(nanoseconds: createConversationDelayNanoseconds)
         }
-        conversations.items.first ?? fallbackConversation()
+        return conversations.items.first ?? fallbackConversation()
     }
 
     func getConversation(simulationID _: Int, conversationUUID _: String) async throws -> ChatConversation {
