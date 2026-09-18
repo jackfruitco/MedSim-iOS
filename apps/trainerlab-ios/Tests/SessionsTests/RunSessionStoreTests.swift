@@ -2475,6 +2475,38 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertNil(store.lastSnapshotRefreshError)
     }
 
+    func testEventSequenceRejectsOlderEventAndEqualRevisionSnapshot() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running", stateRevision: 4, latestEventSequence: 10,
+                scenarioBrief: ["read_aloud_brief": "Current"],
+            )),
+            .success(makeRuntimeState(
+                status: "running", stateRevision: 4, latestEventSequence: 9,
+                scenarioBrief: ["read_aloud_brief": "Old"],
+            )),
+        ]
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.scenarioBrief?.readAloudBrief == "Current" }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "older-patient-event", eventType: SimulationEventType.patientInterventionCreated,
+            createdAt: Date(), correlationID: nil,
+            payload: ["event_sequence": .number(9), "intervention_type": .string("tourniquet"), "site_code": .string("LEFT_ARM")],
+        ))
+        await Task.yield()
+        XCTAssertTrue(store.state.interventionAnnotations.isEmpty)
+
+        let result = await store.loadRuntimeState(reason: "stale-sequence")
+        XCTAssertNil(result)
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Current")
+    }
+
     func testSnapshotFetchFailureExposesErrorAndPreservesPreviousState() async throws {
         // A failed /state/ fetch must surface the error via lastSnapshotRefreshError
         // and must NOT clear any previously applied panel state.
@@ -2982,6 +3014,7 @@ final class RunSessionStoreTests: XCTestCase {
     private func makeRuntimeState(
         status: String,
         stateRevision: Int = 1,
+        latestEventSequence: Int? = nil,
         scenarioBrief: [String: Any]? = nil,
         causes: [[String: Any]] = [],
         problems: [[String: Any]] = [],
@@ -3029,6 +3062,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "control_plane_debug": [:],
                 "request_metadata": [:],
                 "latest_event_cursor": NSNull(),
+                "latest_event_sequence": latestEventSequence.map { $0 as Any } ?? NSNull(),
             ],
             "event_timeline": [
                 "events": [],

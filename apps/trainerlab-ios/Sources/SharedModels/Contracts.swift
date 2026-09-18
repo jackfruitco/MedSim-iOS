@@ -1207,6 +1207,7 @@ public struct RuntimeRecommendedInterventionState: Codable, Sendable {
 
 public struct RuntimeInterventionState: Codable, Sendable {
     public let interventionID: Int?
+    public let clientEventID: String?
     public let domainEventID: Int?
     public let kind: String?
     public let code: String?
@@ -1234,6 +1235,7 @@ public struct RuntimeInterventionState: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case interventionID = "intervention_id"
+        case clientEventID = "client_event_id"
         case domainEventID = "domain_event_id"
         case kind
         case code
@@ -1259,6 +1261,7 @@ public struct RuntimeInterventionState: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         interventionID = try container.decodeIfPresent(Int.self, forKey: .interventionID)
+        clientEventID = try container.decodeIfPresent(String.self, forKey: .clientEventID)
         domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         code = try container.decodeIfPresent(String.self, forKey: .code)
@@ -1783,6 +1786,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let controlPlaneDebug: ControlPlaneDebugOut?
     public let requestMetadata: [String: JSONValue]?
     public let latestEventCursor: String?
+    public let latestEventSequence: Int?
     public let presence: RuntimeSnapshotPresence
 
     enum CodingKeys: String, CodingKey {
@@ -1803,6 +1807,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         case controlPlaneDebug = "control_plane_debug"
         case requestMetadata = "request_metadata"
         case latestEventCursor = "latest_event_cursor"
+        case latestEventSequence = "latest_event_sequence"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1841,6 +1846,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         requestMetadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .requestMetadata)
         let hasLatestEventCursor = container.contains(.latestEventCursor)
         latestEventCursor = try container.decodeIfPresent(String.self, forKey: .latestEventCursor)
+        latestEventSequence = try container.decodeIfPresent(Int.self, forKey: .latestEventSequence)
 
         presence = RuntimeSnapshotPresence(
             status: hasStatus,
@@ -2094,6 +2100,7 @@ public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
 
 public struct InterventionEventRequest: Codable, Sendable {
     public let interventionType: String
+    public let clientEventID: String?
     public let siteCode: String
     public let targetProblemID: Int?
     public let status: InterventionStatus
@@ -2106,6 +2113,7 @@ public struct InterventionEventRequest: Codable, Sendable {
 
     public init(
         interventionType: String,
+        clientEventID: String? = nil,
         siteCode: String,
         targetProblemID: Int? = nil,
         status: InterventionStatus = .applied,
@@ -2118,6 +2126,7 @@ public struct InterventionEventRequest: Codable, Sendable {
         supersedesEventID: Int? = nil,
     ) {
         self.interventionType = interventionType
+        self.clientEventID = clientEventID
         self.siteCode = siteCode
         self.targetProblemID = targetProblemID
         self.status = status
@@ -2148,6 +2157,7 @@ public struct InterventionEventRequest: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case interventionType = "intervention_type"
+        case clientEventID = "client_event_id"
         case siteCode = "site_code"
         case targetProblemID = "target_problem_id"
         case status

@@ -49,6 +49,8 @@ public final class RunSessionStore: ObservableObject {
     /// Commands awaiting their first HTTP response must not enter bootstrap replay.
     private var inFlightCommandKeys = Set<String>()
     private var lastAppliedLifecycleRevision: Int?
+    private var appliedSnapshotEventSequence = -1
+    private var lastAppliedLiveEventSequence = -1
     private var pendingRuntimeRefresh = false
     /// Highest `stateRevision` successfully applied from a snapshot.
     /// Used to reject stale snapshots that arrive out of order.
@@ -84,6 +86,7 @@ public final class RunSessionStore: ObservableObject {
 
     private struct PendingInterventionState: Equatable {
         let idempotencyKey: String
+        let clientEventID: String
         let interventionType: String
         let siteCode: String
         let targetProblemID: Int?
@@ -294,6 +297,8 @@ public final class RunSessionStore: ObservableObject {
         syncPendingInterventionPublishedState()
         appliedSnapshotRevision = -1
         lastAppliedLifecycleRevision = nil
+        appliedSnapshotEventSequence = -1
+        lastAppliedLiveEventSequence = -1
     }
 
     /// Fire-and-forget: loads the intervention and injury dictionaries from the API.
@@ -330,7 +335,10 @@ public final class RunSessionStore: ObservableObject {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
             guard !Task.isCancelled, generation == bindingGeneration,
                   rs.simulationID == simulationID, state.session?.simulationID == simulationID,
-                  rs.runtimeSnapshot.stateRevision >= max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1)
+                  rs.runtimeSnapshot.stateRevision >= max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1),
+                  rs.runtimeSnapshot.latestEventSequence.map({
+                      $0 >= max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence)
+                  }) ?? true
             else { return nil }
             logger.info(
                 "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.runtimeSnapshot.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
@@ -486,7 +494,15 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func normalizedEvents(_ events: [EventEnvelope]) -> [EventEnvelope] {
+        let fullySequenced = events.allSatisfy { jsonInt($0.payload["event_sequence"]) != nil }
         let sorted = events.map { $0.canonicalized() }.sorted { lhs, rhs in
+            if fullySequenced,
+               let left = jsonInt(lhs.payload["event_sequence"]),
+               let right = jsonInt(rhs.payload["event_sequence"]),
+               left != right
+            {
+                return left < right
+            }
             if lhs.createdAt != rhs.createdAt {
                 return lhs.createdAt < rhs.createdAt
             }
@@ -522,6 +538,7 @@ public final class RunSessionStore: ObservableObject {
     private func handleIncomingEvent(_ event: EventEnvelope) async -> EventHandlingOutcome {
         let canonicalEvent = event.canonicalized()
         let eventType = canonicalEvent.eventType
+        var sequenceGap = false
         if let simulationID = jsonInt(event.payload["simulation_id"]),
            simulationID != state.session?.simulationID
         {
@@ -530,6 +547,18 @@ public final class RunSessionStore: ObservableObject {
                 shouldRefreshRuntimeState: false,
                 canonicalEventType: eventType,
             )
+        }
+        if let sequence = jsonInt(canonicalEvent.payload["event_sequence"]) {
+            guard sequence > max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence) else {
+                return EventHandlingOutcome(
+                    shouldRehydrateSeededSession: false,
+                    shouldRefreshRuntimeState: false,
+                    canonicalEventType: eventType,
+                )
+            }
+            let previous = max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence)
+            sequenceGap = previous >= 0 && sequence > previous + 1
+            lastAppliedLiveEventSequence = sequence
         }
         logger.info(
             "Received runtime event \(eventType, privacy: .public) id=\(event.eventID, privacy: .public)",
@@ -546,7 +575,7 @@ public final class RunSessionStore: ObservableObject {
 
         return EventHandlingOutcome(
             shouldRehydrateSeededSession: shouldRehydrateSeededSession,
-            shouldRefreshRuntimeState: shouldRefreshRuntimeProjection(for: canonicalEvent),
+            shouldRefreshRuntimeState: sequenceGap || shouldRefreshRuntimeProjection(for: canonicalEvent),
             canonicalEventType: eventType,
         )
     }
@@ -665,8 +694,10 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
+            let clientEventID = UUID().uuidString.lowercased()
             let request = InterventionEventRequest(
                 interventionType: interventionType,
+                clientEventID: clientEventID,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
                 status: status,
@@ -710,6 +741,7 @@ public final class RunSessionStore: ObservableObject {
             )
             addPendingIntervention(
                 idempotencyKey: envelope.idempotencyKey,
+                clientEventID: clientEventID,
                 interventionType: interventionType,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
@@ -2128,6 +2160,7 @@ public final class RunSessionStore: ObservableObject {
         let targetProblemID = jsonInt(event.payload["target_problem_id"])
 
         reconcilePendingIntervention(
+            clientEventID: jsonString(event.payload["client_event_id"]),
             interventionType: interventionType,
             siteCode: siteCode,
             targetProblemID: targetProblemID,
@@ -2482,6 +2515,10 @@ public final class RunSessionStore: ObservableObject {
             )
             return
         }
+        if let sequence = runtimeState.runtimeSnapshot.latestEventSequence {
+            guard sequence >= max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence) else { return }
+            appliedSnapshotEventSequence = sequence
+        }
         appliedSnapshotRevision = newRevision
 
         let snapshot = runtimeState.scenarioSnapshot
@@ -2534,6 +2571,14 @@ public final class RunSessionStore: ObservableObject {
             }
         }
         if snapshot.presence.interventions {
+            for intervention in snapshot.interventions {
+                reconcilePendingIntervention(
+                    clientEventID: intervention.clientEventID,
+                    interventionType: intervention.kind ?? "",
+                    siteCode: intervention.siteCode ?? "",
+                    targetProblemID: intervention.targetProblemID,
+                )
+            }
             snapshotInterventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
         }
         if snapshot.presence.pulses {
@@ -2552,6 +2597,7 @@ public final class RunSessionStore: ObservableObject {
 
     private func addPendingIntervention(
         idempotencyKey: String,
+        clientEventID: String,
         interventionType: String,
         siteCode: String,
         targetProblemID: Int?,
@@ -2559,6 +2605,7 @@ public final class RunSessionStore: ObservableObject {
         runtimeOverlayState.pendingInterventions.append(
             PendingInterventionState(
                 idempotencyKey: idempotencyKey,
+                clientEventID: clientEventID,
                 interventionType: interventionType,
                 siteCode: siteCode.uppercased(),
                 targetProblemID: targetProblemID,
@@ -2576,6 +2623,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func reconcilePendingIntervention(
+        clientEventID: String?,
         interventionType: String,
         siteCode: String,
         targetProblemID: Int?,
@@ -2585,7 +2633,10 @@ public final class RunSessionStore: ObservableObject {
             let matchIndex = runtimeOverlayState.pendingInterventions
             .enumerated()
             .filter({
-                $0.element.interventionType == interventionType
+                if let clientEventID, !clientEventID.isEmpty {
+                    return $0.element.clientEventID == clientEventID
+                }
+                return $0.element.interventionType == interventionType
                     && $0.element.siteCode == normalizedSiteCode
                     && $0.element.targetProblemID == targetProblemID
             })
