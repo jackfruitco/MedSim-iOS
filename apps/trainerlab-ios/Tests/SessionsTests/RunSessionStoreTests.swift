@@ -25,6 +25,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var getRuntimeStateCalls: [Int] = []
     var getRuntimeStateResultsQueue: [Result<TrainerRestViewModelDTO, Error>] = []
     var getRuntimeStateResult: Result<TrainerRestViewModelDTO, Error> = .failure(MockServiceError.unused)
+    var runtimeStateContinuation: CheckedContinuation<TrainerRestViewModelDTO, Error>?
+    var suspendRuntimeState = false
     var listEventsCalls: [(simulationID: Int, cursor: String?, limit: Int)] = []
     var listEventsResultsQueue: [Result<PaginatedResponse<EventEnvelope>, Error>] = []
     var listEventsResult: Result<PaginatedResponse<EventEnvelope>, Error> = .failure(MockServiceError.unused)
@@ -64,6 +66,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func getRuntimeState(simulationID: Int) async throws -> TrainerRestViewModelDTO {
         getRuntimeStateCalls.append(simulationID)
+        if suspendRuntimeState {
+            return try await withCheckedThrowingContinuation { runtimeStateContinuation = $0 }
+        }
         if !getRuntimeStateResultsQueue.isEmpty {
             return try getRuntimeStateResultsQueue.removeFirst().get()
         }
@@ -279,6 +284,58 @@ private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Senda
 
 @MainActor
 final class RunSessionStoreTests: XCTestCase {
+    func testSnapshotResponseCannotCrossSessionBindings() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.suspendRuntimeState = true
+        let request = Task { await store.loadRuntimeState() }
+        await waitUntil(timeout: 1) { service.runtimeStateContinuation != nil }
+
+        store.bind(session: makeSession(status: .running, simulationID: 421))
+        service.runtimeStateContinuation?.resume(returning: try makeRuntimeState(status: "running", stateRevision: 50))
+        let result = await request.value
+
+        XCTAssertNil(result)
+        XCTAssertNil(store.runtimeState)
+        XCTAssertNil(store.lastRuntimeStateRefreshAt)
+        XCTAssertEqual(store.state.session?.simulationID, 421)
+    }
+
+    func testSnapshotFromPreviousConsoleLifetimeIsDiscardedForSameSimulation() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.suspendRuntimeState = true
+        let request = Task { await store.loadRuntimeState() }
+        await waitUntil(timeout: 1) { service.runtimeStateContinuation != nil }
+
+        store.stopConsole()
+        store.bind(session: makeSession(status: .paused))
+        service.runtimeStateContinuation?.resume(returning: try makeRuntimeState(status: "running", stateRevision: 50))
+        let result = await request.value
+
+        XCTAssertNil(result)
+        XCTAssertNil(store.runtimeState)
+        XCTAssertEqual(store.state.session?.status, .paused)
+    }
+
+    func testStaleSnapshotDoesNotMarkCurrentStateFresh() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 10))
+        _ = await store.loadRuntimeState()
+        let refreshedAt = store.lastRuntimeStateRefreshAt
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 9))
+
+        let result = await store.loadRuntimeState()
+
+        XCTAssertNil(result)
+        XCTAssertEqual(store.runtimeState?.runtimeSnapshot.stateRevision, 10)
+        XCTAssertEqual(store.lastRuntimeStateRefreshAt, refreshedAt)
+    }
+
     func testUnifiedTimelineDedupesDuplicateRuntimeEvents() async {
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
@@ -2834,9 +2891,10 @@ final class RunSessionStoreTests: XCTestCase {
         terminalReasonText: String? = nil,
         retryable: Bool? = nil,
         modifiedAt: Date = Date(),
+        simulationID: Int = 420,
     ) -> TrainerSessionDTO {
         TrainerSessionDTO(
-            simulationID: 420,
+            simulationID: simulationID,
             status: status,
             scenarioSpec: scenarioSpec,
             runtimeState: runtimeState,

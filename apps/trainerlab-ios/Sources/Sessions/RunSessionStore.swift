@@ -51,6 +51,8 @@ public final class RunSessionStore: ObservableObject {
     /// Highest `stateRevision` successfully applied from a snapshot.
     /// Used to reject stale snapshots that arrive out of order.
     private var appliedSnapshotRevision: Int = -1
+    // Invalidates requests across rebinds, including reopening the same run.
+    private var bindingGeneration = UUID()
     private var snapshotProblemAnnotations: [ProblemAnnotation] = []
     private var snapshotInterventionAnnotations: [InterventionAnnotation] = []
     private var snapshotRecommendedInterventions: [RecommendedInterventionItem] = []
@@ -259,6 +261,7 @@ public final class RunSessionStore: ObservableObject {
     /// so that state from one simulation cannot bleed into another, and so that the
     /// stale-revision guard does not reject valid lower revisions for a new simulation.
     private func resetSnapshotState() {
+        bindingGeneration = UUID()
         runtimeState = nil
         scenarioBrief = nil
         controlPlaneDebug = nil
@@ -317,9 +320,14 @@ public final class RunSessionStore: ObservableObject {
     @discardableResult
     public func loadRuntimeState(reason: String = "manual") async -> TrainerRestViewModelDTO? {
         guard let simulationID = state.session?.simulationID else { return nil }
+        let generation = bindingGeneration
         logger.info("Fetching runtime state for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public))")
         do {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration,
+                  rs.simulationID == simulationID, state.session?.simulationID == simulationID,
+                  rs.runtimeSnapshot.stateRevision >= max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1)
+            else { return nil }
             logger.info(
                 "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.runtimeSnapshot.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
             )
@@ -328,6 +336,7 @@ public final class RunSessionStore: ObservableObject {
             lastRuntimeStateRefreshAt = Date()
             return rs
         } catch {
+            guard !Task.isCancelled, generation == bindingGeneration else { return nil }
             logger.error(
                 "Runtime state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error, privacy: .public)",
             )
@@ -357,8 +366,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func refreshGuardState() async {
         guard let simulationID = state.session?.simulationID else { return }
+        let generation = bindingGeneration
         do {
             let dto = try await service.getGuardState(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             state.guardState = dto
             state.guardDenial = dto.denial
             syncStopwatchState()
@@ -369,8 +380,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func runHeartbeat() async {
         guard let simulationID = state.session?.simulationID else { return }
+        let generation = bindingGeneration
         do {
             let dto = try await service.sendHeartbeat(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             state.guardState = dto
             state.guardDenial = dto.denial
             syncStopwatchState()
@@ -380,12 +393,14 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func bootstrapConsole(for session: TrainerSessionDTO) async {
+        let generation = bindingGeneration
         logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
 
         _ = await loadRuntimeState(reason: "bootstrap")
         await refreshGuardState()
 
         let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
+        guard !Task.isCancelled, generation == bindingGeneration else { return }
         applyHistoricalEvents(historicalEvents)
 
         // Prefer the timeline cursor (last historical event) to avoid duplicate delivery.
@@ -503,6 +518,14 @@ public final class RunSessionStore: ObservableObject {
     private func handleIncomingEvent(_ event: EventEnvelope) async -> EventHandlingOutcome {
         let canonicalEvent = event.canonicalized()
         let eventType = canonicalEvent.eventType
+        if let simulationID = jsonInt(event.payload["simulation_id"]),
+           simulationID != state.session?.simulationID {
+            return EventHandlingOutcome(
+                shouldRehydrateSeededSession: false,
+                shouldRefreshRuntimeState: false,
+                canonicalEventType: eventType,
+            )
+        }
         logger.info(
             "Received runtime event \(eventType, privacy: .public) id=\(event.eventID, privacy: .public)",
         )
@@ -528,8 +551,15 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
+        let generation = bindingGeneration
+        let lifecycleRevision = lastAppliedLifecycleRevision
+        let startingStatus = state.session?.status
         do {
             let latest = try await service.getSession(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration,
+                  lifecycleRevision == lastAppliedLifecycleRevision,
+                  startingStatus == state.session?.status,
+                  latest.simulationID == state.session?.simulationID else { return }
             let previousStatus = state.session?.status
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(latest))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
@@ -537,6 +567,7 @@ public final class RunSessionStore: ObservableObject {
             seedHydrationFromSessionRuntimeState(latest)
             syncStopwatchState(previousStatus: previousStatus)
         } catch {
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             presentConflict(error)
         }
     }
@@ -2427,8 +2458,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func applyRuntimeState(_ runtimeState: TrainerRestViewModelDTO, source: String) {
+        guard runtimeState.simulationID == state.session?.simulationID else { return }
         let newRevision = runtimeState.runtimeSnapshot.stateRevision
-        let currentRevision = appliedSnapshotRevision
+        let currentRevision = max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1)
         guard newRevision >= currentRevision else {
             logger.info(
                 "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(currentRevision, privacy: .public), source=\(source, privacy: .public))",
