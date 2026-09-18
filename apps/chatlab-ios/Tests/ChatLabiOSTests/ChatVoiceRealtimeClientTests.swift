@@ -282,15 +282,15 @@ private final class TestVoiceWebSocketTask: ChatVoiceWebSocketTask, @unchecked S
     private var currentCloseReason: Data?
 
     var sentMessages: [URLSessionWebSocketTask.Message] {
-        return recordedMessages
+        recordedMessages
     }
 
     var closeCode: URLSessionWebSocketTask.CloseCode {
-        return currentCloseCode
+        currentCloseCode
     }
 
     var closeReason: Data? {
-        return currentCloseReason
+        currentCloseReason
     }
 
     func enqueue(_ message: URLSessionWebSocketTask.Message) async {

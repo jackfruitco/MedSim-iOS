@@ -15,11 +15,19 @@ public struct ChatRunView: View {
     private let feedbackService: FeedbackServiceProtocol
     private let feedbackHeaderProvider: FeedbackRequestHeaderProviding
     private let mediaLoader: ChatMediaLoading
+    private let haptics: any ChatHapticFeedbackProviding
     private let onBack: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var showToolsSheet = false
+    @State private var toolsSheetDetent: PresentationDetent = .medium
+    @State private var selectedPhoneTool: ChatPhoneToolDestination?
+    @State private var showEndSimulationConfirmation = false
+    @State private var showPadEndSimulationConfirmation = false
+    @State private var showDiscardBeforeToolsDismiss = false
+    @State private var showDiscardBeforeRunExit = false
+    @State private var presentFeedbackAfterToolsDismiss = false
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
     @State private var stagedOrderText = ""
@@ -27,6 +35,10 @@ public struct ChatRunView: View {
     @State private var lastToolLayoutMode: ChatRunLayoutMode?
     @State private var isKeyboardPresented = false
     @State private var showActivityLog = false
+    @State private var isTimelineNearBottom = true
+    @State private var pendingNewMessageCount = 0
+    @State private var historyAnchorMessageID: String?
+    @State private var historyAnchorConversationID: Int?
     @FocusState private var composerIsFocused: Bool
 
     public init(
@@ -35,6 +47,7 @@ public struct ChatRunView: View {
         feedbackService: FeedbackServiceProtocol,
         feedbackHeaderProvider: FeedbackRequestHeaderProviding,
         mediaLoader: ChatMediaLoading,
+        haptics: any ChatHapticFeedbackProviding = SystemChatHaptics(),
         onBack: @escaping () -> Void,
     ) {
         self.store = store
@@ -42,6 +55,7 @@ public struct ChatRunView: View {
         self.feedbackService = feedbackService
         self.feedbackHeaderProvider = feedbackHeaderProvider
         self.mediaLoader = mediaLoader
+        self.haptics = haptics
         self.onBack = onBack
     }
 
@@ -59,12 +73,9 @@ public struct ChatRunView: View {
                 } else {
                     compactMessengerPanel(layoutMode: layoutMode, chromeMode: chromeMode)
                         .sheet(isPresented: $showToolsSheet) {
-                            NavigationStack {
-                                toolsPanel(layoutMode: layoutMode)
-                                    .navigationTitle("Tools")
-                            }
-                            .presentationDetents([.large])
-                            .presentationDragIndicator(.visible)
+                            phoneToolsSheet(layoutMode: layoutMode)
+                                .presentationDetents([.medium, .large], selection: $toolsSheetDetent)
+                                .presentationDragIndicator(.visible)
                         }
                 }
             }
@@ -90,6 +101,19 @@ public struct ChatRunView: View {
         .onChange(of: store.toolRefreshToken) { _, _ in
             Task { await toolsStore.refreshTools() }
         }
+        .onChange(of: showToolsSheet) { _, isPresented in
+            guard !isPresented, presentFeedbackAfterToolsDismiss else { return }
+            presentFeedbackAfterToolsDismiss = false
+            activeFeedbackContext = feedbackLaunchContext()
+        }
+        .onChange(of: toolsStore.resultsUpdateToken) { _, token in
+            guard token != nil else { return }
+            if showToolsSheet, selectedPhoneTool == .patientResults {
+                toolsStore.acknowledgeResultsUpdate()
+                return
+            }
+            haptics.play(.resultsUpdated)
+        }
         .modifier(ChatInlineNavigationTitleModifier())
         .modifier(ChatHideRunNavigationBarModifier())
         .modifier(ChatKeyboardStateModifier(isKeyboardPresented: $isKeyboardPresented))
@@ -104,6 +128,19 @@ public struct ChatRunView: View {
                     feedbackSuccessMessage = "Feedback sent."
                 },
             )
+        }
+        .confirmationDialog(
+            "Discard pending orders?",
+            isPresented: $showDiscardBeforeRunExit,
+            titleVisibility: .visible,
+        ) {
+            Button("Discard Orders and Leave", role: .destructive) {
+                toolsStore.discardStagedOrders()
+                onBack()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Your pending lab and imaging orders have not been submitted.")
         }
         .overlay(alignment: .top) {
             if let feedbackSuccessMessage {
@@ -156,6 +193,21 @@ public struct ChatRunView: View {
                 }
             }
         }
+        .confirmationDialog(
+            "End this simulation?",
+            isPresented: $showPadEndSimulationConfirmation,
+            titleVisibility: .visible,
+        ) {
+            Button("End Simulation", role: .destructive) {
+                store.endSimulation {
+                    toolsStore.discardStagedOrders()
+                    haptics.play(.simulationEnded)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(endSimulationConfirmationMessage)
+        }
     }
 
     @ViewBuilder
@@ -190,6 +242,7 @@ public struct ChatRunView: View {
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 6) {
+                        resultsUpdateBanner(horizontalPadding: horizontalInset(for: layoutMode))
                         awaitingReplyWarning(horizontalPadding: horizontalInset(for: layoutMode))
                         typingIndicator(horizontalPadding: horizontalInset(for: layoutMode))
                         voiceStatusIndicator(horizontalPadding: horizontalInset(for: layoutMode))
@@ -198,6 +251,12 @@ public struct ChatRunView: View {
                     .padding(.horizontal, horizontalInset(for: layoutMode))
                     .padding(.top, 8)
                     .padding(.bottom, 8)
+                    .background {
+                        Rectangle()
+                            .fill(.regularMaterial)
+                            .opacity(0.72)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
                 }
         }
     }
@@ -378,7 +437,7 @@ public struct ChatRunView: View {
             .padding(.top, 8)
             .padding(.bottom, isDisconnectedOrDegraded ? 4 : 8)
 
-            if isDisconnectedOrDegraded {
+            if isDisconnectedOrDegraded || store.activeConversationLocked {
                 HStack(spacing: 8) {
                     disconnectedIndicator
                     if store.activeConversationLocked {
@@ -436,10 +495,22 @@ public struct ChatRunView: View {
     }
 
     private var backButton: some View {
-        Button(action: onBack) {
-            Label("Back", systemImage: "chevron.left")
+        Button(action: requestRunExit) {
+            Image(systemName: "chevron.left")
+                .font(.body.weight(.semibold))
         }
-        .trainerGlassButtonStyle()
+        .frame(minWidth: 48, minHeight: 48)
+        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back")
+    }
+
+    private func requestRunExit() {
+        if toolsStore.stagedOrders.isEmpty {
+            onBack()
+        } else {
+            showDiscardBeforeRunExit = true
+        }
     }
 
     private var patientIdentityHeader: some View {
@@ -477,13 +548,20 @@ public struct ChatRunView: View {
     private func padWorkspaceHeaderActions() -> some View {
         HStack(spacing: 8) {
             if store.simulation.status == .inProgress {
-                Button("End Simulation") {
-                    store.endSimulation()
+                Button {
+                    showPadEndSimulationConfirmation = true
+                } label: {
+                    if store.isEndingSimulation {
+                        ProgressView()
+                    } else {
+                        Text("End Simulation")
+                    }
                 }
                 .trainerGlassButtonStyle(prominent: true)
                 .tint(.red)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
+                .disabled(store.isEndingSimulation)
             }
 
             Button("Send Feedback") {
@@ -517,89 +595,191 @@ public struct ChatRunView: View {
 
     // MARK: - Conversation tabs
 
+    @ViewBuilder
     private func conversationTabs(layoutMode: ChatRunLayoutMode) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: layoutMode == .padWorkspace ? 10 : 8) {
+        if store.conversations.count == 2, let firstConversation = store.conversations.first {
+            Picker(
+                "Conversation",
+                selection: Binding(
+                    get: { store.activeConversationID ?? firstConversation.id },
+                    set: { store.switchConversation($0) },
+                ),
+            ) {
                 ForEach(store.conversations) { conversation in
-                    Button {
-                        store.switchConversation(conversation.id)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(conversationTabLabel(for: conversation))
-                            if let unread = store.unreadByConversation[conversation.id], unread > 0 {
-                                Text("\(unread)")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.white)
-                                    .frame(minWidth: 20, minHeight: 20)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .font(tabFont(for: layoutMode).weight(store.activeConversationID == conversation.id ? .semibold : .regular))
-                        .padding(.horizontal, layoutMode == .padWorkspace ? 14 : 10)
-                        .padding(.vertical, layoutMode == .padWorkspace ? 8 : 6)
-                        .background(
-                            store.activeConversationID == conversation.id
-                                ? Color.blue.opacity(0.18)
-                                : Color.secondary.opacity(0.08),
-                        )
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
+                    Text(conversationPickerLabel(for: conversation))
+                        .tag(conversation.id)
                 }
             }
+            .pickerStyle(.segmented)
             .padding(.horizontal, horizontalInset(for: layoutMode))
-            .padding(.vertical, 2)
+            .accessibilityIdentifier("chat-conversation-picker")
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                conversationTabButtons(layoutMode: layoutMode)
+                    .padding(.horizontal, horizontalInset(for: layoutMode))
+                    .padding(.vertical, 2)
+            }
         }
+    }
+
+    private func conversationTabButtons(layoutMode: ChatRunLayoutMode) -> some View {
+        HStack(spacing: layoutMode == .padWorkspace ? 10 : 8) {
+            ForEach(store.conversations) { conversation in
+                Button {
+                    store.switchConversation(conversation.id)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(conversationTabLabel(for: conversation))
+                        if let unread = store.unreadByConversation[conversation.id], unread > 0 {
+                            Text("\(unread)")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 20, minHeight: 20)
+                                .background(Color.red)
+                                .clipShape(Circle())
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .font(tabFont(for: layoutMode).weight(store.activeConversationID == conversation.id ? .semibold : .regular))
+                    .padding(.horizontal, layoutMode == .padWorkspace ? 14 : 10)
+                    .padding(.vertical, layoutMode == .padWorkspace ? 8 : 6)
+                    .background(
+                        store.activeConversationID == conversation.id
+                            ? Color.blue.opacity(0.18)
+                            : Color.secondary.opacity(0.08),
+                    )
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func conversationPickerLabel(for conversation: ChatConversation) -> String {
+        let label = conversationTabLabel(for: conversation)
+        guard let unread = store.unreadByConversation[conversation.id], unread > 0 else {
+            return label
+        }
+        return "\(label) (\(unread))"
     }
 
     private func messageTimeline(layoutMode: ChatRunLayoutMode, chromeMode: ChatRunChromeMode) -> some View {
         // ScrollViewReader is the root — this enables .safeAreaInset on the caller side to
         // correctly push scroll content insets so messages start below the overlay header.
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 8) {
-                    // Load Older button lives inside the scroll so it appears at the
-                    // top of the content rather than outside the scrollable area.
-                    if store.hasMoreByConversation[store.activeConversationID ?? -1] == true {
-                        Button {
-                            Task { await store.loadOlderMessages() }
-                        } label: {
-                            if store.isOlderLoading {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                            } else {
-                                Text("Load Older Messages")
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
-                    }
-
-                    HStack {
-                        Spacer(minLength: 0)
-                        LazyVStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 12 : 8) {
-                            ForEach(store.activeMessages) { item in
-                                ChatBubble(item: item, layoutMode: layoutMode, mediaLoader: mediaLoader) {
-                                    store.retry(item)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        // Load Older button lives inside the scroll so it appears at the
+                        // top of the content rather than outside the scrollable area.
+                        if store.hasMoreByConversation[store.activeConversationID ?? -1] == true {
+                            Button {
+                                let currentTopMessageID = store.activeMessages.first?.id
+                                let previousMessageCount = store.activeMessages.count
+                                historyAnchorMessageID = currentTopMessageID
+                                historyAnchorConversationID = store.activeConversationID
+                                Task {
+                                    await store.loadOlderMessages()
+                                    if store.activeMessages.count == previousMessageCount {
+                                        historyAnchorMessageID = nil
+                                        historyAnchorConversationID = nil
+                                    }
+                                }
+                            } label: {
+                                if store.isOlderLoading {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    Text("Load Older Messages")
+                                        .frame(maxWidth: .infinity)
                                 }
                             }
+                            .buttonStyle(.bordered)
+                            .disabled(store.isOlderLoading)
+                            .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
                         }
-                        .frame(maxWidth: messageColumnWidth(for: layoutMode), alignment: .leading)
-                        .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
-                        .padding(.vertical, 4)
-                        Spacer(minLength: 0)
+
+                        HStack {
+                            Spacer(minLength: 0)
+                            LazyVStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 12 : 8) {
+                                ForEach(store.activeMessages) { item in
+                                    ChatBubble(item: item, layoutMode: layoutMode, mediaLoader: mediaLoader) {
+                                        store.retry(item)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: messageColumnWidth(for: layoutMode), alignment: .leading)
+                            .padding(.horizontal, layoutMode == .padWorkspace ? 0 : horizontalInset(for: layoutMode))
+                            .padding(.vertical, 4)
+                            Spacer(minLength: 0)
+                        }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id("chat-timeline-bottom")
                     }
                 }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: store.activeMessages.count) { _, _ in
-                if let last = store.activeMessages.last?.id {
-                    withAnimation {
-                        proxy.scrollTo(last, anchor: .bottom)
+                .scrollDismissesKeyboard(.interactively)
+                .modifier(ChatTimelinePositionModifier(isNearBottom: $isTimelineNearBottom))
+
+                if pendingNewMessageCount > 0 {
+                    Button {
+                        withAnimation {
+                            proxy.scrollTo("chat-timeline-bottom", anchor: .bottom)
+                        }
+                        pendingNewMessageCount = 0
+                    } label: {
+                        Label(
+                            pendingNewMessageCount == 1 ? "New Message" : "\(pendingNewMessageCount) New Messages",
+                            systemImage: "arrow.down.circle.fill",
+                        )
                     }
+                    .trainerGlassButtonStyle(prominent: true)
+                    .padding(.bottom, 8)
+                    .accessibilityIdentifier("chat-new-messages-button")
+                }
+            }
+            .onChange(of: store.activeMessages.count) { oldCount, newCount in
+                if let historyAnchorMessageID,
+                   historyAnchorConversationID == store.activeConversationID
+                {
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(historyAnchorMessageID, anchor: .top)
+                        self.historyAnchorMessageID = nil
+                        historyAnchorConversationID = nil
+                    }
+                    return
+                }
+                let decision = ChatTimelineUpdateDecision.resolve(
+                    addedCount: newCount - oldCount,
+                    isNearBottom: isTimelineNearBottom,
+                    lastMessageIsFromSelf: store.activeMessages.last?.isFromSelf == true,
+                    isLoadingOlderMessages: store.isOlderLoading,
+                )
+                switch decision {
+                case .ignore:
+                    break
+                case .scrollToBottom:
+                    withAnimation {
+                        proxy.scrollTo("chat-timeline-bottom", anchor: .bottom)
+                    }
+                    pendingNewMessageCount = 0
+                case let .showNewMessages(count):
+                    pendingNewMessageCount += count
+                }
+            }
+            .onChange(of: store.activeConversationID) { _, _ in
+                pendingNewMessageCount = 0
+                historyAnchorMessageID = nil
+                historyAnchorConversationID = nil
+                Task { @MainActor in
+                    proxy.scrollTo("chat-timeline-bottom", anchor: .bottom)
+                }
+            }
+            .onChange(of: isTimelineNearBottom) { _, isNearBottom in
+                if isNearBottom {
+                    pendingNewMessageCount = 0
                 }
             }
         }
@@ -650,10 +830,41 @@ public struct ChatRunView: View {
         }
     }
 
+    @ViewBuilder
+    private func resultsUpdateBanner(horizontalPadding: CGFloat) -> some View {
+        if toolsStore.resultsUpdateToken != nil {
+            Button {
+                selectedPhoneTool = .patientResults
+                toolsSheetDetent = .large
+                showToolsSheet = true
+                toolsStore.acknowledgeResultsUpdate()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "cross.case.fill")
+                    Text("New patient results available")
+                        .font(.footnote.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .background(Color.accentColor.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, horizontalPadding)
+            .accessibilityIdentifier("chat-new-results-banner")
+        }
+    }
+
     private func composer(layoutMode: ChatRunLayoutMode) -> some View {
         HStack(spacing: 8) {
             if layoutMode != .padWorkspace {
                 Button {
+                    selectedPhoneTool = nil
+                    toolsSheetDetent = .medium
                     showToolsSheet = true
                 } label: {
                     Image(systemName: "plus")
@@ -666,96 +877,166 @@ public struct ChatRunView: View {
                 .accessibilityIdentifier("chat-more-tools-button")
             }
 
-            HStack(alignment: .bottom, spacing: 6) {
-                TextField(
-                    store.activeConversationLocked ? "This conversation is read-only" : "Message",
-                    text: $store.draftText,
-                    axis: .vertical,
-                )
-                .lineLimit(1 ... 4)
-                .textFieldStyle(.plain)
-                .padding(.leading, 10)
-                .padding(.vertical, 10)
-                .disabled(store.activeConversationLocked)
-                .focused($composerIsFocused)
-                .onChange(of: store.draftText) { _, _ in
-                    store.notifyTypingChanged()
-                }
-
-                if store.isVoiceSessionActive {
-                    Button {
-                        store.toggleVoiceMute()
-                    } label: {
-                        Image(systemName: store.isVoiceMuted ? "mic.slash.fill" : "mic.fill")
-                            .frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
-                    .help(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
-
-                    Button {
-                        store.endVoiceSession()
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.red)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("End voice")
-                    .help("End voice")
-                } else if ChatComposerTrailingAction.resolve(
-                    draftText: store.draftText,
-                    conversationIsLocked: store.activeConversationLocked,
-                ) == .send {
-                    Button {
-                        store.sendDraft()
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.accentColor)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Send message")
-                    .accessibilityIdentifier("chat-send-button")
-                } else {
-                    Button {
-                        store.startVoiceSession()
-                    } label: {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 19, weight: .medium))
-                            .frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(store.canStartVoiceSession == false)
-                    .accessibilityLabel("Start voice")
-                    .accessibilityIdentifier("chat-voice-button")
-                    .help("Start voice")
-                }
+            if showsDedicatedVoiceComposer {
+                voiceSessionComposer
+            } else {
+                textComposer
             }
-            .padding(.trailing, 5)
-            .frame(minHeight: 44)
-            .trainerGlassSurface(
-                role: .floatingOverlay,
-                cornerRadius: 22,
-                interactive: true,
-            )
         }
         .frame(maxWidth: layoutMode == .padWorkspace ? messageColumnWidth(for: layoutMode) : .infinity)
         .frame(maxWidth: .infinity)
     }
 
+    private var textComposer: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            TextField(
+                store.activeConversationLocked ? "This conversation is read-only" : "Message",
+                text: $store.draftText,
+                axis: .vertical,
+            )
+            .lineLimit(1 ... 4)
+            .textFieldStyle(.plain)
+            .padding(.leading, 10)
+            .padding(.vertical, 10)
+            .disabled(store.activeConversationLocked)
+            .focused($composerIsFocused)
+            .onChange(of: store.draftText) { _, _ in
+                store.notifyTypingChanged()
+            }
+
+            let trailingAction = ChatComposerTrailingAction.resolve(
+                draftText: store.draftText,
+                conversationIsLocked: store.activeConversationLocked,
+            )
+
+            if trailingAction == .send {
+                Button {
+                    store.sendDraft()
+                    haptics.play(.messageSent)
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Color.accentColor)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Send message")
+                .accessibilityIdentifier("chat-send-button")
+            } else if trailingAction == .voice {
+                Button {
+                    store.startVoiceSession()
+                    haptics.play(.voiceStarted)
+                } label: {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 19, weight: .medium))
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+                .disabled(store.canStartVoiceSession == false)
+                .accessibilityLabel("Start voice")
+                .accessibilityIdentifier("chat-voice-button")
+                .help("Start voice")
+            } else {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .accessibilityLabel("Conversation is read-only")
+            }
+        }
+        .padding(.trailing, 5)
+        .frame(minHeight: 44)
+        .trainerGlassSurface(
+            role: .floatingOverlay,
+            cornerRadius: 22,
+            interactive: true,
+        )
+    }
+
+    private var voiceSessionComposer: some View {
+        HStack(spacing: 10) {
+            Group {
+                switch store.voiceConnectionState {
+                case .requestingPermission, .connecting, .ending:
+                    ProgressView()
+                        .controlSize(.small)
+                case .live:
+                    Image(systemName: "waveform")
+                        .foregroundStyle(.green)
+                case .muted:
+                    Image(systemName: "mic.slash.fill")
+                        .foregroundStyle(.orange)
+                case .idle, .failed:
+                    Image(systemName: "mic.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 28, height: 28)
+
+            Text(store.voiceStatusText ?? "Voice")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            if store.isVoiceSessionActive {
+                Button {
+                    store.toggleVoiceMute()
+                } label: {
+                    Image(systemName: store.isVoiceMuted ? "mic.fill" : "mic.slash.fill")
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(store.isVoiceMuted ? "Unmute voice" : "Mute voice")
+                .accessibilityIdentifier("chat-voice-mute-button")
+            }
+
+            Button {
+                store.endVoiceSession()
+                haptics.play(.voiceEnded)
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.red)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(store.voiceConnectionState == .ending)
+            .accessibilityLabel("End voice")
+            .accessibilityIdentifier("chat-voice-end-button")
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 5)
+        .frame(minHeight: 48)
+        .trainerGlassSurface(
+            role: .floatingOverlay,
+            cornerRadius: 24,
+            interactive: true,
+            tint: voiceStatusColor.opacity(0.08),
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("chat-voice-session-composer")
+    }
+
+    private var showsDedicatedVoiceComposer: Bool {
+        switch store.voiceConnectionState {
+        case .requestingPermission, .connecting, .live, .muted, .ending:
+            true
+        case .idle, .failed:
+            false
+        }
+    }
+
     @ViewBuilder
     private func voiceStatusIndicator(horizontalPadding: CGFloat) -> some View {
-        if let text = store.voiceStatusText {
+        if case let .failed(message) = store.voiceConnectionState {
             HStack {
                 Label {
-                    Text(text)
+                    Text(message ?? "Voice failed")
                         .font(.footnote)
                 } icon: {
                     Image(systemName: voiceStatusIcon)
@@ -862,6 +1143,25 @@ public struct ChatRunView: View {
     private func toolsPanel(layoutMode: ChatRunLayoutMode) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: layoutMode == .padWorkspace ? 14 : 12) {
+                if toolsStore.isLoading, !toolsStore.hasLoadedTools {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading patient tools…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(chatSystemBackgroundColor())
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                if let error = toolsStore.presentableError {
+                    InlineAppErrorView(error: error, actionLabel: "Retry") {
+                        Task { await toolsStore.loadTools() }
+                    }
+                }
+
                 toolsHeader(layoutMode: layoutMode)
                 toolSection(.patientHistory, layoutMode: layoutMode) {
                     PatientHistoryRows(rows: toolsStore.toolData("patient_history"))
@@ -877,8 +1177,10 @@ public struct ChatRunView: View {
                 toolSection(.simulationMetadata, layoutMode: layoutMode) {
                     SimulationMetadataRows(rows: toolsStore.toolData("simulation_metadata"))
                 }
-                toolSection(.requestLabs, layoutMode: layoutMode) {
-                    requestLabsSection(layoutMode: layoutMode)
+                if !simulationHasEnded {
+                    toolSection(.requestLabs, layoutMode: layoutMode) {
+                        requestLabsSection(layoutMode: layoutMode)
+                    }
                 }
                 // Activity log is debug/staff info — only compiled in for debug builds.
                 // Backend dependency: when staff/role info is available from the session,
@@ -894,6 +1196,300 @@ public struct ChatRunView: View {
             await toolsStore.refreshTools()
         }
         .background(Color.secondary.opacity(0.04))
+    }
+
+    private func phoneToolsSheet(layoutMode: ChatRunLayoutMode) -> some View {
+        NavigationStack {
+            Group {
+                if let selectedPhoneTool {
+                    phoneToolDetail(selectedPhoneTool, layoutMode: layoutMode)
+                } else {
+                    phoneToolsMenu(layoutMode: layoutMode)
+                }
+            }
+            .navigationTitle(selectedPhoneTool?.title ?? "Tools")
+            .modifier(ChatInlineNavigationTitleModifier())
+            .toolbar {
+                if selectedPhoneTool != nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedPhoneTool = nil
+                                toolsSheetDetent = .medium
+                            }
+                        } label: {
+                            Label("Tools", systemImage: "chevron.left")
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        requestToolsDismiss()
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(!toolsStore.stagedOrders.isEmpty)
+        .confirmationDialog(
+            "Discard pending orders?",
+            isPresented: $showDiscardBeforeToolsDismiss,
+            titleVisibility: .visible,
+        ) {
+            Button("Discard Orders", role: .destructive) {
+                toolsStore.discardStagedOrders()
+                showToolsSheet = false
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Your pending lab and imaging orders have not been submitted.")
+        }
+    }
+
+    private func phoneToolsMenu(layoutMode _: ChatRunLayoutMode) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                LazyVGrid(
+                    columns: [GridItem(.flexible()), GridItem(.flexible())],
+                    spacing: 12,
+                ) {
+                    ForEach(availablePhoneTools) { destination in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedPhoneTool = destination
+                                toolsSheetDetent = .large
+                            }
+                            if destination == .patientResults {
+                                toolsStore.acknowledgeResultsUpdate()
+                            }
+                        } label: {
+                            VStack(spacing: 8) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: destination.systemImage)
+                                        .font(.title2)
+                                        .foregroundStyle(Color.accentColor)
+                                    if destination == .patientResults, toolsStore.resultsUpdateToken != nil {
+                                        Circle()
+                                            .fill(Color.red)
+                                            .frame(width: 9, height: 9)
+                                            .offset(x: 7, y: -5)
+                                            .accessibilityHidden(true)
+                                    }
+                                }
+                                Text(destination.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 86)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .trainerGlassSurface(
+                            role: .chip,
+                            cornerRadius: 18,
+                            interactive: true,
+                        )
+                        .accessibilityIdentifier("chat-tool-\(destination.rawValue)")
+                        .accessibilityLabel(phoneToolAccessibilityLabel(destination))
+                    }
+                }
+
+                if simulationHasEnded {
+                    Button {
+                        guard !store.isCreatingStitchConversation else { return }
+                        store.createStitchConversationIfNeeded()
+                        showToolsSheet = false
+                    } label: {
+                        if store.isCreatingStitchConversation {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label(
+                                hasStitchConversation ? "Open Stitch Debrief" : "Debrief with Stitch",
+                                systemImage: "bubble.left.and.text.bubble.right.fill",
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .trainerGlassButtonStyle(prominent: true)
+                    .disabled(store.isCreatingStitchConversation)
+                }
+
+                Divider()
+
+                Button("Send Feedback") {
+                    presentFeedbackAfterToolsDismiss = true
+                    showToolsSheet = false
+                }
+                .trainerGlassButtonStyle()
+                .frame(maxWidth: .infinity)
+
+                if store.simulation.status == .inProgress {
+                    Button(role: .destructive) {
+                        showEndSimulationConfirmation = true
+                    } label: {
+                        if store.isEndingSimulation {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("End Simulation")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .frame(maxWidth: .infinity)
+                    .disabled(store.isEndingSimulation)
+                }
+            }
+            .padding(16)
+        }
+        .background(Color.secondary.opacity(0.04))
+        .accessibilityIdentifier("chat-tools-menu")
+        .confirmationDialog(
+            "End this simulation?",
+            isPresented: $showEndSimulationConfirmation,
+            titleVisibility: .visible,
+        ) {
+            Button("End Simulation", role: .destructive) {
+                store.endSimulation {
+                    toolsStore.discardStagedOrders()
+                    haptics.play(.simulationEnded)
+                    showToolsSheet = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(endSimulationConfirmationMessage)
+        }
+    }
+
+    private func phoneToolDetail(
+        _ destination: ChatPhoneToolDestination,
+        layoutMode: ChatRunLayoutMode,
+    ) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if toolsStore.isLoading, !toolsStore.hasLoadedTools {
+                    ProgressView("Loading \(destination.title)…")
+                        .frame(maxWidth: .infinity, minHeight: 180)
+                } else {
+                    if let error = toolsStore.presentableError {
+                        InlineAppErrorView(error: error, actionLabel: "Retry") {
+                            Task { await toolsStore.loadTools() }
+                        }
+                    }
+
+                    if phoneToolHasContent(destination) {
+                        phoneToolContent(destination, layoutMode: layoutMode)
+                    } else {
+                        ContentUnavailableView(
+                            emptyToolTitle(destination),
+                            systemImage: destination.systemImage,
+                            description: Text(emptyToolDescription(destination)),
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(chatSystemBackgroundColor())
+        }
+        .refreshable {
+            await toolsStore.refreshTools()
+        }
+        .background(Color.secondary.opacity(0.04))
+    }
+
+    @ViewBuilder
+    private func phoneToolContent(
+        _ destination: ChatPhoneToolDestination,
+        layoutMode: ChatRunLayoutMode,
+    ) -> some View {
+        switch destination {
+        case .requestLabs:
+            requestLabsSection(layoutMode: layoutMode)
+        case .patientHistory:
+            PatientHistoryRows(rows: toolsStore.toolData("patient_history"))
+        case .patientResults:
+            PatientResultsRows(results: toolsStore.patientResults)
+        case .simulationMetadata:
+            SimulationMetadataRows(rows: toolsStore.toolData("simulation_metadata"))
+        case .simulationFeedback:
+            SimulationFeedbackRows(rows: toolsStore.toolData("simulation_feedback"))
+        }
+    }
+
+    private func phoneToolHasContent(_ destination: ChatPhoneToolDestination) -> Bool {
+        switch destination {
+        case .requestLabs:
+            true
+        case .patientHistory:
+            !toolsStore.toolData("patient_history").isEmpty
+        case .patientResults:
+            !toolsStore.patientResults.isEmpty
+        case .simulationMetadata:
+            !toolsStore.toolData("simulation_metadata").isEmpty
+        case .simulationFeedback:
+            !toolsStore.toolData("simulation_feedback").isEmpty
+        }
+    }
+
+    private func emptyToolTitle(_ destination: ChatPhoneToolDestination) -> String {
+        switch destination {
+        case .requestLabs:
+            "No Pending Orders"
+        case .patientHistory:
+            "No History Yet"
+        case .patientResults:
+            "No Results Yet"
+        case .simulationMetadata:
+            "No Simulation Details"
+        case .simulationFeedback:
+            "Feedback Is Not Ready"
+        }
+    }
+
+    private func emptyToolDescription(_ destination: ChatPhoneToolDestination) -> String {
+        switch destination {
+        case .requestLabs:
+            "Enter a lab or imaging study to begin an order."
+        case .patientHistory:
+            "History appears as it is revealed during the conversation."
+        case .patientResults:
+            "Submitted laboratory and imaging results will appear here."
+        case .simulationMetadata:
+            "Simulation details are not currently available."
+        case .simulationFeedback:
+            "Feedback will appear after the simulation is complete."
+        }
+    }
+
+    private var availablePhoneTools: [ChatPhoneToolDestination] {
+        ChatPhoneToolDestination.available(simulationHasEnded: simulationHasEnded)
+    }
+
+    private var endSimulationConfirmationMessage: String {
+        if toolsStore.stagedOrders.isEmpty {
+            return "The patient conversation will become read-only and feedback generation will begin."
+        }
+        return "The patient conversation will become read-only. Your pending orders will be discarded and feedback generation will begin."
+    }
+
+    private func phoneToolAccessibilityLabel(_ destination: ChatPhoneToolDestination) -> String {
+        if destination == .patientResults, toolsStore.resultsUpdateToken != nil {
+            return "Results, new results available"
+        }
+        return destination.title
+    }
+
+    private func requestToolsDismiss() {
+        if toolsStore.stagedOrders.isEmpty {
+            showToolsSheet = false
+        } else {
+            showDiscardBeforeToolsDismiss = true
+        }
     }
 
     private func debugActivityDisclosure(layoutMode: ChatRunLayoutMode) -> some View {
@@ -916,28 +1512,8 @@ public struct ChatRunView: View {
         }
     }
 
-    private func toolsHeader(layoutMode: ChatRunLayoutMode) -> some View {
+    private func toolsHeader(layoutMode _: ChatRunLayoutMode) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // End Simulation is a primary action for phone layouts — it lives here
-            // rather than in the overlay header to keep the chat header minimal.
-            // On iPad the button is in the padWorkspace fixed header instead.
-            if layoutMode != .padWorkspace, store.simulation.status == .inProgress {
-                Button("End Simulation") {
-                    store.endSimulation()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .frame(maxWidth: .infinity)
-            }
-
-            if layoutMode != .padWorkspace {
-                Button("Send Feedback") {
-                    activeFeedbackContext = feedbackLaunchContext()
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-            }
-
             if isInStitchConversation {
                 // Currently in the Stitch debrief — show a clear indicator instead of a button.
                 Label("Stitch Debrief", systemImage: "bubble.left.and.text.bubble.right.fill")
@@ -951,11 +1527,17 @@ public struct ChatRunView: View {
                 // Backend dependency: see ChatRunStore.createStitchConversationIfNeeded for
                 // the integration point needed to seed the Stitch opener with simulation context.
                 let buttonLabel = hasStitchConversation ? "Open Stitch Debrief" : "Debrief with Stitch"
-                Button(buttonLabel) {
+                Button {
                     store.createStitchConversationIfNeeded()
+                } label: {
+                    if store.isCreatingStitchConversation {
+                        ProgressView()
+                    } else {
+                        Text(buttonLabel)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(store.simulation.status == .inProgress)
+                .disabled(store.simulation.status == .inProgress || store.isCreatingStitchConversation)
             }
         }
     }
@@ -991,6 +1573,7 @@ public struct ChatRunView: View {
                                 Image(systemName: "minus.circle.fill")
                             }
                             .buttonStyle(.plain)
+                            .disabled(toolsStore.isSubmittingOrders)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
@@ -1015,6 +1598,7 @@ public struct ChatRunView: View {
             .onSubmit {
                 stageCurrentOrder()
             }
+            .disabled(toolsStore.isSubmittingOrders)
     }
 
     private func feedbackLaunchContext() -> FeedbackLaunchContext {
@@ -1035,7 +1619,10 @@ public struct ChatRunView: View {
             stageCurrentOrder()
         }
         .buttonStyle(.borderedProminent)
-        .disabled(stagedOrderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(
+            stagedOrderText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || toolsStore.isSubmittingOrders,
+        )
     }
 
     private func submitOrdersPanel(compact: Bool) -> some View {
@@ -1188,6 +1775,24 @@ private struct ChatKeyboardStateModifier: ViewModifier {
         #else
             content
         #endif
+    }
+}
+
+private struct ChatTimelinePositionModifier: ViewModifier {
+    @Binding var isNearBottom: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                let visibleBottom = geometry.contentOffset.y + geometry.containerSize.height
+                let contentBottom = geometry.contentSize.height + geometry.contentInsets.bottom
+                return contentBottom - visibleBottom < 96
+            } action: { _, newValue in
+                isNearBottom = newValue
+            }
+        } else {
+            content
+        }
     }
 }
 

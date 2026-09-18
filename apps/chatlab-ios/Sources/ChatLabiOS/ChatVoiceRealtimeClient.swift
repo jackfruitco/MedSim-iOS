@@ -240,7 +240,6 @@ public enum ChatVoiceRealtimeEventParser {
         let data = Data(raw.utf8)
         return try JSONDecoder().decode([String: JSONValue].self, from: data)
     }
-
 }
 
 @MainActor
@@ -534,7 +533,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
                 guard let self else {
                     throw ChatVoiceRealtimeClientError.notConnected
                 }
-                return try await self.receiveText()
+                return try await receiveText()
             }
             group.addTask { [handshakeTimeoutNanoseconds] in
                 try await Task.sleep(nanoseconds: handshakeTimeoutNanoseconds)
@@ -549,7 +548,7 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
         guard let socketTask else {
             throw ChatVoiceRealtimeClientError.notConnected
         }
-        return try text(from: await socketTask.receive())
+        return try await text(from: socketTask.receive())
     }
 
     private func sanitizedSessionConfig(_ config: [String: JSONValue]?) -> [String: JSONValue] {
@@ -568,14 +567,13 @@ public final class ChatVoiceRealtimeClient: NSObject, ChatVoiceRealtimeClientPro
             return .socketClosed(code: closeCode.rawValue, reason: reason)
         }
         if let urlError = error as? URLError {
-            let message: String
-            switch urlError.code {
+            let message = switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost, .timedOut:
-                message = "Voice connection is unavailable. Check your connection and try again."
+                "Voice connection is unavailable. Check your connection and try again."
             case .userAuthenticationRequired, .userCancelledAuthentication, .secureConnectionFailed:
-                message = "Voice authentication failed. Please start again."
+                "Voice authentication failed. Please start again."
             default:
-                message = "Voice connection failed. Please try again."
+                "Voice connection failed. Please try again."
             }
             return .transportFailure(message: message)
         }

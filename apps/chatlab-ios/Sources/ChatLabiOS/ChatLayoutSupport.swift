@@ -57,15 +57,93 @@ enum ChatRunChromeMode: Equatable {
 }
 
 enum ChatComposerTrailingAction: Equatable {
+    case locked
     case voice
     case send
 
     static func resolve(draftText: String, conversationIsLocked: Bool) -> Self {
-        guard conversationIsLocked == false else {
-            return .voice
+        if conversationIsLocked {
+            return .locked
         }
 
         return draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .voice : .send
+    }
+}
+
+enum ChatTimelineUpdateDecision: Equatable {
+    case ignore
+    case scrollToBottom
+    case showNewMessages(count: Int)
+
+    static func resolve(
+        addedCount: Int,
+        isNearBottom: Bool,
+        lastMessageIsFromSelf: Bool,
+        isLoadingOlderMessages: Bool,
+    ) -> Self {
+        guard addedCount > 0, !isLoadingOlderMessages else { return .ignore }
+        if isNearBottom || lastMessageIsFromSelf {
+            return .scrollToBottom
+        }
+        return .showNewMessages(count: addedCount)
+    }
+}
+
+enum ChatPhoneToolDestination: String, CaseIterable, Identifiable {
+    case requestLabs
+    case patientHistory
+    case patientResults
+    case simulationMetadata
+    case simulationFeedback
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .requestLabs:
+            "Request Labs"
+        case .patientHistory:
+            "Patient History"
+        case .patientResults:
+            "Results"
+        case .simulationMetadata:
+            "Simulation Details"
+        case .simulationFeedback:
+            "Feedback"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .requestLabs:
+            "cross.case.fill"
+        case .patientHistory:
+            "list.clipboard.fill"
+        case .patientResults:
+            "chart.xyaxis.line"
+        case .simulationMetadata:
+            "info.circle.fill"
+        case .simulationFeedback:
+            "checkmark.bubble.fill"
+        }
+    }
+
+    static func available(simulationHasEnded: Bool) -> [Self] {
+        var destinations: [Self] = []
+        if !simulationHasEnded {
+            destinations.append(.requestLabs)
+        }
+        destinations.append(contentsOf: [
+            .patientHistory,
+            .patientResults,
+            .simulationMetadata,
+        ])
+        if simulationHasEnded {
+            destinations.append(.simulationFeedback)
+        }
+        return destinations
     }
 }
 

@@ -6,6 +6,11 @@ import XCTest
 
 private final class PatientResultsService: ChatLabServiceProtocol, @unchecked Sendable {
     var toolItems: [ChatToolState] = []
+    var listToolsCallCount = 0
+    var listToolsDelayNanoseconds: UInt64?
+    var signOrdersCallCount = 0
+    var signOrdersDelayNanoseconds: UInt64?
+    var submittedOrderRequests: [ChatSignOrdersRequest] = []
 
     func listSimulations(
         limit _: Int,
@@ -80,15 +85,24 @@ private final class PatientResultsService: ChatLabServiceProtocol, @unchecked Se
     }
 
     func listTools(simulationID _: Int, names _: [String]?) async throws -> ChatToolListResponse {
-        ChatToolListResponse(items: toolItems)
+        listToolsCallCount += 1
+        if let listToolsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: listToolsDelayNanoseconds)
+        }
+        return ChatToolListResponse(items: toolItems)
     }
 
     func getTool(simulationID _: Int, toolName _: String) async throws -> ChatToolState {
         fatalError("unused")
     }
 
-    func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
-        fatalError("unused")
+    func signOrders(simulationID _: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
+        signOrdersCallCount += 1
+        submittedOrderRequests.append(request)
+        if let signOrdersDelayNanoseconds {
+            try await Task.sleep(nanoseconds: signOrdersDelayNanoseconds)
+        }
+        return ChatSignOrdersResponse(status: "ok", orders: [])
     }
 
     func submitLabOrders(simulationID _: Int, request _: ChatSubmitLabOrdersRequest) async throws -> ChatLabOrdersResponse {
@@ -213,6 +227,8 @@ final class ChatPatientResultsTests: XCTestCase {
 
         XCTAssertEqual(store.patientResults.map(\.rawRow), bootstrapResults.map(\.rawRow))
         XCTAssertFalse(store.patientResults.contains(where: hasNestedValue))
+        XCTAssertNil(store.resultsUpdateToken)
+        XCTAssertTrue(store.hasLoadedTools)
 
         let refreshedResults = [
             makeResult(id: 301, resultName: "Sodium", panelName: "CMP", value: .number(140)),
@@ -225,6 +241,99 @@ final class ChatPatientResultsTests: XCTestCase {
 
         XCTAssertEqual(store.patientResults.map(\.rawRow), refreshedResults.map(\.rawRow))
         XCTAssertFalse(store.patientResults.contains(where: hasNestedValue))
+        XCTAssertNotNil(store.resultsUpdateToken)
+
+        store.acknowledgeResultsUpdate()
+        XCTAssertNil(store.resultsUpdateToken)
+    }
+
+    @MainActor
+    func testSignOrdersIgnoresDuplicateSubmissionWhileRequestIsInFlight() async {
+        let service = PatientResultsService()
+        service.signOrdersDelayNanoseconds = 50_000_000
+        let store = ChatToolsStore(service: service, simulationID: 42)
+        store.stageOrder("CBC")
+
+        let firstSubmission = Task { await store.signOrders() }
+        for _ in 0 ..< 20 {
+            if store.isSubmittingOrders {
+                break
+            }
+            await Task.yield()
+        }
+        XCTAssertTrue(store.isSubmittingOrders)
+        await store.signOrders()
+        await firstSubmission.value
+
+        XCTAssertEqual(service.signOrdersCallCount, 1)
+        XCTAssertTrue(store.stagedOrders.isEmpty)
+    }
+
+    @MainActor
+    func testDiscardStagedOrdersClearsPendingOrderProtectionState() {
+        let store = ChatToolsStore(service: PatientResultsService(), simulationID: 42)
+        store.stageOrder("Chest X-ray")
+
+        store.discardStagedOrders()
+
+        XCTAssertTrue(store.stagedOrders.isEmpty)
+    }
+
+    @MainActor
+    func testOrderAddedDuringSubmissionIsNotRemovedAsIfItWereSubmitted() async {
+        let service = PatientResultsService()
+        service.signOrdersDelayNanoseconds = 50_000_000
+        let store = ChatToolsStore(service: service, simulationID: 42)
+        store.stageOrder("CBC")
+
+        let submission = Task { await store.signOrders() }
+        for _ in 0 ..< 20 {
+            if store.isSubmittingOrders {
+                break
+            }
+            await Task.yield()
+        }
+        store.stageOrder("Chest X-ray")
+        await submission.value
+
+        XCTAssertEqual(service.submittedOrderRequests.first?.submittedOrders, ["CBC"])
+        XCTAssertEqual(store.stagedOrders, ["Chest X-ray"])
+    }
+
+    @MainActor
+    func testRefreshRequestedDuringInitialLoadRunsAfterLoadCompletes() async {
+        let service = PatientResultsService()
+        service.listToolsDelayNanoseconds = 50_000_000
+        let store = ChatToolsStore(service: service, simulationID: 42)
+
+        let initialLoad = Task { await store.loadTools() }
+        for _ in 0 ..< 20 {
+            if store.isLoading {
+                break
+            }
+            await Task.yield()
+        }
+        await store.refreshTools()
+        await initialLoad.value
+
+        XCTAssertEqual(service.listToolsCallCount, 2)
+        XCTAssertFalse(store.isLoading)
+        XCTAssertFalse(store.isRefreshing)
+    }
+
+    @MainActor
+    func testFirstResultsToolAfterBootstrapTriggersUpdate() async {
+        let service = PatientResultsService()
+        let store = ChatToolsStore(service: service, simulationID: 42)
+        await store.loadTools()
+
+        service.toolItems = [makeTool(
+            results: [makeResult(id: 501, resultName: "Lactate", panelName: nil, value: .number(2.4))],
+            checksum: "first-results",
+        )]
+        await store.refreshTools()
+
+        XCTAssertNotNil(store.resultsUpdateToken)
     }
 
     private func makeResult(

@@ -54,7 +54,63 @@ final class ChatLayoutSupportTests: XCTestCase {
     func testComposerDoesNotOfferSendForLockedConversation() {
         XCTAssertEqual(
             ChatComposerTrailingAction.resolve(draftText: "Unsent text", conversationIsLocked: true),
-            .voice,
+            .locked,
+        )
+    }
+
+    func testPhoneToolDestinationsHaveUniqueTitlesAndSymbols() {
+        let destinations = ChatPhoneToolDestination.allCases
+
+        XCTAssertEqual(Set(destinations.map(\.title)).count, destinations.count)
+        XCTAssertTrue(destinations.allSatisfy { !$0.systemImage.isEmpty })
+    }
+
+    func testSimulationFeedbackToolAppearsOnlyAfterSimulationEnds() {
+        let activeTools = ChatPhoneToolDestination.available(simulationHasEnded: false)
+        let endedTools = ChatPhoneToolDestination.available(simulationHasEnded: true)
+
+        XCTAssertTrue(activeTools.contains(.requestLabs))
+        XCTAssertFalse(activeTools.contains(.simulationFeedback))
+        XCTAssertFalse(endedTools.contains(.requestLabs))
+        XCTAssertTrue(endedTools.contains(.simulationFeedback))
+    }
+
+    func testTimelineOnlyAutoScrollsWhenUserIsNearBottomOrSentTheMessage() {
+        XCTAssertEqual(
+            ChatTimelineUpdateDecision.resolve(
+                addedCount: 1,
+                isNearBottom: true,
+                lastMessageIsFromSelf: false,
+                isLoadingOlderMessages: false,
+            ),
+            .scrollToBottom,
+        )
+        XCTAssertEqual(
+            ChatTimelineUpdateDecision.resolve(
+                addedCount: 1,
+                isNearBottom: false,
+                lastMessageIsFromSelf: true,
+                isLoadingOlderMessages: false,
+            ),
+            .scrollToBottom,
+        )
+        XCTAssertEqual(
+            ChatTimelineUpdateDecision.resolve(
+                addedCount: 2,
+                isNearBottom: false,
+                lastMessageIsFromSelf: false,
+                isLoadingOlderMessages: false,
+            ),
+            .showNewMessages(count: 2),
+        )
+        XCTAssertEqual(
+            ChatTimelineUpdateDecision.resolve(
+                addedCount: 20,
+                isNearBottom: false,
+                lastMessageIsFromSelf: false,
+                isLoadingOlderMessages: true,
+            ),
+            .ignore,
         )
     }
 

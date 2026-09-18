@@ -403,6 +403,10 @@ public struct ChatToolState: Codable, Sendable, Equatable {
 
 public struct ChatToolListResponse: Codable, Sendable {
     public let items: [ChatToolState]
+
+    public init(items: [ChatToolState]) {
+        self.items = items
+    }
 }
 
 public struct ChatTypingEvent: Codable, Sendable, Equatable {
@@ -553,6 +557,12 @@ public struct ChatEventReplayResponse: Codable, Sendable, Equatable {
     public let items: [ChatEventEnvelope]
     public let nextEventID: String?
     public let hasMore: Bool
+
+    public init(items: [ChatEventEnvelope], nextEventID: String?, hasMore: Bool) {
+        self.items = items
+        self.nextEventID = nextEventID
+        self.hasMore = hasMore
+    }
 
     enum CodingKeys: String, CodingKey {
         case items

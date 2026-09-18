@@ -98,6 +98,8 @@ public final class ChatRunStore: ObservableObject {
     @Published public private(set) var guardState: GuardStateDTO?
     @Published public private(set) var guardDenial: GuardSignal?
     @Published public private(set) var toolRefreshToken = UUID()
+    @Published public private(set) var isEndingSimulation = false
+    @Published public private(set) var isCreatingStitchConversation = false
     @Published private var awaitingReplyByConversation: [Int: AwaitingReplyState] = [:]
 
     @Published public var draftText = ""
@@ -345,12 +347,12 @@ public final class ChatRunStore: ObservableObject {
         clearRemoteTypingUsers()
         realtimeClient.disconnect()
         voiceConnectionState = .ending
-        let voiceClient = self.voiceClient
+        let voiceClient = voiceClient
         Task { @MainActor [weak self] in
             await voiceClient.disconnect()
-            guard let self, self.hasStarted == false else { return }
-            self.activeVoiceSession = nil
-            self.voiceConnectionState = .idle
+            guard let self, hasStarted == false else { return }
+            activeVoiceSession = nil
+            voiceConnectionState = .idle
         }
         transportState = .idle
         socketDisconnected = true
@@ -386,7 +388,10 @@ public final class ChatRunStore: ObservableObject {
             switchConversation(existing.id)
             return
         }
+        guard !isCreatingStitchConversation else { return }
+        isCreatingStitchConversation = true
         Task {
+            defer { isCreatingStitchConversation = false }
             do {
                 // Backend dependency: ChatCreateConversationRequest does not yet accept
                 // simulation context (feedback summary, run ID) to seed the Stitch opener.
@@ -574,7 +579,13 @@ public final class ChatRunStore: ObservableObject {
 
     public func endVoiceSession() {
         guard let session = activeVoiceSession else {
-            Task { await voiceClient.disconnect() }
+            voiceConnectionState = .ending
+            voiceSessionTask?.cancel()
+            voiceSessionTask = Task {
+                await voiceClient.disconnect()
+                guard !Task.isCancelled else { return }
+                voiceConnectionState = .idle
+            }
             return
         }
         voiceConnectionState = .ending
@@ -648,11 +659,15 @@ public final class ChatRunStore: ObservableObject {
         scheduleTypingStop()
     }
 
-    public func endSimulation() {
+    public func endSimulation(onSuccess: @escaping @MainActor () -> Void = {}) {
+        guard simulation.status == .inProgress, !isEndingSimulation else { return }
+        isEndingSimulation = true
         Task {
+            defer { isEndingSimulation = false }
             do {
                 let updated = try await service.endSimulation(simulationID: simulation.id)
                 applySimulation(updated)
+                onSuccess()
             } catch {
                 presentableError = AppErrorPresenter.present(error)
             }
