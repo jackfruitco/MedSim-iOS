@@ -34,6 +34,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var replayPendingErrorByEndpoint: [String: Error] = [:]
     var runCommandCalls: [(simulationID: Int, command: RunCommand)] = []
     var runCommandResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
+    var guardStateResult: Result<GuardStateDTO, Error> = .failure(MockServiceError.unused)
+    var steerPromptCalls: [String] = []
     var injectInterventionCalls: [InterventionEventRequest] = []
     var injectInterventionResult: Result<TrainerCommandAck, Error> = .failure(MockServiceError.unused)
     var injectInterventionDelayNanoseconds: UInt64 = 0
@@ -101,7 +103,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey: String) async throws -> TrainerCommandAck {
+        steerPromptCalls.append(idempotencyKey)
         throw MockServiceError.unused
     }
 
@@ -222,7 +225,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     }
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        throw MockServiceError.unused
+        try guardStateResult.get()
     }
 
     func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
@@ -1151,7 +1154,7 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertGreaterThan(store.state.stopwatchElapsedSeconds, pausedElapsed)
     }
 
-    func testPollingFallbackDisablesCommandChannelWithoutAutoPause() async throws {
+    func testPollingFallbackPreservesCommandChannelWithoutAutoPause() async throws {
         let realtime = MockRealtimeClient()
         let queue = InMemoryCommandQueueStore()
         let store = RunSessionStore(
@@ -1170,11 +1173,66 @@ final class RunSessionStoreTests: XCTestCase {
         realtime.emit(transport: .polling)
 
         await waitUntil(timeout: 1.5) {
-            !store.state.commandChannelAvailable && store.state.transportBanner.message == "Polling Fallback"
+            store.state.commandChannelAvailable && store.state.transportBanner.message == "Updates may be delayed"
         }
 
         let pending = try await queue.pendingCount(simulationID: 420, accountUUID: nil)
         XCTAssertEqual(pending, 0)
+    }
+
+    func testPausedGuardAllowsResumeDuringPollingFallback() async {
+        let service = MockTrainerLabService()
+        service.guardStateResult = .success(GuardStateDTO(
+            guardState: "paused", guardReason: "instructor_pause", engineRunnable: false,
+            activeElapsedSeconds: 20, runtimeCapSeconds: nil, wallClockExpiresAt: nil,
+            warnings: [], denial: nil,
+        ))
+        service.runCommandResult = .success(makeSession(status: .running))
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .paused))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.guardState?.engineRunnable == false }
+        realtime.emit(transport: .polling)
+        await waitUntil(timeout: 1.5) { store.state.transportState == .polling }
+        store.resume()
+        await waitUntil(timeout: 1.5) { service.runCommandCalls.count == 1 }
+        XCTAssertEqual(service.runCommandCalls.first?.command, .resume)
+        await waitUntil(timeout: 1.5) { store.state.session?.status == .running }
+    }
+
+    func testSteeringFailureIsVisibleAndRetainsOriginalCommandForRetry() async throws {
+        let service = MockTrainerLabService()
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        store.steerPrompt("Maintain the teaching objective")
+        await waitUntil(timeout: 1.5) { store.state.conflictBanner != nil && store.state.pendingCommandCount == 1 }
+        let batch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
+        XCTAssertEqual(batch.count, 1)
+        XCTAssertEqual(batch.first?.idempotencyKey, service.steerPromptCalls.first)
+        XCTAssertTrue(batch.first?.endpoint.contains("steer/prompt") == true)
+    }
+
+    func testRejectedLifecycleCommandRemainsVisibleAfterSessionRefreshAndIsNotRetried() async throws {
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(status: .paused))
+        service.runCommandResult = .failure(APIClientError.http(statusCode: 409, detail: "Runtime limit reached", correlationID: nil))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .paused))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        store.resume()
+        await waitUntil(timeout: 1.5) { store.state.conflictBanner != nil }
+        let batch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
+        XCTAssertTrue(batch.isEmpty)
+        XCTAssertNotNil(store.conflictError)
     }
 
     func testSimulationStateChangedFailureTransitionsSessionToFailed() async {

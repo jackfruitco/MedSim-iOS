@@ -10,6 +10,9 @@ public final class RunSummaryViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var presentableError: PresentableAppError?
     @Published public private(set) var notReadyMessage: String?
+    @Published public private(set) var isWaitingForDebrief = false
+
+    private var isObserving = false
 
     private let service: TrainerLabServiceProtocol
     public let simulationID: Int
@@ -24,10 +27,9 @@ public final class RunSummaryViewModel: ObservableObject {
     }
 
     public func load() async {
-        isLoading = true
+        isLoading = summary == nil
         presentableError = nil
         notReadyMessage = nil
-        summary = nil
         defer { isLoading = false }
 
         do {
@@ -36,6 +38,29 @@ public final class RunSummaryViewModel: ObservableObject {
             notReadyMessage = Self.notReadyCopy
         } catch {
             presentableError = AppErrorPresenter.present(error)
+        }
+    }
+
+    /// Bound polling because the API does not distinguish pending from failed generation.
+    public func loadUntilReady(maxAttempts: Int = 20, delayNanoseconds: UInt64 = 3_000_000_000) async {
+        guard !isObserving else { return }
+        isObserving = true
+        isWaitingForDebrief = true
+        defer {
+            isObserving = false
+            isWaitingForDebrief = false
+        }
+        for attempt in 0 ..< max(1, maxAttempts) {
+            guard !Task.isCancelled else { return }
+            await load()
+            guard summary?.aiDebrief == nil, presentableError == nil else { return }
+            if attempt + 1 < maxAttempts {
+                do {
+                    try await Task.sleep(nanoseconds: delayNanoseconds)
+                } catch {
+                    return
+                }
+            }
         }
     }
 }

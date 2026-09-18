@@ -173,6 +173,7 @@ public final class RunSessionStore: ObservableObject {
 
         transportTask = Task { [weak self] in
             guard let self else { return }
+            var recovering = false
             for await transport in realtimeClient.transportStates {
                 await MainActor.run {
                     logger.info(
@@ -180,6 +181,13 @@ public final class RunSessionStore: ObservableObject {
                     )
                     self.state = RunSessionReducer.reduce(state: self.state, action: .transportChanged(transport))
                     self.syncTransportPresentation(for: transport)
+                }
+                if transport == .polling {
+                    recovering = true
+                    await scheduleRuntimeRefresh(reason: "transport recovery")
+                } else if transport == .connectedSSE, recovering {
+                    recovering = false
+                    await scheduleRuntimeRefresh(reason: "transport recovered")
                 }
             }
         }
@@ -234,6 +242,15 @@ public final class RunSessionStore: ObservableObject {
         pendingRuntimeRefresh = false
         realtimeClient.disconnect()
         resetSnapshotState()
+    }
+
+    public func refreshAfterForeground() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        _ = await loadRuntimeState(reason: "foreground")
+        await refreshGuardState()
+        guard !Task.isCancelled, state.session?.simulationID == simulationID else { return }
+        await realtimeClient.connect(simulationID: simulationID, cursor: state.eventCursor)
+        await replayPendingCommands()
     }
 
     /// Clears all snapshot-authoritative panel state and resets revision guards.
@@ -795,13 +812,23 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let key = makeDirectIdempotencyKey(scope: "steer")
             let request = SteerPromptRequest(prompt: String(trimmed.prefix(2000)))
-            _ = try? await service.steerPrompt(
-                simulationID: simulationID,
-                request: request,
-                idempotencyKey: key,
-            )
+            do {
+                let endpoint = TrainerLabAPI.steerPrompt(
+                    simulationID: simulationID,
+                    body: try JSONEncoder().encode(request),
+                )
+                let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
+                await executeQueuedAckCommand(envelope: envelope) {
+                    try await self.service.steerPrompt(
+                        simulationID: simulationID,
+                        request: request,
+                        idempotencyKey: envelope.idempotencyKey,
+                    )
+                }
+            } catch {
+                presentConflict(error)
+            }
         }
     }
 
@@ -899,7 +926,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private var canRunCommands: Bool {
-        canMutateCommands
+        // A paused engine must still accept Resume and Stop. The API validates
+        // lifecycle transitions and guard policy independently of event delivery.
+        state.commandChannelAvailable && state.session?.status != .seeding
     }
 
     private var canInterventionCommands: Bool {
@@ -975,18 +1004,25 @@ public final class RunSessionStore: ObservableObject {
     private func handleCommandError(_ error: Error, envelope: PendingCommandEnvelope) async {
         discardPendingIntervention(idempotencyKey: envelope.idempotencyKey)
         if let apiError = error as? APIClientError, case let .http(statusCode, detail, _) = apiError, statusCode == 409 {
-            state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
-            conflictError = AppErrorPresenter.present(apiError)
             await refreshSession()
+            state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
         }
+        presentConflict(error)
 
         let nextRetryAt = Date().addingTimeInterval(nextBackoffSeconds(for: envelope.retryCount))
         do {
-            try await commandQueue.markFailed(
-                idempotencyKey: envelope.idempotencyKey,
-                error: messageText(for: error),
-                nextRetryAt: nextRetryAt,
-            )
+            if isTerminalReplayFailure(error) {
+                try await commandQueue.markTerminalFailure(
+                    idempotencyKey: envelope.idempotencyKey,
+                    error: messageText(for: error),
+                )
+            } else {
+                try await commandQueue.markFailed(
+                    idempotencyKey: envelope.idempotencyKey,
+                    error: messageText(for: error),
+                    nextRetryAt: nextRetryAt,
+                )
+            }
             await refreshPendingCount()
         } catch {
             presentConflict(error)
@@ -1061,22 +1097,19 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func syncTransportPresentation(for transport: RealtimeTransportState) {
+        // HTTP commands and the durable queue are independent of SSE health.
+        state.commandChannelAvailable = true
         switch transport {
         case .connectedSSE:
-            state.commandChannelAvailable = true
-            state.transportBanner = TransportBanner(style: .healthy, message: "SSE Healthy", visible: true)
+            state.transportBanner = TransportBanner(style: .healthy, message: "Live updates", visible: true)
         case .polling:
-            state.commandChannelAvailable = false
-            state.transportBanner = TransportBanner(style: .warning, message: "Polling Fallback", visible: true)
+            state.transportBanner = TransportBanner(style: .warning, message: "Updates may be delayed", visible: true)
         case .reconnecting:
-            state.commandChannelAvailable = false
             state.transportBanner = TransportBanner(style: .warning, message: "Reconnecting", visible: true)
         case .connecting:
-            state.commandChannelAvailable = false
             state.transportBanner = TransportBanner(style: .warning, message: "Reconnecting", visible: true)
         case .disconnected:
-            state.commandChannelAvailable = false
-            state.transportBanner = TransportBanner(style: .error, message: "Disconnected", visible: true)
+            state.transportBanner = TransportBanner(style: .error, message: "Live updates disconnected", visible: true)
         }
     }
 
@@ -2825,11 +2858,14 @@ public final class RunSessionStore: ObservableObject {
 
     private func isTerminalReplayFailure(_ error: Error) -> Bool {
         guard let apiError = error as? APIClientError,
-              case let .http(statusCode, _, _) = apiError
+              case let .http(statusCode, detail, _) = apiError
         else {
             return false
         }
-        return statusCode == 400 || statusCode == 404 || statusCode == 422
+        if statusCode == 409 {
+            return !detail.localizedCaseInsensitiveContains("already in progress")
+        }
+        return statusCode == 400 || statusCode == 403 || statusCode == 404 || statusCode == 422
     }
 
     private func shouldRefreshRuntimeProjection(for event: EventEnvelope) -> Bool {

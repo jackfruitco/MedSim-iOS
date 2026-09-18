@@ -11,6 +11,7 @@ private enum SummaryMockError: Error {
 private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Sendable {
     var getRunSummaryCalls: [Int] = []
     var getRunSummaryResult: Result<RunSummary, Error> = .failure(SummaryMockError.unused)
+    var getRunSummaryResults: [Result<RunSummary, Error>] = []
 
     func accessMe() async throws -> LabAccess {
         throw SummaryMockError.unused
@@ -58,6 +59,9 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
 
     func getRunSummary(simulationID: Int) async throws -> RunSummary {
         getRunSummaryCalls.append(simulationID)
+        if !getRunSummaryResults.isEmpty {
+            return try getRunSummaryResults.removeFirst().get()
+        }
         return try getRunSummaryResult.get()
     }
 
@@ -188,6 +192,51 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
 
 @MainActor
 final class RunSummaryViewModelTests: XCTestCase {
+    func testObservationStopsAtBoundAndPreservesAvailableSummary() async {
+        let service = MockSummaryService()
+        service.getRunSummaryResult = .success(makeSummary())
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        await viewModel.loadUntilReady(maxAttempts: 3, delayNanoseconds: 0)
+        XCTAssertEqual(service.getRunSummaryCalls.count, 3)
+        XCTAssertNotNil(viewModel.summary)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    func testObservationFollowsNotReadyThroughCompletedDebrief() async throws {
+        let debrief = try JSONDecoder().decode(RunDebriefOutput.self, from: Data(#"{"narrative_summary":"Completed", "strengths":[], "misses":[], "deterioration_timeline":[], "teaching_points":[], "overall_assessment":"Reviewed"}"#.utf8))
+        let service = MockSummaryService()
+        service.getRunSummaryResults = [
+            .failure(APIClientError.http(statusCode: 404, detail: "Not ready", correlationID: nil)),
+            .success(makeSummary()),
+            .success(makeSummary(debrief: debrief)),
+        ]
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        await viewModel.loadUntilReady(maxAttempts: 5, delayNanoseconds: 0)
+        XCTAssertEqual(service.getRunSummaryCalls.count, 3)
+        XCTAssertEqual(viewModel.summary?.aiDebrief?.narrativeSummary, "Completed")
+        XCTAssertNil(viewModel.notReadyMessage)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+    }
+
+    func testCancelledObservationDoesNotFetch() async {
+        let service = MockSummaryService()
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        let task = Task { await viewModel.loadUntilReady() }
+        task.cancel()
+        await task.value
+        XCTAssertTrue(service.getRunSummaryCalls.isEmpty)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+    }
+
+    private func makeSummary(debrief: RunDebriefOutput? = nil) -> RunSummary {
+        RunSummary(
+            simulationID: 420, status: "completed", runStartedAt: nil, runCompletedAt: nil,
+            finalState: [:], eventTypeCounts: [:], timelineHighlights: [], commandLog: [],
+            aiRationaleNotes: [], aiDebrief: debrief,
+        )
+    }
+
     func testLoadMaps404ToNotReadyState() async {
         let service = MockSummaryService()
         service.getRunSummaryResult = .failure(APIClientError.http(statusCode: 404, detail: "Not ready", correlationID: nil))

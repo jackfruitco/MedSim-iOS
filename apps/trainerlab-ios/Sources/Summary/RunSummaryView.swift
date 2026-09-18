@@ -61,6 +61,11 @@ public struct RunSummaryView: View {
 
                         if let debrief = summary.aiDebrief {
                             debriefSection(debrief, layoutMode: layoutMode)
+                        } else {
+                            Text(viewModel.isWaitingForDebrief
+                                ? "Waiting for debrief…"
+                                : "Debrief is not available yet. Pull to refresh.")
+                                .foregroundStyle(.secondary)
                         }
 
                         if layoutMode == .pad {
@@ -90,6 +95,9 @@ public struct RunSummaryView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(TrainerLabTheme.setupBackground.ignoresSafeArea())
+            .refreshable {
+                await viewModel.loadUntilReady()
+            }
             .onAppear {
                 syncExpandedSections(for: layoutMode)
             }
@@ -98,7 +106,7 @@ public struct RunSummaryView: View {
             }
         }
         .task {
-            await viewModel.load()
+            await viewModel.loadUntilReady()
         }
         .sheet(item: $activeFeedbackContext) { context in
             if let feedbackService, let feedbackHeaderProvider {

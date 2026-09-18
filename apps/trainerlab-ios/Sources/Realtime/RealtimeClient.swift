@@ -72,6 +72,9 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
                     }
 
                     reconnectAttempt += 1
+                    if case SSETransportError.expiredCursor = error {
+                        currentCursor = nil
+                    }
                     logger.warning("SSE disconnected (attempt \(reconnectAttempt)): \(error.localizedDescription)")
                     stateContinuation.yield(.polling)
 
@@ -112,8 +115,13 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
         currentCursor: inout String?,
     ) async throws {
         logger.info("SSE connected to simulation \(simulationID) cursor=\(cursor ?? "nil")")
-        stateContinuation.yield(.connectedSSE)
+        var receivedSignal = false
         for try await item in sseTransport.stream(simulationID: simulationID, cursor: cursor) {
+            try Task.checkCancellation()
+            if !receivedSignal {
+                stateContinuation.yield(.connectedSSE)
+                receivedSignal = true
+            }
             switch item {
             case let .event(event):
                 currentCursor = event.eventID
@@ -131,10 +139,12 @@ public final class RealtimeClient: RealtimeClientProtocol, @unchecked Sendable {
         retryDeadline: Date,
     ) async throws {
         while Date() < retryDeadline {
+            try Task.checkCancellation()
             let page = try await pollingTransport.fetch(
                 simulationID: simulationID,
                 cursor: currentCursor,
             )
+            try Task.checkCancellation()
             if !page.items.isEmpty {
                 for event in page.items {
                     currentCursor = event.eventID

@@ -13,6 +13,8 @@ public struct RunConsoleView: View {
     private let onOpenSummary: () -> Void
     private let onOpenPresets: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var foregroundRefreshID = 0
 
     // Sheet visibility
     @State private var showInterventionSheet = false
@@ -175,6 +177,16 @@ public struct RunConsoleView: View {
         }
         .onDisappear {
             store.stopConsole()
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            if newValue == .active {
+                foregroundRefreshID += 1
+            }
+        }
+        .task(id: foregroundRefreshID) {
+            if foregroundRefreshID > 0 {
+                await store.refreshAfterForeground()
+            }
         }
         .onChange(of: store.state.terminalCard) { _, newValue in
             if newValue != nil {
