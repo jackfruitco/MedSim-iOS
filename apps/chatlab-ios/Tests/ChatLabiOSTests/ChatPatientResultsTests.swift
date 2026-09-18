@@ -96,7 +96,7 @@ private final class PatientResultsService: ChatLabServiceProtocol, @unchecked Se
         fatalError("unused")
     }
 
-    func signOrders(simulationID _: Int, request _: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
+    func signOrders(simulationID _: Int, request: ChatSignOrdersRequest) async throws -> ChatSignOrdersResponse {
         signOrdersCallCount += 1
         submittedOrderRequests.append(request)
         if let signOrdersDelayNanoseconds {
