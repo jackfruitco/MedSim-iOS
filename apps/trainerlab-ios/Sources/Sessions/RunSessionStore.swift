@@ -148,6 +148,7 @@ public final class RunSessionStore: ObservableObject {
         guard let session = state.session else {
             return
         }
+        let bootstrapStartedAt = Date()
 
         eventTask?.cancel()
         transportTask?.cancel()
@@ -229,7 +230,7 @@ public final class RunSessionStore: ObservableObject {
 
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
-            await bootstrapConsole(for: session)
+            await bootstrapConsole(for: session, startedAt: bootstrapStartedAt)
         }
 
         loadInterventionDictionary()
@@ -250,11 +251,12 @@ public final class RunSessionStore: ObservableObject {
 
     public func refreshAfterForeground() async {
         guard let simulationID = state.session?.simulationID else { return }
+        let reconnectStartedAt = Date()
         _ = await loadRuntimeState(reason: "foreground")
         await refreshGuardState()
         guard !Task.isCancelled, state.session?.simulationID == simulationID else { return }
         await realtimeClient.connect(simulationID: simulationID, cursor: state.eventCursor)
-        await replayPendingCommands()
+        await replayPendingCommands(createdBefore: reconnectStartedAt)
     }
 
     /// Clears all snapshot-authoritative panel state and resets revision guards.
@@ -394,7 +396,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func bootstrapConsole(for session: TrainerSessionDTO) async {
+    private func bootstrapConsole(for session: TrainerSessionDTO, startedAt: Date) async {
         let generation = bindingGeneration
         logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
 
@@ -414,7 +416,7 @@ public final class RunSessionStore: ObservableObject {
         )
         await realtimeClient.connect(simulationID: session.simulationID, cursor: eventCursor)
         await loadAnnotations()
-        await replayPendingCommands()
+        await replayPendingCommands(createdBefore: startedAt)
         await refreshPendingCount()
     }
 
@@ -909,7 +911,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func replayPendingCommands() async {
+    public func replayPendingCommands(createdBefore: Date? = nil) async {
         do {
             guard let simulationID = state.session?.simulationID else { return }
             let batch = try await commandQueue.nextRetryBatch(
@@ -919,6 +921,9 @@ public final class RunSessionStore: ObservableObject {
                 accountUUID: accountUUID,
             )
             for envelope in batch {
+                if let createdBefore, envelope.createdAt > createdBefore {
+                    continue
+                }
                 if inFlightCommandKeys.contains(envelope.idempotencyKey) {
                     continue
                 }
