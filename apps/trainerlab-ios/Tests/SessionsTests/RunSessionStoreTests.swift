@@ -1656,6 +1656,45 @@ final class RunSessionStoreTests: XCTestCase {
         }
     }
 
+    func testInterventionConfirmationRequiresMatchingClientEventIDWhenProvided() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "cmd-1", status: "accepted"))
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { service.getRuntimeStateCalls.count == 1 }
+
+        store.addIntervention(interventionType: "tourniquet", siteCode: "LEFT_ARM", targetProblemID: 55)
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingIntervention(for: 55) && service.injectInterventionCalls.count == 1
+        }
+        guard let clientEventID = service.injectInterventionCalls.first?.clientEventID else {
+            return XCTFail("Intervention requests must carry a client event ID")
+        }
+
+        func confirmation(_ id: String, clientID: String) -> EventEnvelope {
+            EventEnvelope(
+                eventID: id, eventType: SimulationEventType.patientInterventionCreated,
+                createdAt: Date(), correlationID: nil,
+                payload: [
+                    "client_event_id": .string(clientID), "intervention_id": .number(801),
+                    "intervention_type": .string("tourniquet"), "site_code": .string("LEFT_ARM"),
+                    "target_problem_id": .number(55),
+                ],
+            )
+        }
+        realtime.emit(event: confirmation("other-command", clientID: "another-instructor-command"))
+        await waitUntil(timeout: 1.0) { store.state.interventionAnnotations.count == 1 }
+        XCTAssertTrue(store.hasPendingIntervention(for: 55))
+
+        realtime.emit(event: confirmation("own-command", clientID: clientEventID))
+        await waitUntil(timeout: 1.0) { !store.hasPendingInterventions }
+    }
+
     func testPendingInterventionClearsOnCommandFailure() async throws {
         let service = MockTrainerLabService()
         service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
