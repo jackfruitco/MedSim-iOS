@@ -797,7 +797,15 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func addVitalEvent(type: String, min: Int, max: Int) {
+    public func addVitalEvent(
+        type: String,
+        min: Int,
+        max: Int,
+        hold: Bool = true,
+        minDiastolic: Int? = nil,
+        maxDiastolic: Int? = nil,
+        supersedesEventID: Int? = nil,
+    ) {
         guard canMutateCommands else { return }
 
         Task {
@@ -806,17 +814,18 @@ public final class RunSessionStore: ObservableObject {
                 key: type,
                 minValue: min,
                 maxValue: max,
-                minDiastolic: nil,
-                maxDiastolic: nil,
+                minDiastolic: minDiastolic,
+                maxDiastolic: maxDiastolic,
             )
             upsertVital(
                 VitalStatusSnapshot(
                     key: type,
+                    domainEventID: supersedesEventID,
                     minValue: min,
                     maxValue: max,
-                    minValueDiastolic: nil,
-                    maxValueDiastolic: nil,
-                    lockValue: false,
+                    minValueDiastolic: minDiastolic,
+                    maxValueDiastolic: maxDiastolic,
+                    lockValue: hold,
                     currentValue: seeded.primary,
                     currentDiastolicValue: seeded.secondary,
                 ),
@@ -826,10 +835,10 @@ public final class RunSessionStore: ObservableObject {
                 vitalType: type,
                 minValue: min,
                 maxValue: max,
-                lockValue: false,
-                minValueDiastolic: nil,
-                maxValueDiastolic: nil,
-                supersedesEventID: nil,
+                lockValue: hold,
+                minValueDiastolic: minDiastolic,
+                maxValueDiastolic: maxDiastolic,
+                supersedesEventID: supersedesEventID,
             )
             let body = try? JSONEncoder().encode(request)
             let endpoint = TrainerLabAPI.vitals(simulationID: simulationID, body: body ?? Data())
@@ -837,7 +846,21 @@ public final class RunSessionStore: ObservableObject {
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectVitalEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
+            _ = await loadRuntimeState(reason: "vital override")
         }
+    }
+
+    public func releaseVitalHold(_ vital: VitalStatusSnapshot) {
+        guard let eventID = vital.domainEventID else { return }
+        addVitalEvent(
+            type: vital.key,
+            min: vital.minValue,
+            max: vital.maxValue,
+            hold: false,
+            minDiastolic: vital.minValueDiastolic,
+            maxDiastolic: vital.maxValueDiastolic,
+            supersedesEventID: eventID,
+        )
     }
 
     public func createDebriefAnnotation(
@@ -1083,6 +1106,7 @@ public final class RunSessionStore: ObservableObject {
         discardPendingIntervention(idempotencyKey: envelope.idempotencyKey)
         if let apiError = error as? APIClientError, case let .http(statusCode, detail, _) = apiError, statusCode == 409 {
             await refreshSession()
+            _ = await loadRuntimeState(reason: "command conflict")
             state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
         }
         presentConflict(error)
@@ -1986,7 +2010,8 @@ public final class RunSessionStore: ObservableObject {
             if !state.stopwatchIsRunning {
                 state.stopwatchIsRunning = true
                 state.stopwatchRunningSince = Date()
-                if state.stopwatchElapsedSeconds == 0,
+                if runtimeState?.runtimeSnapshot.clockObservedAt == nil,
+                   state.stopwatchElapsedSeconds == 0,
                    let startedAt = state.session?.runStartedAt
                 {
                     state.stopwatchElapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
@@ -2005,7 +2030,8 @@ public final class RunSessionStore: ObservableObject {
             state.stopwatchElapsedSeconds = 0
         }
 
-        if status == .completed,
+        if runtimeState?.runtimeSnapshot.clockObservedAt == nil,
+           status == .completed,
            let startedAt = state.session?.runStartedAt,
            let endedAt = state.session?.runCompletedAt
         {
@@ -2490,6 +2516,7 @@ public final class RunSessionStore: ObservableObject {
 
         return VitalStatusSnapshot(
             key: vitalType,
+            domainEventID: vitalState.domainEventID,
             minValue: minValue,
             maxValue: maxValue,
             minValueDiastolic: vitalState.minValueDiastolic,
@@ -2527,6 +2554,14 @@ public final class RunSessionStore: ObservableObject {
         )
 
         self.runtimeState = runtimeState
+        if let observedAt = runtimeState.runtimeSnapshot.clockObservedAt {
+            let elapsed = runtimeState.runtimeSnapshot.activeElapsedSeconds
+                + (runtimeState.runtimeSnapshot.status == "running"
+                    ? max(0, Int(Date().timeIntervalSince(observedAt))) : 0)
+            state.stopwatchElapsedSeconds = max(0, elapsed)
+            state.stopwatchIsRunning = runtimeState.runtimeSnapshot.status == "running"
+            state.stopwatchRunningSince = state.stopwatchIsRunning ? Date() : nil
+        }
         if runtimeState.scenarioSnapshot.presence.scenarioBrief {
             scenarioBrief = runtimeState.scenarioSnapshot.scenarioBrief
         }

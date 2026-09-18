@@ -60,6 +60,11 @@ public struct RunConsoleView: View {
     @State private var vitalType = "heart_rate"
     @State private var vitalMin = "80"
     @State private var vitalMax = "100"
+    @State private var vitalDiastolicMin = "70"
+    @State private var vitalDiastolicMax = "80"
+    @State private var holdVitalOverride = true
+    @State private var vitalPendingRelease: VitalStatusSnapshot?
+    @State private var showVitalReleaseConfirmation = false
     @State private var eventMode = "injury"
 
     @State private var selectedAVPU: AVPUState = .alert
@@ -128,6 +133,19 @@ public struct RunConsoleView: View {
             }
         }
         .foregroundStyle(.white)
+        .confirmationDialog("Release vital hold?", isPresented: $showVitalReleaseConfirmation) {
+            Button("Resume AI progression") {
+                if let vitalPendingRelease {
+                    store.releaseVitalHold(vitalPendingRelease)
+                }
+                vitalPendingRelease = nil
+            }
+            Button("Keep hold", role: .cancel) {
+                vitalPendingRelease = nil
+            }
+        } message: {
+            Text("TrainerLab may change this vital on the next scenario update.")
+        }
         .sheet(isPresented: $showInterventionSheet, onDismiss: resetInterventionSheet) {
             interventionSheet
                 .presentationDetents([.fraction(0.7)])
@@ -2161,7 +2179,14 @@ public struct RunConsoleView: View {
                         default:
                             let min = Int(vitalMin) ?? 80
                             let max = Int(vitalMax) ?? 100
-                            store.addVitalEvent(type: vitalType, min: min, max: max)
+                            store.addVitalEvent(
+                                type: vitalType,
+                                min: min,
+                                max: max,
+                                hold: holdVitalOverride,
+                                minDiastolic: vitalType == "blood_pressure" ? Int(vitalDiastolicMin) : nil,
+                                maxDiastolic: vitalType == "blood_pressure" ? Int(vitalDiastolicMax) : nil,
+                            )
                         }
                         showEventSheet = false
                     }
@@ -2181,9 +2206,15 @@ public struct RunConsoleView: View {
 
     private var eventFormIsValid: Bool {
         switch eventMode {
-        case "injury": !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
-        case "illness": !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
-        default: !vitalType.isEmpty
+        case "injury": return !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
+        case "illness": return !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
+        default:
+            guard let min = Int(vitalMin), let max = Int(vitalMax), min <= max else { return false }
+            if vitalType == "blood_pressure" {
+                guard let diaMin = Int(vitalDiastolicMin), let diaMax = Int(vitalDiastolicMax) else { return false }
+                return diaMin <= diaMax
+            }
+            return !vitalType.isEmpty
         }
     }
 
@@ -2340,6 +2371,7 @@ public struct RunConsoleView: View {
 
     private var eventVitalsSection: some View {
         Section("Vital Override") {
+            Toggle("Hold value until released", isOn: $holdVitalOverride)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Vital")
                     .font(.caption.bold())
@@ -2369,6 +2401,12 @@ public struct RunConsoleView: View {
                         .foregroundStyle(.secondary)
                     TextField("Max", text: $vitalMax)
                         .numericKeyboard()
+                }
+            }
+            if vitalType == "blood_pressure" {
+                HStack {
+                    TextField("Diastolic min", text: $vitalDiastolicMin).numericKeyboard()
+                    TextField("Diastolic max", text: $vitalDiastolicMax).numericKeyboard()
                 }
             }
         }
@@ -2863,6 +2901,7 @@ public struct RunConsoleView: View {
             Text(vitalDisplayName(vital.key))
                 .font(compactMetrics.vitalLabelFont)
                 .foregroundStyle(.secondary)
+            vitalHoldControl(vital)
             VitalValueCell(vital: vital, valueText: displayValue(vital), font: compactMetrics.vitalValueFont, verticalPadding: compactMetrics.vitalValueVerticalPadding)
                 .frame(maxWidth: .infinity)
         }
@@ -2870,6 +2909,23 @@ public struct RunConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TrainerLabTheme.tacticalSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func vitalHoldControl(_ vital: VitalStatusSnapshot) -> some View {
+        if vital.lockValue {
+            Button {
+                vitalPendingRelease = vital
+                showVitalReleaseConfirmation = true
+            } label: {
+                Label("Held · Release", systemImage: "lock.fill")
+                    .font(.caption2.bold())
+                    .foregroundStyle(TrainerLabTheme.warning)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canMutate || vital.domainEventID == nil)
+        }
     }
 
     private func regularVitalCell(
@@ -2881,6 +2937,7 @@ public struct RunConsoleView: View {
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            vitalHoldControl(vital)
 
             VitalValueCell(
                 vital: vital,

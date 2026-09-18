@@ -776,6 +776,33 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.vitals.count, 1)
     }
 
+    func testPausedSnapshotKeepsAuthoritativeClockAndVitalHold() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [.success(makeRuntimeState(
+            status: "paused", stateRevision: 3, activeElapsedSeconds: 85,
+            clockObservedAt: "2026-03-12T12:01:00Z",
+            vitals: [[
+                "domain_event_id": 42,
+                "vital_type": "heart_rate",
+                "min_value": 90,
+                "max_value": 90,
+                "lock_value": true,
+            ]],
+        ))]
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .paused))
+        _ = await store.loadRuntimeState(reason: "clock test")
+
+        XCTAssertEqual(store.state.stopwatchElapsedSeconds, 85)
+        XCTAssertFalse(store.state.stopwatchIsRunning)
+        XCTAssertEqual(store.state.vitals.first?.domainEventID, 42)
+        XCTAssertEqual(store.state.vitals.first?.lockValue, true)
+    }
+
     func testSparseRuntimeRefreshPreservesHydratedSectionsWhenPayloadOmitsThem() async throws {
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
@@ -3053,6 +3080,8 @@ final class RunSessionStoreTests: XCTestCase {
     private func makeRuntimeState(
         status: String,
         stateRevision: Int = 1,
+        activeElapsedSeconds: Int = 0,
+        clockObservedAt: String? = nil,
         latestEventSequence: Int? = nil,
         scenarioBrief: [String: Any]? = nil,
         causes: [[String: Any]] = [],
@@ -3089,7 +3118,8 @@ final class RunSessionStoreTests: XCTestCase {
             "runtime_snapshot": [
                 "status": status,
                 "state_revision": stateRevision,
-                "active_elapsed_seconds": 0,
+                "active_elapsed_seconds": activeElapsedSeconds,
+                "clock_observed_at": clockObservedAt.map { $0 as Any } ?? NSNull(),
                 "tick_interval_seconds": 15,
                 "next_tick_at": NSNull(),
                 "ai_plan": aiPlan.map { $0 as Any } ?? NSNull(),

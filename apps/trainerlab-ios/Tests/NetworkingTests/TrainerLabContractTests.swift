@@ -590,6 +590,7 @@ final class TrainerLabContractTests: XCTestCase {
             "status": "running",
             "state_revision": 12,
             "active_elapsed_seconds": 90,
+            "clock_observed_at": "2026-03-12T12:01:00Z",
             "tick_interval_seconds": 30,
             "next_tick_at": "2026-03-12T12:01:30Z",
             "ai_plan": {
@@ -634,6 +635,8 @@ final class TrainerLabContractTests: XCTestCase {
         let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
         XCTAssertEqual(state.runtimeSnapshot.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.runtimeSnapshot.activeElapsedSeconds, 90)
+        XCTAssertNotNil(state.runtimeSnapshot.clockObservedAt)
         XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Monitor airway")
         XCTAssertEqual(state.runtimeSnapshot.pendingRuntimeReasons.count, 1)
         XCTAssertEqual(state.runtimeSnapshot.currentlyProcessingReasons.count, 1)

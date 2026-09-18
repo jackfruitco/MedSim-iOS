@@ -1773,6 +1773,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let phase: String?
     public let stateRevision: Int
     public let activeElapsedSeconds: Int
+    public let clockObservedAt: Date?
     public let tickCount: Int?
     public let tickIntervalSeconds: Int?
     public let nextTickAt: Date?
@@ -1794,6 +1795,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         case phase
         case stateRevision = "state_revision"
         case activeElapsedSeconds = "active_elapsed_seconds"
+        case clockObservedAt = "clock_observed_at"
         case tickCount = "tick_count"
         case tickIntervalSeconds = "tick_interval_seconds"
         case nextTickAt = "next_tick_at"
@@ -1820,6 +1822,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
         let hasActiveElapsed = container.contains(.activeElapsedSeconds)
         activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
+        clockObservedAt = try container.decodeIfPresent(Date.self, forKey: .clockObservedAt)
         let hasTickCount = container.contains(.tickCount)
         tickCount = try container.decodeIfPresent(Int.self, forKey: .tickCount)
         let hasTickInterval = container.contains(.tickIntervalSeconds)
