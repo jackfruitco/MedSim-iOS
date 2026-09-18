@@ -293,7 +293,7 @@ final class RunSessionStoreTests: XCTestCase {
         await waitUntil(timeout: 1) { service.runtimeStateContinuation != nil }
 
         store.bind(session: makeSession(status: .running, simulationID: 421))
-        service.runtimeStateContinuation?.resume(returning: try makeRuntimeState(status: "running", stateRevision: 50))
+        try service.runtimeStateContinuation?.resume(returning: makeRuntimeState(status: "running", stateRevision: 50))
         let result = await request.value
 
         XCTAssertNil(result)
@@ -312,7 +312,7 @@ final class RunSessionStoreTests: XCTestCase {
 
         store.stopConsole()
         store.bind(session: makeSession(status: .paused))
-        service.runtimeStateContinuation?.resume(returning: try makeRuntimeState(status: "running", stateRevision: 50))
+        try service.runtimeStateContinuation?.resume(returning: makeRuntimeState(status: "running", stateRevision: 50))
         let result = await request.value
 
         XCTAssertNil(result)
@@ -1224,7 +1224,7 @@ final class RunSessionStoreTests: XCTestCase {
         defer { store.stopConsole() }
 
         await waitUntil(timeout: 1.5) {
-            store.state.commandChannelAvailable
+            store.state.commandChannelAvailable && !realtime.connectCalls.isEmpty
         }
 
         realtime.emit(transport: .polling)

@@ -46,6 +46,8 @@ public final class RunSessionStore: ObservableObject {
     private var heartbeatTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var runtimeRefreshTask: Task<Void, Never>?
+    /// Commands awaiting their first HTTP response must not enter bootstrap replay.
+    private var inFlightCommandKeys = Set<String>()
     private var lastAppliedLifecycleRevision: Int?
     private var pendingRuntimeRefresh = false
     /// Highest `stateRevision` successfully applied from a snapshot.
@@ -519,7 +521,8 @@ public final class RunSessionStore: ObservableObject {
         let canonicalEvent = event.canonicalized()
         let eventType = canonicalEvent.eventType
         if let simulationID = jsonInt(event.payload["simulation_id"]),
-           simulationID != state.session?.simulationID {
+           simulationID != state.session?.simulationID
+        {
             return EventHandlingOutcome(
                 shouldRehydrateSeededSession: false,
                 shouldRefreshRuntimeState: false,
@@ -845,9 +848,9 @@ public final class RunSessionStore: ObservableObject {
             guard let simulationID = state.session?.simulationID else { return }
             let request = SteerPromptRequest(prompt: String(trimmed.prefix(2000)))
             do {
-                let endpoint = TrainerLabAPI.steerPrompt(
+                let endpoint = try TrainerLabAPI.steerPrompt(
                     simulationID: simulationID,
-                    body: try JSONEncoder().encode(request),
+                    body: JSONEncoder().encode(request),
                 )
                 let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
                 await executeQueuedAckCommand(envelope: envelope) {
@@ -916,6 +919,9 @@ public final class RunSessionStore: ObservableObject {
                 accountUUID: accountUUID,
             )
             for envelope in batch {
+                if inFlightCommandKeys.contains(envelope.idempotencyKey) {
+                    continue
+                }
                 if let envelopeSimulationID = envelope.resolvedSimulationID, envelopeSimulationID != simulationID {
                     continue
                 }
@@ -1002,6 +1008,8 @@ public final class RunSessionStore: ObservableObject {
         envelope: PendingCommandEnvelope,
         run: @escaping @Sendable () async throws -> TrainerSessionDTO,
     ) async {
+        inFlightCommandKeys.insert(envelope.idempotencyKey)
+        defer { inFlightCommandKeys.remove(envelope.idempotencyKey) }
         do {
             try await commandQueue.enqueue(envelope)
             await refreshPendingCount()
@@ -1021,6 +1029,8 @@ public final class RunSessionStore: ObservableObject {
         envelope: PendingCommandEnvelope,
         run: @escaping @Sendable () async throws -> some Sendable,
     ) async {
+        inFlightCommandKeys.insert(envelope.idempotencyKey)
+        defer { inFlightCommandKeys.remove(envelope.idempotencyKey) }
         do {
             try await commandQueue.enqueue(envelope)
             await refreshPendingCount()
