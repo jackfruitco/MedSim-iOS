@@ -119,11 +119,11 @@ enum RunConsoleQuickAction: String, CaseIterable, Hashable, Identifiable {
     var title: String {
         switch self {
         case .intervention:
-            "Intervention"
+            "Learner Action"
         case .event:
-            "Event"
+            "Patient State"
         case .steer:
-            "Steer"
+            "Guide Scenario"
         case .annotation:
             "Annotation"
         case .presets:
@@ -367,7 +367,7 @@ struct RunConsoleCompactMetrics {
         vitalLabelFont: .caption2.bold(),
         vitalValueFont: .caption.monospacedDigit(),
         buttonControlSize: .small,
-        buttonMinHeight: 40,
+        buttonMinHeight: 44,
         vitalCellPadding: 7,
         vitalValueVerticalPadding: 3,
     )
@@ -385,7 +385,7 @@ struct RunConsoleCompactMetrics {
         vitalLabelFont: .caption2.bold(),
         vitalValueFont: .caption.monospacedDigit(),
         buttonControlSize: .small,
-        buttonMinHeight: 38,
+        buttonMinHeight: 44,
         vitalCellPadding: 6,
         vitalValueVerticalPadding: 3,
     )

@@ -588,6 +588,7 @@ public struct TerminalCard: Equatable, Sendable {
 
 public struct VitalStatusSnapshot: Identifiable, Equatable, Sendable {
     public let key: String
+    public let domainEventID: Int?
     public let minValue: Int
     public let maxValue: Int
     public let minValueDiastolic: Int?
@@ -607,6 +608,7 @@ public struct VitalStatusSnapshot: Identifiable, Equatable, Sendable {
 
     public init(
         key: String,
+        domainEventID: Int? = nil,
         minValue: Int,
         maxValue: Int,
         minValueDiastolic: Int? = nil,
@@ -621,6 +623,7 @@ public struct VitalStatusSnapshot: Identifiable, Equatable, Sendable {
         lastUpdatedAt: Date = Date(),
     ) {
         self.key = key
+        self.domainEventID = domainEventID
         self.minValue = minValue
         self.maxValue = maxValue
         self.minValueDiastolic = minValueDiastolic

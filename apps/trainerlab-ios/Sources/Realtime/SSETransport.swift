@@ -15,6 +15,10 @@ public protocol SSETransportProtocol: Sendable {
     func stream(simulationID: Int, cursor: String?) -> AsyncThrowingStream<SSEStreamItem, Error>
 }
 
+public enum SSETransportError: Error, Sendable {
+    case expiredCursor
+}
+
 private actor SSEFreshnessTracker {
     private var lastSignalAt = Date()
     private var staleTriggered = false
@@ -79,9 +83,13 @@ public final class SSETransport: SSETransportProtocol, @unchecked Sendable {
                 do {
                     let request = try await makeRequest(simulationID: simulationID, cursor: cursor)
                     let (bytes, response) = try await session.bytes(for: request)
+                    if (response as? HTTPURLResponse)?.statusCode == 410 {
+                        throw SSETransportError.expiredCursor
+                    }
                     guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
                         throw URLError(.badServerResponse)
                     }
+                    continuation.yield(.keepAlive)
 
                     var dataLines: [String] = []
                     var currentEventType: String?

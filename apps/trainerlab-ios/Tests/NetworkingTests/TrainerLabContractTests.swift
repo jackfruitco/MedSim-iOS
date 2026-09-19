@@ -590,6 +590,7 @@ final class TrainerLabContractTests: XCTestCase {
             "status": "running",
             "state_revision": 12,
             "active_elapsed_seconds": 90,
+            "clock_observed_at": "2026-03-12T12:01:00Z",
             "tick_interval_seconds": 30,
             "next_tick_at": "2026-03-12T12:01:30Z",
             "ai_plan": {
@@ -614,6 +615,28 @@ final class TrainerLabContractTests: XCTestCase {
             },
             "latest_event_cursor": "cursor-420"
           },
+          "presentation": {
+            "patient_summary": "Respiratory status is worsening.",
+            "primary_cue": "Monitor the learner's airway assessment.",
+            "cue_rationale": "Hypoxia is progressing.",
+            "upcoming_changes": ["SpO2 may fall"],
+            "monitoring_focus": ["Respiratory effort"],
+            "attention_items": [
+              { "code": "respiratory_distress", "title": "Respiratory distress", "severity": "critical" }
+            ],
+            "held_vital_types": ["spo2"],
+            "capabilities": {
+              "lifecycle_actions": ["pause", "stop"],
+              "can_record_learner_action": true,
+              "can_inject_event": true,
+              "can_override_patient_state": true,
+              "can_steer": true,
+              "can_annotate": true,
+              "can_tick_ai": true,
+              "can_tick_vitals": true,
+              "can_view_debrief": false
+            }
+          },
           "event_timeline": { "events": [], "total_events": 0 },
           "metadata": {
             "builder_version": "trainerlab-rest-v1",
@@ -634,6 +657,8 @@ final class TrainerLabContractTests: XCTestCase {
         let state = try decoder.decode(TrainerRestViewModelDTO.self, from: Data(json.utf8))
 
         XCTAssertEqual(state.runtimeSnapshot.tickIntervalSeconds, 30)
+        XCTAssertEqual(state.runtimeSnapshot.activeElapsedSeconds, 90)
+        XCTAssertNotNil(state.runtimeSnapshot.clockObservedAt)
         XCTAssertEqual(state.runtimeSnapshot.aiPlan?.summary, "Monitor airway")
         XCTAssertEqual(state.runtimeSnapshot.pendingRuntimeReasons.count, 1)
         XCTAssertEqual(state.runtimeSnapshot.currentlyProcessingReasons.count, 1)
@@ -643,6 +668,12 @@ final class TrainerLabContractTests: XCTestCase {
         XCTAssertEqual(state.runtimeSnapshot.latestEventCursor, "cursor-420")
         XCTAssertEqual(state.runtimeSnapshot.controlPlaneDebug?.executionPlan, ["assess", "stabilize"])
         XCTAssertEqual(state.runtimeSnapshot.requestMetadata?["request_id"], .string("req-420"))
+        XCTAssertEqual(state.presentation?.patientSummary, "Respiratory status is worsening.")
+        XCTAssertEqual(state.presentation?.primaryCue, "Monitor the learner's airway assessment.")
+        XCTAssertEqual(state.presentation?.attentionItems.first?.severity, "critical")
+        XCTAssertEqual(state.presentation?.heldVitalTypes, ["spo2"])
+        XCTAssertEqual(state.presentation?.capabilities.lifecycleActions, ["pause", "stop"])
+        XCTAssertEqual(state.presentation?.capabilities.canRecordLearnerAction, true)
         XCTAssertEqual(state.metadata.builderVersion, "trainerlab-rest-v1")
         XCTAssertEqual(state.metadata.schemaVersion, "trainerlab-state-v2")
         XCTAssertEqual(state.metadata.snapshotCache.status, "ready")
