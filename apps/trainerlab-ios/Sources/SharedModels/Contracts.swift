@@ -2005,7 +2005,57 @@ public struct DashboardCapabilitiesDTO: Decodable, Equatable, Sendable {
     }
 }
 
+public struct PatientPortrayalDTO: Decodable, Equatable, Sendable {
+    public let behavior: String
+    public let speech: String
+
+    enum CodingKeys: String, CodingKey { case behavior, speech }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        behavior = try container.decodeIfPresent(String.self, forKey: .behavior) ?? ""
+        speech = try container.decodeIfPresent(String.self, forKey: .speech) ?? ""
+    }
+}
+
+public struct ProgressionPlanDTO: Decodable, Equatable, Sendable {
+    public let status: String
+    public let version: Int?
+    public let endsAt: Int?
+    public let portrayal: PatientPortrayalDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case status, version, portrayal
+        case endsAt = "ends_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "awaiting_plan"
+        version = try container.decodeIfPresent(Int.self, forKey: .version)
+        endsAt = try container.decodeIfPresent(Int.self, forKey: .endsAt)
+        portrayal = try container.decodeIfPresent(PatientPortrayalDTO.self, forKey: .portrayal)
+    }
+}
+
+public struct ScenarioDecisionDTO: Decodable, Equatable, Sendable, Identifiable {
+    public let id: Int
+    public let title: String
+    public let description: String
+    public let status: String
+}
+
+public struct ScenarioDecisionRequest: Encodable, Sendable {
+    public let approved: Bool
+
+    public init(approved: Bool) {
+        self.approved = approved
+    }
+}
+
 public struct DashboardPresentationDTO: Decodable, Equatable, Sendable {
+    public let progression: ProgressionPlanDTO?
+    public let decisions: [ScenarioDecisionDTO]?
     public let patientSummary: String
     public let primaryCue: String
     public let cueRationale: String
@@ -2016,6 +2066,7 @@ public struct DashboardPresentationDTO: Decodable, Equatable, Sendable {
     public let capabilities: DashboardCapabilitiesDTO
 
     enum CodingKeys: String, CodingKey {
+        case progression, decisions
         case patientSummary = "patient_summary"
         case primaryCue = "primary_cue"
         case cueRationale = "cue_rationale"

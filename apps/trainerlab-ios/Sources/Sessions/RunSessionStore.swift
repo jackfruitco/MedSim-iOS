@@ -33,6 +33,7 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
     @Published public private(set) var dashboardPresentation: DashboardPresentationDTO?
+    @Published public private(set) var pendingDecisionIDs: Set<Int> = []
     @Published public private(set) var pendingInterventionProblemIDs: Set<Int> = []
     @Published public private(set) var pendingGeneralInterventionCount = 0
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
@@ -939,6 +940,29 @@ public final class RunSessionStore: ObservableObject {
             }
             await loadRuntimeState()
             await loadControlPlaneDebug()
+        }
+    }
+
+    public func resolveScenarioDecision(_ decision: ScenarioDecisionDTO, approved: Bool) {
+        guard canMutateCommands, !pendingDecisionIDs.contains(decision.id),
+              let simulationID = state.session?.simulationID else { return }
+        pendingDecisionIDs.insert(decision.id)
+        Task {
+            defer { pendingDecisionIDs.remove(decision.id) }
+            do {
+                let body = try JSONEncoder().encode(ScenarioDecisionRequest(approved: approved))
+                let endpoint = TrainerLabAPI.scenarioDecision(simulationID: simulationID, decisionID: decision.id, body: body)
+                let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
+                await executeQueuedAckCommand(envelope: envelope) {
+                    try await self.service.replayPending(
+                        endpoint: endpoint.path, method: endpoint.method.rawValue,
+                        body: body, idempotencyKey: envelope.idempotencyKey,
+                    )
+                }
+                await loadRuntimeState()
+            } catch {
+                presentConflict(error)
+            }
         }
     }
 
@@ -1875,6 +1899,8 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func updateVitalMeasurements() {
+        // Phase V: physiology is advanced by the server, not by local random walks.
+        guard dashboardPresentation?.progression == nil else { return }
         guard state.session?.status == .running else {
             return
         }
@@ -1925,6 +1951,14 @@ public final class RunSessionStore: ObservableObject {
         currentPrimary: Int? = nil,
         currentSecondary: Int? = nil,
     ) -> (primary: Int, secondary: Int?) {
+        if dashboardPresentation?.progression != nil {
+            let secondary: Int? = if key == "blood_pressure", let minDiastolic, let maxDiastolic {
+                minDiastolic + (maxDiastolic - minDiastolic) / 2
+            } else {
+                nil
+            }
+            return (minValue + (maxValue - minValue) / 2, secondary)
+        }
         let primary = constrainedRandom(
             low: min(minValue, maxValue),
             high: max(minValue, maxValue),

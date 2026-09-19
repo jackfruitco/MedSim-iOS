@@ -433,6 +433,47 @@ public struct RunConsoleView: View {
                 .font(.subheadline.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let progression = store.dashboardPresentation?.progression {
+                if progression.status == "active", sessionStatus == .running,
+                   let endsAt = progression.endsAt, store.state.stopwatchElapsedSeconds < endsAt,
+                   let portrayal = progression.portrayal {
+                    if !portrayal.behavior.isEmpty {
+                        Label(portrayal.behavior, systemImage: "figure.stand")
+                            .font(.subheadline)
+                    }
+                    if !portrayal.speech.isEmpty {
+                        Label(portrayal.speech, systemImage: "quote.bubble")
+                            .font(.subheadline.italic())
+                    }
+                } else if sessionStatus == .running {
+                    Label("Holding current physiology while the scenario plan updates", systemImage: "pause.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ForEach(store.dashboardPresentation?.decisions ?? []) { decision in
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Proposed: \(decision.title)", systemImage: "arrow.triangle.branch")
+                        .font(.subheadline.bold())
+                    Text(decision.description)
+                        .font(.caption)
+                    Text("Not yet part of the scenario")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Allow branch") { store.resolveScenarioDecision(decision, approved: true) }
+                        Button("Keep scenario") { store.resolveScenarioDecision(decision, approved: false) }
+                        if store.pendingDecisionIDs.contains(decision.id) { ProgressView() }
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .disabled(!canMutate || store.pendingDecisionIDs.contains(decision.id))
+                }
+                .padding(10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+            }
+
             if let monitoring = store.dashboardPresentation?.monitoringFocus.first, !monitoring.isEmpty {
                 Label("Watch: \(monitoring)", systemImage: "eye")
                     .font(.caption)

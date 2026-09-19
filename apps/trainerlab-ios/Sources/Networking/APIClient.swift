@@ -378,6 +378,15 @@ public enum TrainerLabAPI {
         )
     }
 
+    public static func scenarioDecision(simulationID: Int, decisionID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
+        Endpoint(
+            path: "/api/v1/trainerlab/simulations/\(simulationID)/decisions/\(decisionID)/",
+            method: .post,
+            body: body,
+            idempotencyKey: idempotencyKey,
+        )
+    }
+
     public static func injuries(simulationID: Int, body: Data, idempotencyKey: String? = nil) -> Endpoint {
         eventMutation(
             path: "/api/v1/trainerlab/simulations/\(simulationID)/events/injuries/",

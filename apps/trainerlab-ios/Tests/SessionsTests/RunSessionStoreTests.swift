@@ -2979,6 +2979,27 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(service.getSessionCalls, [420])
     }
 
+    func testScenarioDecisionUsesDurableQueueAndSuppressesDoubleTap() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 2))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        let decision = try JSONDecoder().decode(
+            ScenarioDecisionDTO.self,
+            from: Data(#"{"id":7,"title":"Hypoxia","description":"Possible branch","status":"pending"}"#.utf8),
+        )
+        store.resolveScenarioDecision(decision, approved: true)
+        store.resolveScenarioDecision(decision, approved: true)
+        XCTAssertTrue(store.pendingDecisionIDs.contains(7))
+        await waitUntil(timeout: 1.5) { !store.pendingDecisionIDs.contains(7) }
+        XCTAssertEqual(service.replayPendingCalls.count, 1)
+        XCTAssertEqual(service.replayPendingCalls.first?.endpoint, "/api/v1/trainerlab/simulations/420/decisions/7/")
+        XCTAssertEqual(service.replayPendingCalls.first?.method, "POST")
+        XCTAssertFalse(service.replayPendingCalls.first?.idempotencyKey.isEmpty ?? true)
+        XCTAssertEqual(service.getRuntimeStateCalls, [420])
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
         scenarioSpec: [String: JSONValue] = [:],
