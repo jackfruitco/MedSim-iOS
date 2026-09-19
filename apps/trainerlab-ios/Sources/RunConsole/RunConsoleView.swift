@@ -21,6 +21,7 @@ public struct RunConsoleView: View {
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
+    @State private var showRunDetails = false
     @State private var showStopConfirmation = false
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
@@ -183,6 +184,27 @@ public struct RunConsoleView: View {
             }
             .presentationDetents([.fraction(0.55)])
         }
+        .sheet(isPresented: $showRunDetails) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        combinedInfoPanel
+                        centerTimelinePane(layoutMode: .compact)
+                        bottomLogPane(layoutMode: .compact)
+                    }
+                    .padding(12)
+                }
+                .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
+                .foregroundStyle(.white)
+                .navigationTitle("Run Details")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showRunDetails = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(item: $scenarioBriefEditDraft) { draft in
             ScenarioBriefEditSheet(brief: draft.brief) { request in
                 store.updateScenarioBrief(request)
@@ -256,11 +278,12 @@ public struct RunConsoleView: View {
     private var regularConsoleLayout: some View {
         VStack(spacing: 10) {
             regularCommandBar
-            topVitalsTable(layoutMode: .regular, compactMetrics: .standard)
             if store.state.conflictBanner != nil {
                 conflictBanner
             }
             guardWarningBanner
+            patientAtGlanceCard(layoutMode: .regular)
+            topVitalsTable(layoutMode: .regular, compactMetrics: .standard)
 
             HStack(alignment: .top, spacing: 10) {
                 leftPatientPane(layoutMode: .regular, compactMetrics: .standard)
@@ -297,15 +320,14 @@ public struct RunConsoleView: View {
                     compactMetrics: compactMetrics,
                     controlPresentation: controlPresentation,
                 )
-                topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 if store.state.conflictBanner != nil {
                     conflictBanner
                 }
                 guardWarningBanner
+                patientAtGlanceCard(layoutMode: .compact)
+                topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 leftPatientPane(layoutMode: .compact, compactMetrics: compactMetrics)
-                combinedInfoPanel
-                centerTimelinePane(layoutMode: .compact)
-                bottomLogPane(layoutMode: .compact)
+                secondaryDetailsButton
             }
             .padding(10)
         }
@@ -318,6 +340,184 @@ public struct RunConsoleView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(.regularMaterial)
+        }
+    }
+
+    // MARK: - Patient at a glance
+
+    private func patientAtGlanceCard(layoutMode: RunConsoleLayoutMode) -> some View {
+        Group {
+            if layoutMode == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    patientNowSection
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Divider()
+                    trainerCueSection
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    patientNowSection
+                    Divider()
+                    trainerCueSection
+                }
+            }
+        }
+        .padding(layoutMode == .regular ? 14 : 12)
+        .trainerGlassSurface(
+            role: .tacticalPanel,
+            cornerRadius: 14,
+            tint: TrainerLabTheme.accentBlue.opacity(0.08),
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Current patient and scenario guidance")
+    }
+
+    private var patientNowSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Patient Now", systemImage: "waveform.path.ecg")
+                .font(.headline)
+
+            let summary = store.dashboardPresentation?.patientSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            Text((summary?.isEmpty == false ? summary : nil) ?? dashboardPatientSummaryFallback)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let presentation = store.dashboardPresentation, !presentation.attentionItems.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(presentation.attentionItems.prefix(3)) { item in
+                            dashboardAttentionBadge(item)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(presentation.attentionItems.prefix(3)) { item in
+                            dashboardAttentionBadge(item)
+                        }
+                    }
+                }
+            } else {
+                let rows = patientAlertRows(store.patientStatus)
+                if !rows.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            ForEach(rows.prefix(3), id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(rows.prefix(3), id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var trainerCueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("TrainerLab Cue", systemImage: "sparkles")
+                    .font(.headline)
+                if store.runtimeState?.runtimeSnapshot.runtimeProcessing == true {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Updating scenario")
+                }
+            }
+
+            Text(dashboardPrimaryCue)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let monitoring = store.dashboardPresentation?.monitoringFocus.first, !monitoring.isEmpty {
+                Label("Watch: \(monitoring)", systemImage: "eye")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let upcoming = store.dashboardPresentation?.upcomingChanges.first, !upcoming.isEmpty {
+                Label("Next: \(upcoming)", systemImage: "arrow.forward")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var secondaryDetailsButton: some View {
+        Button {
+            showRunDetails = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "list.bullet.rectangle")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Timeline & Details")
+                        .font(.subheadline.bold())
+                    Text("Scenario brief, patient detail, annotations, and \(store.state.clinicalTimelineEntries.count) timeline events")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .trainerGlassSurface(
+                role: .tacticalPanel,
+                cornerRadius: 12,
+                tint: TrainerLabTheme.accentBlue.opacity(0.06),
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+    }
+
+    private var dashboardPatientSummaryFallback: String {
+        let narrative = store.patientStatus.narrative.trimmingCharacters(in: .whitespacesAndNewlines)
+        return narrative.isEmpty ? "Patient state is being established." : narrative
+    }
+
+    private var dashboardPrimaryCue: String {
+        if let cue = store.dashboardPresentation?.primaryCue.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
+            return cue
+        }
+        if let cue = store.aiInstructorIntent?.summary.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
+            return cue
+        }
+        switch sessionStatus {
+        case .seeding:
+            return "Preparing the patient and scenario."
+        case .seeded:
+            return "Review the brief, then start when the team is ready."
+        case .running:
+            return "Observe the learner and record only actions that occur."
+        case .paused:
+            return "Scenario progression is paused."
+        case .completed:
+            return "Scenario complete. Review the debrief."
+        case .failed:
+            return "Scenario preparation failed."
+        case .none:
+            return "Waiting for an active scenario."
+        }
+    }
+
+    private func dashboardAttentionBadge(_ item: DashboardAttentionItemDTO) -> some View {
+        patientStatusBadge(label: item.title, color: dashboardAttentionColor(item.severity))
+    }
+
+    private func dashboardAttentionColor(_ severity: String) -> Color {
+        switch severity {
+        case "critical":
+            TrainerLabTheme.danger
+        case "warning":
+            TrainerLabTheme.warning
+        default:
+            TrainerLabTheme.accentBlue
         }
     }
 
@@ -2576,7 +2776,8 @@ public struct RunConsoleView: View {
     }
 
     private var canMutate: Bool {
-        store.state.commandChannelAvailable && !isSeedingSession
+        let backendAllowsMutation = store.dashboardPresentation?.capabilities.canOverridePatientState ?? !isSeedingSession
+        return store.state.commandChannelAvailable && backendAllowsMutation
     }
 
     private var canRunMutate: Bool {
@@ -2584,7 +2785,8 @@ public struct RunConsoleView: View {
     }
 
     private var canIntervene: Bool {
-        canMutate
+        let backendAllowsIntervention = store.dashboardPresentation?.capabilities.canRecordLearnerAction ?? !isSeedingSession
+        return store.state.commandChannelAvailable && backendAllowsIntervention
     }
 
     private var canRetryInitialSimulation: Bool {
@@ -2600,7 +2802,10 @@ public struct RunConsoleView: View {
     }
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
-        RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
+        if let actions = store.dashboardPresentation?.capabilities.lifecycleActions {
+            return actions.compactMap(RunConsoleLifecycleAction.init(rawValue:))
+        }
+        return RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
     }
 
     private var sessionControls: [RunConsoleControlItem] {
@@ -2715,17 +2920,28 @@ public struct RunConsoleView: View {
     // MARK: - Button helpers
 
     private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
+        let capabilities = store.dashboardPresentation?.capabilities
         switch control {
         case .exit, .summary:
-            true
-        case .lifecycle:
-            canRunMutate
+            return true
+        case let .lifecycle(action):
+            return canRunMutate && (capabilities?.lifecycleActions.contains(action.rawValue) ?? true)
         case .quick(.intervention):
-            canIntervene
+            return canIntervene
+        case .quick(.event):
+            return canMutate && (capabilities?.canInjectEvent ?? true)
+        case .quick(.steer):
+            return canMutate && (capabilities?.canSteer ?? true)
+        case .quick(.annotation):
+            return store.state.commandChannelAvailable && (capabilities?.canAnnotate ?? !isSeedingSession)
         case .quick(.presets):
-            true
-        case .quick:
-            canMutate
+            return true
+        case .quick(.tickAI):
+            return canMutate && (capabilities?.canTickAI ?? true)
+        case .quick(.tickVitals):
+            return canMutate && (capabilities?.canTickVitals ?? true)
+        case .quick(.sendFeedback):
+            return true
         }
     }
 

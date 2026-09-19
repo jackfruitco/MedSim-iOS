@@ -32,6 +32,7 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
+    @Published public private(set) var dashboardPresentation: DashboardPresentationDTO?
     @Published public private(set) var pendingInterventionProblemIDs: Set<Int> = []
     @Published public private(set) var pendingGeneralInterventionCount = 0
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
@@ -281,6 +282,7 @@ public final class RunSessionStore: ObservableObject {
         patientStatus = .init()
         aiInstructorIntent = nil
         aiInstructorNotes = []
+        dashboardPresentation = nil
         lastSnapshotRefreshError = nil
         lastRuntimeStateRefreshAt = nil
         debriefAnnotations = []
@@ -2554,6 +2556,7 @@ public final class RunSessionStore: ObservableObject {
         )
 
         self.runtimeState = runtimeState
+        dashboardPresentation = runtimeState.presentation
         if let observedAt = runtimeState.runtimeSnapshot.clockObservedAt {
             let elapsed = runtimeState.runtimeSnapshot.activeElapsedSeconds
                 + (runtimeState.runtimeSnapshot.status == "running"

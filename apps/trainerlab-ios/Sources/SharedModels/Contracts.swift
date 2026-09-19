@@ -1971,12 +1971,69 @@ public struct TrainerRestMetadataDTO: Decodable, Sendable {
     }
 }
 
+public struct DashboardAttentionItemDTO: Decodable, Equatable, Sendable, Identifiable {
+    public let code: String
+    public let title: String
+    public let severity: String
+
+    public var id: String {
+        "\(code):\(title)"
+    }
+}
+
+public struct DashboardCapabilitiesDTO: Decodable, Equatable, Sendable {
+    public let lifecycleActions: [String]
+    public let canRecordLearnerAction: Bool
+    public let canInjectEvent: Bool
+    public let canOverridePatientState: Bool
+    public let canSteer: Bool
+    public let canAnnotate: Bool
+    public let canTickAI: Bool
+    public let canTickVitals: Bool
+    public let canViewDebrief: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case lifecycleActions = "lifecycle_actions"
+        case canRecordLearnerAction = "can_record_learner_action"
+        case canInjectEvent = "can_inject_event"
+        case canOverridePatientState = "can_override_patient_state"
+        case canSteer = "can_steer"
+        case canAnnotate = "can_annotate"
+        case canTickAI = "can_tick_ai"
+        case canTickVitals = "can_tick_vitals"
+        case canViewDebrief = "can_view_debrief"
+    }
+}
+
+public struct DashboardPresentationDTO: Decodable, Equatable, Sendable {
+    public let patientSummary: String
+    public let primaryCue: String
+    public let cueRationale: String
+    public let upcomingChanges: [String]
+    public let monitoringFocus: [String]
+    public let attentionItems: [DashboardAttentionItemDTO]
+    public let heldVitalTypes: [String]
+    public let capabilities: DashboardCapabilitiesDTO
+
+    enum CodingKeys: String, CodingKey {
+        case patientSummary = "patient_summary"
+        case primaryCue = "primary_cue"
+        case cueRationale = "cue_rationale"
+        case upcomingChanges = "upcoming_changes"
+        case monitoringFocus = "monitoring_focus"
+        case attentionItems = "attention_items"
+        case heldVitalTypes = "held_vital_types"
+        case capabilities
+    }
+}
+
 public struct TrainerRestViewModelDTO: Decodable, Sendable {
     public let simulationID: Int
     public let sessionID: Int
     public let status: String
     public let scenarioSnapshot: ScenarioSnapshotDTO
     public let runtimeSnapshot: RuntimeSnapshotDTO
+    public let presentation: DashboardPresentationDTO?
     public let eventTimeline: EventTimelineDTO
     public let metadata: TrainerRestMetadataDTO
 
@@ -1986,6 +2043,7 @@ public struct TrainerRestViewModelDTO: Decodable, Sendable {
         case status
         case scenarioSnapshot = "scenario_snapshot"
         case runtimeSnapshot = "runtime_snapshot"
+        case presentation
         case eventTimeline = "event_timeline"
         case metadata
     }
@@ -1997,6 +2055,7 @@ public struct TrainerRestViewModelDTO: Decodable, Sendable {
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
         scenarioSnapshot = try container.decode(ScenarioSnapshotDTO.self, forKey: .scenarioSnapshot)
         runtimeSnapshot = try container.decode(RuntimeSnapshotDTO.self, forKey: .runtimeSnapshot)
+        presentation = try container.decodeIfPresent(DashboardPresentationDTO.self, forKey: .presentation)
         eventTimeline = try container.decode(EventTimelineDTO.self, forKey: .eventTimeline)
         metadata = try container.decode(TrainerRestMetadataDTO.self, forKey: .metadata)
     }
