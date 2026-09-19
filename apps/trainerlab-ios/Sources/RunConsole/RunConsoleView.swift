@@ -436,7 +436,8 @@ public struct RunConsoleView: View {
             if let progression = store.dashboardPresentation?.progression {
                 if progression.status == "active", sessionStatus == .running,
                    let endsAt = progression.endsAt, store.state.stopwatchElapsedSeconds < endsAt,
-                   let portrayal = progression.portrayal {
+                   let portrayal = progression.portrayal
+                {
                     if !portrayal.behavior.isEmpty {
                         Label(portrayal.behavior, systemImage: "figure.stand")
                             .font(.subheadline)
@@ -464,7 +465,9 @@ public struct RunConsoleView: View {
                     HStack {
                         Button("Allow branch") { store.resolveScenarioDecision(decision, approved: true) }
                         Button("Keep scenario") { store.resolveScenarioDecision(decision, approved: false) }
-                        if store.pendingDecisionIDs.contains(decision.id) { ProgressView() }
+                        if store.pendingDecisionIDs.contains(decision.id) {
+                            ProgressView()
+                        }
                     }
                     .buttonStyle(.bordered)
                     .frame(minHeight: 44)
