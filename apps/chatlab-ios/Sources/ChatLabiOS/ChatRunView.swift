@@ -520,14 +520,19 @@ public struct ChatRunView: View {
                     .fill(Color.blue.opacity(0.14))
                 Text(store.simulation.patientInitials)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.blue)
+                    .foregroundStyle(.primary)
             }
             .frame(width: 34, height: 34)
 
             Text(store.simulation.patientDisplayName)
-                .font(.headline.weight(.semibold))
-                .lineLimit(1)
+                .font(.title3.bold())
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(chatSystemBackgroundColor())
+        .clipShape(Capsule())
         .frame(maxWidth: .infinity)
     }
 
@@ -868,7 +873,7 @@ public struct ChatRunView: View {
                     showToolsSheet = true
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .regular))
+                        .font(.title2)
                         .frame(width: 44, height: 44)
                 }
                 .trainerGlassButtonStyle()
@@ -915,11 +920,13 @@ public struct ChatRunView: View {
                     haptics.play(.messageSent)
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.body.bold())
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(Color.accentColor)
                         .clipShape(Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Send message")
@@ -930,8 +937,10 @@ public struct ChatRunView: View {
                     haptics.play(.voiceStarted)
                 } label: {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 19, weight: .medium))
+                        .font(.body.weight(.medium))
                         .frame(width: 34, height: 34)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(store.canStartVoiceSession == false)
@@ -940,7 +949,7 @@ public struct ChatRunView: View {
                 .help("Start voice")
             } else {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 34, height: 34)
                     .accessibilityLabel("Conversation is read-only")
@@ -998,7 +1007,7 @@ public struct ChatRunView: View {
                 haptics.play(.voiceEnded)
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(Color.red)
@@ -1107,7 +1116,7 @@ public struct ChatRunView: View {
     private func initialGenerationFailureState(layoutMode: ChatRunLayoutMode) -> some View {
         VStack(spacing: 18) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(layoutMode == .padWorkspace ? .system(size: 44) : .system(size: 36))
+                .font(layoutMode == .padWorkspace ? .largeTitle : .title)
                 .foregroundStyle(.red)
 
             VStack(spacing: 8) {
@@ -1833,8 +1842,8 @@ private struct ChatBubble: View {
             VStack(alignment: .leading, spacing: 3) {
                 if !item.isFromSelf {
                     Text(item.displayName)
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
                 }
                 bubbleContent
                 if let errorText = item.errorText, !errorText.isEmpty {
@@ -1866,64 +1875,16 @@ private struct ChatBubble: View {
         }
     }
 
-    @ViewBuilder
     private var bubbleContent: some View {
-        if !item.content.isEmpty, prefersInlineFooter {
-            inlineFooterText
-        } else {
-            VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
-                if !item.content.isEmpty {
-                    messageBody
-                }
-                if !item.mediaList.isEmpty {
-                    mediaStrip
-                }
-                footerRow
+        VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
+            if !item.content.isEmpty {
+                messageBody
             }
+            if !item.mediaList.isEmpty {
+                mediaStrip
+            }
+            footerRow
         }
-    }
-
-    private var inlineFooterText: Text {
-        var segments: [Text] = [
-            Text(item.content).font(.body),
-            Text("  "),
-            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.caption2)
-                .foregroundStyle(.secondary),
-        ]
-
-        if !item.isFromSelf, !item.isRead {
-            segments.append(Text("  "))
-            segments.append(
-                Text("Unread")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.orange),
-            )
-        }
-
-        if item.isFromSelf {
-            segments.append(Text("  "))
-            segments.append(
-                Text(item.deliveryStatus.rawValue.capitalized)
-                    .font(.caption2.bold())
-                    .foregroundStyle(statusColor(item.deliveryStatus)),
-            )
-        }
-
-        return segments.dropFirst().reduce(segments[0]) { partialResult, segment in
-            partialResult + segment
-        }
-    }
-
-    private var metadataText: String {
-        var parts = [item.timestamp.formatted(date: .omitted, time: .shortened)]
-        if !item.isFromSelf, !item.isRead {
-            parts.append("Unread")
-        }
-        if item.isFromSelf {
-            parts.append(item.deliveryStatus.rawValue.capitalized)
-        }
-        return parts.joined(separator: " ")
     }
 
     private var markdownContent: AttributedString? {
@@ -1932,20 +1893,6 @@ private struct ChatBubble: View {
 
     private var usesMarkdownRendering: Bool {
         markdownContent != nil
-    }
-
-    private var prefersInlineFooter: Bool {
-        guard !usesMarkdownRendering else { return false }
-        return ChatBubbleFooterLayout.prefersInline(
-            in: .init(
-                content: item.content,
-                metadataText: metadataText,
-                bubbleWidth: bubbleWidth(for: layoutMode),
-                hasMedia: item.mediaList.isEmpty == false,
-                hasError: item.errorText?.isEmpty == false,
-                hasRetryAction: item.isFromSelf && item.deliveryStatus == .failed && item.retryable,
-            ),
-        )
     }
 
     @ViewBuilder
@@ -1980,21 +1927,7 @@ private struct ChatBubble: View {
 
     private var footerRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                if !item.isFromSelf, !item.isRead {
-                    Text("Unread")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.orange)
-                }
-                if item.isFromSelf {
-                    Text(item.deliveryStatus.rawValue.capitalized)
-                        .font(.caption2.bold())
-                        .foregroundStyle(statusColor(item.deliveryStatus))
-                }
-            }
+            footerLabels
             if item.isFromSelf, item.deliveryStatus == .failed, item.retryable {
                 Button("Retry", action: retryAction)
                     .font(.caption2.bold())
@@ -2002,16 +1935,21 @@ private struct ChatBubble: View {
         }
     }
 
-    private func statusColor(_ status: DeliveryStatus) -> Color {
-        switch status {
-        case .sending:
-            .secondary
-        case .sent:
-            .blue
-        case .delivered:
-            .green
-        case .failed:
-            .red
+    private var footerLabels: some View {
+        HStack(spacing: 8) {
+            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                .font(.body)
+                .foregroundStyle(.primary)
+            if !item.isFromSelf, !item.isRead {
+                Text("Unread")
+                    .font(.body.bold())
+                    .foregroundStyle(.orange)
+            }
+            if item.isFromSelf {
+                Text(item.deliveryStatus.rawValue.capitalized)
+                    .font(.body.bold())
+                    .foregroundStyle(.primary)
+            }
         }
     }
 }

@@ -25,6 +25,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var getRuntimeStateCalls: [Int] = []
     var getRuntimeStateResultsQueue: [Result<TrainerRestViewModelDTO, Error>] = []
     var getRuntimeStateResult: Result<TrainerRestViewModelDTO, Error> = .failure(MockServiceError.unused)
+    var runtimeStateContinuation: CheckedContinuation<TrainerRestViewModelDTO, Error>?
+    var suspendRuntimeState = false
     var listEventsCalls: [(simulationID: Int, cursor: String?, limit: Int)] = []
     var listEventsResultsQueue: [Result<PaginatedResponse<EventEnvelope>, Error>] = []
     var listEventsResult: Result<PaginatedResponse<EventEnvelope>, Error> = .failure(MockServiceError.unused)
@@ -34,6 +36,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     var replayPendingErrorByEndpoint: [String: Error] = [:]
     var runCommandCalls: [(simulationID: Int, command: RunCommand)] = []
     var runCommandResult: Result<TrainerSessionDTO, Error> = .failure(MockServiceError.unused)
+    var guardStateResult: Result<GuardStateDTO, Error> = .failure(MockServiceError.unused)
+    var steerPromptCalls: [String] = []
     var injectInterventionCalls: [InterventionEventRequest] = []
     var injectInterventionResult: Result<TrainerCommandAck, Error> = .failure(MockServiceError.unused)
     var injectInterventionDelayNanoseconds: UInt64 = 0
@@ -62,6 +66,9 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
 
     func getRuntimeState(simulationID: Int) async throws -> TrainerRestViewModelDTO {
         getRuntimeStateCalls.append(simulationID)
+        if suspendRuntimeState {
+            return try await withCheckedThrowingContinuation { runtimeStateContinuation = $0 }
+        }
         if !getRuntimeStateResultsQueue.isEmpty {
             return try getRuntimeStateResultsQueue.removeFirst().get()
         }
@@ -101,7 +108,8 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
         throw MockServiceError.unused
     }
 
-    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey _: String) async throws -> TrainerCommandAck {
+    func steerPrompt(simulationID _: Int, request _: SteerPromptRequest, idempotencyKey: String) async throws -> TrainerCommandAck {
+        steerPromptCalls.append(idempotencyKey)
         throw MockServiceError.unused
     }
 
@@ -222,7 +230,7 @@ private final class MockTrainerLabService: TrainerLabServiceProtocol, @unchecked
     }
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
-        throw MockServiceError.unused
+        try guardStateResult.get()
     }
 
     func sendHeartbeat(simulationID _: Int) async throws -> GuardStateDTO {
@@ -276,6 +284,58 @@ private final class MockRealtimeClient: RealtimeClientProtocol, @unchecked Senda
 
 @MainActor
 final class RunSessionStoreTests: XCTestCase {
+    func testSnapshotResponseCannotCrossSessionBindings() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.suspendRuntimeState = true
+        let request = Task { await store.loadRuntimeState() }
+        await waitUntil(timeout: 1) { service.runtimeStateContinuation != nil }
+
+        store.bind(session: makeSession(status: .running, simulationID: 421))
+        try service.runtimeStateContinuation?.resume(returning: makeRuntimeState(status: "running", stateRevision: 50))
+        let result = await request.value
+
+        XCTAssertNil(result)
+        XCTAssertNil(store.runtimeState)
+        XCTAssertNil(store.lastRuntimeStateRefreshAt)
+        XCTAssertEqual(store.state.session?.simulationID, 421)
+    }
+
+    func testSnapshotFromPreviousConsoleLifetimeIsDiscardedForSameSimulation() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.suspendRuntimeState = true
+        let request = Task { await store.loadRuntimeState() }
+        await waitUntil(timeout: 1) { service.runtimeStateContinuation != nil }
+
+        store.stopConsole()
+        store.bind(session: makeSession(status: .paused))
+        try service.runtimeStateContinuation?.resume(returning: makeRuntimeState(status: "running", stateRevision: 50))
+        let result = await request.value
+
+        XCTAssertNil(result)
+        XCTAssertNil(store.runtimeState)
+        XCTAssertEqual(store.state.session?.status, .paused)
+    }
+
+    func testStaleSnapshotDoesNotMarkCurrentStateFresh() async throws {
+        let service = MockTrainerLabService()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 10))
+        _ = await store.loadRuntimeState()
+        let refreshedAt = store.lastRuntimeStateRefreshAt
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 9))
+
+        let result = await store.loadRuntimeState()
+
+        XCTAssertNil(result)
+        XCTAssertEqual(store.runtimeState?.runtimeSnapshot.stateRevision, 10)
+        XCTAssertEqual(store.lastRuntimeStateRefreshAt, refreshedAt)
+    }
+
     func testUnifiedTimelineDedupesDuplicateRuntimeEvents() async {
         let realtime = MockRealtimeClient()
         let store = RunSessionStore(
@@ -716,6 +776,33 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.state.vitals.count, 1)
     }
 
+    func testPausedSnapshotKeepsAuthoritativeClockAndVitalHold() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [.success(makeRuntimeState(
+            status: "paused", stateRevision: 3, activeElapsedSeconds: 85,
+            clockObservedAt: "2026-03-12T12:01:00Z",
+            vitals: [[
+                "domain_event_id": 42,
+                "vital_type": "heart_rate",
+                "min_value": 90,
+                "max_value": 90,
+                "lock_value": true,
+            ]],
+        ))]
+        let store = RunSessionStore(
+            service: service,
+            realtimeClient: MockRealtimeClient(),
+            commandQueue: InMemoryCommandQueueStore(),
+        )
+        store.bind(session: makeSession(status: .paused))
+        _ = await store.loadRuntimeState(reason: "clock test")
+
+        XCTAssertEqual(store.state.stopwatchElapsedSeconds, 85)
+        XCTAssertFalse(store.state.stopwatchIsRunning)
+        XCTAssertEqual(store.state.vitals.first?.domainEventID, 42)
+        XCTAssertEqual(store.state.vitals.first?.lockValue, true)
+    }
+
     func testSparseRuntimeRefreshPreservesHydratedSectionsWhenPayloadOmitsThem() async throws {
         let service = MockTrainerLabService()
         service.getRuntimeStateResultsQueue = try [
@@ -1151,7 +1238,7 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertGreaterThan(store.state.stopwatchElapsedSeconds, pausedElapsed)
     }
 
-    func testPollingFallbackDisablesCommandChannelWithoutAutoPause() async throws {
+    func testPollingFallbackPreservesCommandChannelWithoutAutoPause() async throws {
         let realtime = MockRealtimeClient()
         let queue = InMemoryCommandQueueStore()
         let store = RunSessionStore(
@@ -1164,17 +1251,72 @@ final class RunSessionStoreTests: XCTestCase {
         defer { store.stopConsole() }
 
         await waitUntil(timeout: 1.5) {
-            store.state.commandChannelAvailable
+            store.state.commandChannelAvailable && !realtime.connectCalls.isEmpty
         }
 
         realtime.emit(transport: .polling)
 
         await waitUntil(timeout: 1.5) {
-            !store.state.commandChannelAvailable && store.state.transportBanner.message == "Polling Fallback"
+            store.state.commandChannelAvailable && store.state.transportBanner.message == "Updates may be delayed"
         }
 
         let pending = try await queue.pendingCount(simulationID: 420, accountUUID: nil)
         XCTAssertEqual(pending, 0)
+    }
+
+    func testPausedGuardAllowsResumeDuringPollingFallback() async {
+        let service = MockTrainerLabService()
+        service.guardStateResult = .success(GuardStateDTO(
+            guardState: "paused", guardReason: "instructor_pause", engineRunnable: false,
+            activeElapsedSeconds: 20, runtimeCapSeconds: nil, wallClockExpiresAt: nil,
+            warnings: [], denial: nil,
+        ))
+        service.runCommandResult = .success(makeSession(status: .running))
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .paused))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.guardState?.engineRunnable == false }
+        realtime.emit(transport: .polling)
+        await waitUntil(timeout: 1.5) { store.state.transportState == .polling }
+        store.resume()
+        await waitUntil(timeout: 1.5) { service.runCommandCalls.count == 1 }
+        XCTAssertEqual(service.runCommandCalls.first?.command, .resume)
+        await waitUntil(timeout: 1.5) { store.state.session?.status == .running }
+    }
+
+    func testSteeringFailureIsVisibleAndRetainsOriginalCommandForRetry() async throws {
+        let service = MockTrainerLabService()
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        store.steerPrompt("Maintain the teaching objective")
+        await waitUntil(timeout: 1.5) { store.state.conflictBanner != nil && store.state.pendingCommandCount == 1 }
+        let batch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
+        XCTAssertEqual(batch.count, 1)
+        XCTAssertEqual(batch.first?.idempotencyKey, service.steerPromptCalls.first)
+        XCTAssertTrue(batch.first?.endpoint.contains("steer/prompt") == true)
+    }
+
+    func testRejectedLifecycleCommandRemainsVisibleAfterSessionRefreshAndIsNotRetried() async throws {
+        let service = MockTrainerLabService()
+        service.getSessionResult = .success(makeSession(status: .paused))
+        service.runCommandResult = .failure(APIClientError.http(statusCode: 409, detail: "Runtime limit reached", correlationID: nil))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .paused))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        store.resume()
+        await waitUntil(timeout: 1.5) { store.state.conflictBanner != nil }
+        let batch = try await queue.nextRetryBatch(limit: 10, now: .distantFuture, simulationID: 420, accountUUID: nil)
+        XCTAssertTrue(batch.isEmpty)
+        XCTAssertNotNil(store.conflictError)
     }
 
     func testSimulationStateChangedFailureTransitionsSessionToFailed() async {
@@ -1539,6 +1681,45 @@ final class RunSessionStoreTests: XCTestCase {
                 && !store.hasPendingInterventions
                 && store.state.interventionAnnotations.first?.interventionID == 801
         }
+    }
+
+    func testInterventionConfirmationRequiresMatchingClientEventIDWhenProvided() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "cmd-1", status: "accepted"))
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { service.getRuntimeStateCalls.count == 1 }
+
+        store.addIntervention(interventionType: "tourniquet", siteCode: "LEFT_ARM", targetProblemID: 55)
+        await waitUntil(timeout: 1.0) {
+            store.hasPendingIntervention(for: 55) && service.injectInterventionCalls.count == 1
+        }
+        guard let clientEventID = service.injectInterventionCalls.first?.clientEventID else {
+            return XCTFail("Intervention requests must carry a client event ID")
+        }
+
+        func confirmation(_ id: String, clientID: String) -> EventEnvelope {
+            EventEnvelope(
+                eventID: id, eventType: SimulationEventType.patientInterventionCreated,
+                createdAt: Date(), correlationID: nil,
+                payload: [
+                    "client_event_id": .string(clientID), "intervention_id": .number(801),
+                    "intervention_type": .string("tourniquet"), "site_code": .string("LEFT_ARM"),
+                    "target_problem_id": .number(55),
+                ],
+            )
+        }
+        realtime.emit(event: confirmation("other-command", clientID: "another-instructor-command"))
+        await waitUntil(timeout: 1.0) { store.state.interventionAnnotations.count == 1 }
+        XCTAssertTrue(store.hasPendingIntervention(for: 55))
+
+        realtime.emit(event: confirmation("own-command", clientID: clientEventID))
+        await waitUntil(timeout: 1.0) { !store.hasPendingInterventions }
     }
 
     func testPendingInterventionClearsOnCommandFailure() async throws {
@@ -2360,6 +2541,38 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertNil(store.lastSnapshotRefreshError)
     }
 
+    func testEventSequenceRejectsOlderEventAndEqualRevisionSnapshot() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResultsQueue = try [
+            .success(makeRuntimeState(
+                status: "running", stateRevision: 4, latestEventSequence: 10,
+                scenarioBrief: ["read_aloud_brief": "Current"],
+            )),
+            .success(makeRuntimeState(
+                status: "running", stateRevision: 4, latestEventSequence: 9,
+                scenarioBrief: ["read_aloud_brief": "Old"],
+            )),
+        ]
+        let realtime = MockRealtimeClient()
+        let store = RunSessionStore(service: service, realtimeClient: realtime, commandQueue: InMemoryCommandQueueStore())
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.scenarioBrief?.readAloudBrief == "Current" }
+
+        realtime.emit(event: EventEnvelope(
+            eventID: "older-patient-event", eventType: SimulationEventType.patientInterventionCreated,
+            createdAt: Date(), correlationID: nil,
+            payload: ["event_sequence": .number(9), "intervention_type": .string("tourniquet"), "site_code": .string("LEFT_ARM")],
+        ))
+        await Task.yield()
+        XCTAssertTrue(store.state.interventionAnnotations.isEmpty)
+
+        let result = await store.loadRuntimeState(reason: "stale-sequence")
+        XCTAssertNil(result)
+        XCTAssertEqual(store.scenarioBrief?.readAloudBrief, "Current")
+    }
+
     func testSnapshotFetchFailureExposesErrorAndPreservesPreviousState() async throws {
         // A failed /state/ fetch must surface the error via lastSnapshotRefreshError
         // and must NOT clear any previously applied panel state.
@@ -2766,6 +2979,57 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(service.getSessionCalls, [420])
     }
 
+    func testScenarioDecisionUsesDurableQueueAndSuppressesDoubleTap() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running", stateRevision: 2))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        let decision = try JSONDecoder().decode(
+            ScenarioDecisionDTO.self,
+            from: Data(#"{"id":7,"title":"Hypoxia","description":"Possible branch","status":"pending"}"#.utf8),
+        )
+        store.resolveScenarioDecision(decision, approved: true)
+        store.resolveScenarioDecision(decision, approved: true)
+        XCTAssertTrue(store.pendingDecisionIDs.contains(7))
+        await waitUntil(timeout: 1.5) { !store.pendingDecisionIDs.contains(7) }
+        XCTAssertEqual(service.replayPendingCalls.count, 1)
+        XCTAssertEqual(service.replayPendingCalls.first?.endpoint, "/api/v1/trainerlab/simulations/420/decisions/7/")
+        XCTAssertEqual(service.replayPendingCalls.first?.method, "POST")
+        XCTAssertFalse(service.replayPendingCalls.first?.idempotencyKey.isEmpty ?? true)
+        XCTAssertEqual(service.getRuntimeStateCalls, [420])
+    }
+
+    func testConfirmedVoiceActionPreservesProvenanceAndSuppressesDuplicateSubmission() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "voice-command", status: "accepted"))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        let provenance = VoiceActionProvenance(
+            captureID: "voice-capture", originalTranscript: "Not oxygen, tourniquet",
+            reviewedTranscript: "Tourniquet applied",
+        )
+        for _ in 0 ..< 2 {
+            store.addIntervention(
+                interventionType: "tourniquet", siteCode: "left_arm", targetProblemID: 55,
+                voiceProvenance: provenance,
+            )
+        }
+        await waitUntil(timeout: 1.5) { service.injectInterventionCalls.count == 1 }
+        XCTAssertEqual(service.injectInterventionCalls.count, 1)
+        XCTAssertEqual(service.injectInterventionCalls.first?.voiceProvenance, provenance)
+        XCTAssertEqual(service.injectInterventionCalls.first?.clientEventID, "voice-capture")
+        XCTAssertEqual(service.injectInterventionCalls.first?.notes, "")
+        XCTAssertEqual(service.injectInterventionCalls.first?.effectiveness, .unknown)
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
         scenarioSpec: [String: JSONValue] = [:],
@@ -2776,9 +3040,10 @@ final class RunSessionStoreTests: XCTestCase {
         terminalReasonText: String? = nil,
         retryable: Bool? = nil,
         modifiedAt: Date = Date(),
+        simulationID: Int = 420,
     ) -> TrainerSessionDTO {
         TrainerSessionDTO(
-            simulationID: 420,
+            simulationID: simulationID,
             status: status,
             scenarioSpec: scenarioSpec,
             runtimeState: runtimeState,
@@ -2866,6 +3131,9 @@ final class RunSessionStoreTests: XCTestCase {
     private func makeRuntimeState(
         status: String,
         stateRevision: Int = 1,
+        activeElapsedSeconds: Int = 0,
+        clockObservedAt: String? = nil,
+        latestEventSequence: Int? = nil,
         scenarioBrief: [String: Any]? = nil,
         causes: [[String: Any]] = [],
         problems: [[String: Any]] = [],
@@ -2901,7 +3169,8 @@ final class RunSessionStoreTests: XCTestCase {
             "runtime_snapshot": [
                 "status": status,
                 "state_revision": stateRevision,
-                "active_elapsed_seconds": 0,
+                "active_elapsed_seconds": activeElapsedSeconds,
+                "clock_observed_at": clockObservedAt.map { $0 as Any } ?? NSNull(),
                 "tick_interval_seconds": 15,
                 "next_tick_at": NSNull(),
                 "ai_plan": aiPlan.map { $0 as Any } ?? NSNull(),
@@ -2913,6 +3182,7 @@ final class RunSessionStoreTests: XCTestCase {
                 "control_plane_debug": [:],
                 "request_metadata": [:],
                 "latest_event_cursor": NSNull(),
+                "latest_event_sequence": latestEventSequence.map { $0 as Any } ?? NSNull(),
             ],
             "event_timeline": [
                 "events": [],

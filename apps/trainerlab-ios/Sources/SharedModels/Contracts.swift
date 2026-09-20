@@ -400,6 +400,7 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct RunDebriefOutput: Codable, Sendable {
+    public let claims: [DebriefClaim]?
     public let narrativeSummary: String
     public let strengths: [String]
     public let misses: [String]
@@ -408,6 +409,7 @@ public struct RunDebriefOutput: Codable, Sendable {
     public let overallAssessment: String
 
     enum CodingKeys: String, CodingKey {
+        case claims
         case narrativeSummary = "narrative_summary"
         case strengths
         case misses
@@ -418,6 +420,11 @@ public struct RunDebriefOutput: Codable, Sendable {
 }
 
 public struct RunSummary: Codable, Sendable {
+    public let evidence: [DebriefEvidence]?
+    public let evidenceRevision: String?
+    public let evidenceOmittedCount: Int?
+    public let debriefStatus: String?
+    public let debriefError: String?
     public let simulationID: Int
     public let status: String
     public let runStartedAt: String?
@@ -440,7 +447,17 @@ public struct RunSummary: Codable, Sendable {
         commandLog: [SummaryCommandLog],
         aiRationaleNotes: [JSONValue],
         aiDebrief: RunDebriefOutput? = nil,
+        evidence: [DebriefEvidence]? = nil,
+        evidenceRevision: String? = nil,
+        evidenceOmittedCount: Int? = nil,
+        debriefStatus: String? = nil,
+        debriefError: String? = nil,
     ) {
+        self.evidence = evidence
+        self.evidenceRevision = evidenceRevision
+        self.evidenceOmittedCount = evidenceOmittedCount
+        self.debriefStatus = debriefStatus
+        self.debriefError = debriefError
         self.simulationID = simulationID
         self.status = status
         self.runStartedAt = runStartedAt
@@ -457,6 +474,11 @@ public struct RunSummary: Codable, Sendable {
         case simulationID = "simulation_id"
         case status
         case runStartedAt = "run_started_at"
+        case evidence
+        case evidenceRevision = "evidence_revision"
+        case evidenceOmittedCount = "evidence_omitted_count"
+        case debriefStatus = "debrief_status"
+        case debriefError = "debrief_error"
         case runCompletedAt = "run_completed_at"
         case finalState = "final_state"
         case eventTypeCounts = "event_type_counts"
@@ -1207,6 +1229,7 @@ public struct RuntimeRecommendedInterventionState: Codable, Sendable {
 
 public struct RuntimeInterventionState: Codable, Sendable {
     public let interventionID: Int?
+    public let clientEventID: String?
     public let domainEventID: Int?
     public let kind: String?
     public let code: String?
@@ -1234,6 +1257,7 @@ public struct RuntimeInterventionState: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case interventionID = "intervention_id"
+        case clientEventID = "client_event_id"
         case domainEventID = "domain_event_id"
         case kind
         case code
@@ -1259,6 +1283,7 @@ public struct RuntimeInterventionState: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         interventionID = try container.decodeIfPresent(Int.self, forKey: .interventionID)
+        clientEventID = try container.decodeIfPresent(String.self, forKey: .clientEventID)
         domainEventID = try container.decodeIfPresent(Int.self, forKey: .domainEventID)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         code = try container.decodeIfPresent(String.self, forKey: .code)
@@ -1770,6 +1795,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let phase: String?
     public let stateRevision: Int
     public let activeElapsedSeconds: Int
+    public let clockObservedAt: Date?
     public let tickCount: Int?
     public let tickIntervalSeconds: Int?
     public let nextTickAt: Date?
@@ -1783,6 +1809,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
     public let controlPlaneDebug: ControlPlaneDebugOut?
     public let requestMetadata: [String: JSONValue]?
     public let latestEventCursor: String?
+    public let latestEventSequence: Int?
     public let presence: RuntimeSnapshotPresence
 
     enum CodingKeys: String, CodingKey {
@@ -1790,6 +1817,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         case phase
         case stateRevision = "state_revision"
         case activeElapsedSeconds = "active_elapsed_seconds"
+        case clockObservedAt = "clock_observed_at"
         case tickCount = "tick_count"
         case tickIntervalSeconds = "tick_interval_seconds"
         case nextTickAt = "next_tick_at"
@@ -1803,6 +1831,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         case controlPlaneDebug = "control_plane_debug"
         case requestMetadata = "request_metadata"
         case latestEventCursor = "latest_event_cursor"
+        case latestEventSequence = "latest_event_sequence"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1815,6 +1844,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         stateRevision = try container.decodeIfPresent(Int.self, forKey: .stateRevision) ?? 0
         let hasActiveElapsed = container.contains(.activeElapsedSeconds)
         activeElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .activeElapsedSeconds) ?? 0
+        clockObservedAt = try container.decodeIfPresent(Date.self, forKey: .clockObservedAt)
         let hasTickCount = container.contains(.tickCount)
         tickCount = try container.decodeIfPresent(Int.self, forKey: .tickCount)
         let hasTickInterval = container.contains(.tickIntervalSeconds)
@@ -1841,6 +1871,7 @@ public struct RuntimeSnapshotDTO: Decodable, Sendable {
         requestMetadata = try container.decodeIfPresent([String: JSONValue].self, forKey: .requestMetadata)
         let hasLatestEventCursor = container.contains(.latestEventCursor)
         latestEventCursor = try container.decodeIfPresent(String.self, forKey: .latestEventCursor)
+        latestEventSequence = try container.decodeIfPresent(Int.self, forKey: .latestEventSequence)
 
         presence = RuntimeSnapshotPresence(
             status: hasStatus,
@@ -1962,12 +1993,120 @@ public struct TrainerRestMetadataDTO: Decodable, Sendable {
     }
 }
 
+public struct DashboardAttentionItemDTO: Decodable, Equatable, Sendable, Identifiable {
+    public let code: String
+    public let title: String
+    public let severity: String
+
+    public var id: String {
+        "\(code):\(title)"
+    }
+}
+
+public struct DashboardCapabilitiesDTO: Decodable, Equatable, Sendable {
+    public let lifecycleActions: [String]
+    public let canRecordLearnerAction: Bool
+    public let canInjectEvent: Bool
+    public let canOverridePatientState: Bool
+    public let canSteer: Bool
+    public let canAnnotate: Bool
+    public let canTickAI: Bool
+    public let canTickVitals: Bool
+    public let canViewDebrief: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case lifecycleActions = "lifecycle_actions"
+        case canRecordLearnerAction = "can_record_learner_action"
+        case canInjectEvent = "can_inject_event"
+        case canOverridePatientState = "can_override_patient_state"
+        case canSteer = "can_steer"
+        case canAnnotate = "can_annotate"
+        case canTickAI = "can_tick_ai"
+        case canTickVitals = "can_tick_vitals"
+        case canViewDebrief = "can_view_debrief"
+    }
+}
+
+public struct PatientPortrayalDTO: Decodable, Equatable, Sendable {
+    public let behavior: String
+    public let speech: String
+
+    enum CodingKeys: String, CodingKey { case behavior, speech }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        behavior = try container.decodeIfPresent(String.self, forKey: .behavior) ?? ""
+        speech = try container.decodeIfPresent(String.self, forKey: .speech) ?? ""
+    }
+}
+
+public struct ProgressionPlanDTO: Decodable, Equatable, Sendable {
+    public let status: String
+    public let version: Int?
+    public let endsAt: Int?
+    public let portrayal: PatientPortrayalDTO?
+
+    enum CodingKeys: String, CodingKey {
+        case status, version, portrayal
+        case endsAt = "ends_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "awaiting_plan"
+        version = try container.decodeIfPresent(Int.self, forKey: .version)
+        endsAt = try container.decodeIfPresent(Int.self, forKey: .endsAt)
+        portrayal = try container.decodeIfPresent(PatientPortrayalDTO.self, forKey: .portrayal)
+    }
+}
+
+public struct ScenarioDecisionDTO: Decodable, Equatable, Sendable, Identifiable {
+    public let id: Int
+    public let title: String
+    public let description: String
+    public let status: String
+}
+
+public struct ScenarioDecisionRequest: Encodable, Sendable {
+    public let approved: Bool
+
+    public init(approved: Bool) {
+        self.approved = approved
+    }
+}
+
+public struct DashboardPresentationDTO: Decodable, Equatable, Sendable {
+    public let progression: ProgressionPlanDTO?
+    public let decisions: [ScenarioDecisionDTO]?
+    public let patientSummary: String
+    public let primaryCue: String
+    public let cueRationale: String
+    public let upcomingChanges: [String]
+    public let monitoringFocus: [String]
+    public let attentionItems: [DashboardAttentionItemDTO]
+    public let heldVitalTypes: [String]
+    public let capabilities: DashboardCapabilitiesDTO
+
+    enum CodingKeys: String, CodingKey {
+        case progression, decisions
+        case patientSummary = "patient_summary"
+        case primaryCue = "primary_cue"
+        case cueRationale = "cue_rationale"
+        case upcomingChanges = "upcoming_changes"
+        case monitoringFocus = "monitoring_focus"
+        case attentionItems = "attention_items"
+        case heldVitalTypes = "held_vital_types"
+        case capabilities
+    }
+}
+
 public struct TrainerRestViewModelDTO: Decodable, Sendable {
     public let simulationID: Int
     public let sessionID: Int
     public let status: String
     public let scenarioSnapshot: ScenarioSnapshotDTO
     public let runtimeSnapshot: RuntimeSnapshotDTO
+    public let presentation: DashboardPresentationDTO?
     public let eventTimeline: EventTimelineDTO
     public let metadata: TrainerRestMetadataDTO
 
@@ -1977,6 +2116,7 @@ public struct TrainerRestViewModelDTO: Decodable, Sendable {
         case status
         case scenarioSnapshot = "scenario_snapshot"
         case runtimeSnapshot = "runtime_snapshot"
+        case presentation
         case eventTimeline = "event_timeline"
         case metadata
     }
@@ -1988,6 +2128,7 @@ public struct TrainerRestViewModelDTO: Decodable, Sendable {
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
         scenarioSnapshot = try container.decode(ScenarioSnapshotDTO.self, forKey: .scenarioSnapshot)
         runtimeSnapshot = try container.decode(RuntimeSnapshotDTO.self, forKey: .runtimeSnapshot)
+        presentation = try container.decodeIfPresent(DashboardPresentationDTO.self, forKey: .presentation)
         eventTimeline = try container.decode(EventTimelineDTO.self, forKey: .eventTimeline)
         metadata = try container.decode(TrainerRestMetadataDTO.self, forKey: .metadata)
     }
@@ -2093,7 +2234,9 @@ public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
 }
 
 public struct InterventionEventRequest: Codable, Sendable {
+    public let voiceProvenance: VoiceActionProvenance?
     public let interventionType: String
+    public let clientEventID: String?
     public let siteCode: String
     public let targetProblemID: Int?
     public let status: InterventionStatus
@@ -2106,6 +2249,7 @@ public struct InterventionEventRequest: Codable, Sendable {
 
     public init(
         interventionType: String,
+        clientEventID: String? = nil,
         siteCode: String,
         targetProblemID: Int? = nil,
         status: InterventionStatus = .applied,
@@ -2116,8 +2260,11 @@ public struct InterventionEventRequest: Codable, Sendable {
         initiatedByType: String = "instructor",
         initiatedByID: Int? = nil,
         supersedesEventID: Int? = nil,
+        voiceProvenance: VoiceActionProvenance? = nil,
     ) {
+        self.voiceProvenance = voiceProvenance
         self.interventionType = interventionType
+        self.clientEventID = clientEventID
         self.siteCode = siteCode
         self.targetProblemID = targetProblemID
         self.status = status
@@ -2148,6 +2295,8 @@ public struct InterventionEventRequest: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case interventionType = "intervention_type"
+        case clientEventID = "client_event_id"
+        case voiceProvenance = "voice_provenance"
         case siteCode = "site_code"
         case targetProblemID = "target_problem_id"
         case status

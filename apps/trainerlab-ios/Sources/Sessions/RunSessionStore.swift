@@ -32,8 +32,11 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var patientStatus: RuntimePatientStatus = .init()
     @Published public private(set) var aiInstructorIntent: RuntimeInstructorIntent?
     @Published public private(set) var aiInstructorNotes: [String] = []
+    @Published public private(set) var dashboardPresentation: DashboardPresentationDTO?
+    @Published public private(set) var pendingDecisionIDs: Set<Int> = []
     @Published public private(set) var pendingInterventionProblemIDs: Set<Int> = []
     @Published public private(set) var pendingGeneralInterventionCount = 0
+    private var submittedVoiceCaptureIDs: Set<String> = []
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
     /// Exposed for debug surfaces and diagnostic tooling.
     @Published public private(set) var lastSnapshotRefreshError: Error?
@@ -46,11 +49,17 @@ public final class RunSessionStore: ObservableObject {
     private var heartbeatTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var runtimeRefreshTask: Task<Void, Never>?
+    /// Commands awaiting their first HTTP response must not enter bootstrap replay.
+    private var inFlightCommandKeys = Set<String>()
     private var lastAppliedLifecycleRevision: Int?
+    private var appliedSnapshotEventSequence = -1
+    private var lastAppliedLiveEventSequence = -1
     private var pendingRuntimeRefresh = false
     /// Highest `stateRevision` successfully applied from a snapshot.
     /// Used to reject stale snapshots that arrive out of order.
     private var appliedSnapshotRevision: Int = -1
+    // Invalidates requests across rebinds, including reopening the same run.
+    private var bindingGeneration = UUID()
     private var snapshotProblemAnnotations: [ProblemAnnotation] = []
     private var snapshotInterventionAnnotations: [InterventionAnnotation] = []
     private var snapshotRecommendedInterventions: [RecommendedInterventionItem] = []
@@ -80,6 +89,7 @@ public final class RunSessionStore: ObservableObject {
 
     private struct PendingInterventionState: Equatable {
         let idempotencyKey: String
+        let clientEventID: String
         let interventionType: String
         let siteCode: String
         let targetProblemID: Int?
@@ -120,6 +130,7 @@ public final class RunSessionStore: ObservableObject {
 
     public func bind(session: TrainerSessionDTO) {
         if state.session?.simulationID != session.simulationID {
+            submittedVoiceCaptureIDs = []
             resetSnapshotState()
         }
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
@@ -144,6 +155,7 @@ public final class RunSessionStore: ObservableObject {
         guard let session = state.session else {
             return
         }
+        let bootstrapStartedAt = Date()
 
         eventTask?.cancel()
         transportTask?.cancel()
@@ -173,6 +185,7 @@ public final class RunSessionStore: ObservableObject {
 
         transportTask = Task { [weak self] in
             guard let self else { return }
+            var recovering = false
             for await transport in realtimeClient.transportStates {
                 await MainActor.run {
                     logger.info(
@@ -180,6 +193,13 @@ public final class RunSessionStore: ObservableObject {
                     )
                     self.state = RunSessionReducer.reduce(state: self.state, action: .transportChanged(transport))
                     self.syncTransportPresentation(for: transport)
+                }
+                if transport == .polling {
+                    recovering = true
+                    await scheduleRuntimeRefresh(reason: "transport recovery")
+                } else if transport == .connectedSSE, recovering {
+                    recovering = false
+                    await scheduleRuntimeRefresh(reason: "transport recovered")
                 }
             }
         }
@@ -217,7 +237,7 @@ public final class RunSessionStore: ObservableObject {
 
         bootstrapTask = Task { [weak self] in
             guard let self else { return }
-            await bootstrapConsole(for: session)
+            await bootstrapConsole(for: session, startedAt: bootstrapStartedAt)
         }
 
         loadInterventionDictionary()
@@ -236,12 +256,23 @@ public final class RunSessionStore: ObservableObject {
         resetSnapshotState()
     }
 
+    public func refreshAfterForeground() async {
+        guard let simulationID = state.session?.simulationID else { return }
+        let reconnectStartedAt = Date()
+        _ = await loadRuntimeState(reason: "foreground")
+        await refreshGuardState()
+        guard !Task.isCancelled, state.session?.simulationID == simulationID else { return }
+        await realtimeClient.connect(simulationID: simulationID, cursor: state.eventCursor)
+        await replayPendingCommands(createdBefore: reconnectStartedAt)
+    }
+
     /// Clears all snapshot-authoritative panel state and resets revision guards.
     ///
     /// Call this before binding to a different simulation or after stopping the console
     /// so that state from one simulation cannot bleed into another, and so that the
     /// stale-revision guard does not reject valid lower revisions for a new simulation.
     private func resetSnapshotState() {
+        bindingGeneration = UUID()
         runtimeState = nil
         scenarioBrief = nil
         controlPlaneDebug = nil
@@ -254,6 +285,7 @@ public final class RunSessionStore: ObservableObject {
         patientStatus = .init()
         aiInstructorIntent = nil
         aiInstructorNotes = []
+        dashboardPresentation = nil
         lastSnapshotRefreshError = nil
         lastRuntimeStateRefreshAt = nil
         debriefAnnotations = []
@@ -270,6 +302,8 @@ public final class RunSessionStore: ObservableObject {
         syncPendingInterventionPublishedState()
         appliedSnapshotRevision = -1
         lastAppliedLifecycleRevision = nil
+        appliedSnapshotEventSequence = -1
+        lastAppliedLiveEventSequence = -1
     }
 
     /// Fire-and-forget: loads the intervention and injury dictionaries from the API.
@@ -300,9 +334,17 @@ public final class RunSessionStore: ObservableObject {
     @discardableResult
     public func loadRuntimeState(reason: String = "manual") async -> TrainerRestViewModelDTO? {
         guard let simulationID = state.session?.simulationID else { return nil }
+        let generation = bindingGeneration
         logger.info("Fetching runtime state for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public))")
         do {
             let rs = try await service.getRuntimeState(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration,
+                  rs.simulationID == simulationID, state.session?.simulationID == simulationID,
+                  rs.runtimeSnapshot.stateRevision >= max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1),
+                  rs.runtimeSnapshot.latestEventSequence.map({
+                      $0 >= max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence)
+                  }) ?? true
+            else { return nil }
             logger.info(
                 "Fetched runtime state for simulation \(simulationID, privacy: .public): revision=\(rs.runtimeSnapshot.stateRevision, privacy: .public) status=\(rs.status, privacy: .public)",
             )
@@ -311,6 +353,7 @@ public final class RunSessionStore: ObservableObject {
             lastRuntimeStateRefreshAt = Date()
             return rs
         } catch {
+            guard !Task.isCancelled, generation == bindingGeneration else { return nil }
             logger.error(
                 "Runtime state fetch failed for simulation \(simulationID, privacy: .public) (\(reason, privacy: .public)): \(error, privacy: .public)",
             )
@@ -340,8 +383,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func refreshGuardState() async {
         guard let simulationID = state.session?.simulationID else { return }
+        let generation = bindingGeneration
         do {
             let dto = try await service.getGuardState(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             state.guardState = dto
             state.guardDenial = dto.denial
             syncStopwatchState()
@@ -352,8 +397,10 @@ public final class RunSessionStore: ObservableObject {
 
     private func runHeartbeat() async {
         guard let simulationID = state.session?.simulationID else { return }
+        let generation = bindingGeneration
         do {
             let dto = try await service.sendHeartbeat(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             state.guardState = dto
             state.guardDenial = dto.denial
             syncStopwatchState()
@@ -362,13 +409,15 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    private func bootstrapConsole(for session: TrainerSessionDTO) async {
+    private func bootstrapConsole(for session: TrainerSessionDTO, startedAt: Date) async {
+        let generation = bindingGeneration
         logger.info("Bootstrapping TrainerLab console for simulation \(session.simulationID, privacy: .public)")
 
         _ = await loadRuntimeState(reason: "bootstrap")
         await refreshGuardState()
 
         let historicalEvents = await loadHistoricalEvents(simulationID: session.simulationID)
+        guard !Task.isCancelled, generation == bindingGeneration else { return }
         applyHistoricalEvents(historicalEvents)
 
         // Prefer the timeline cursor (last historical event) to avoid duplicate delivery.
@@ -380,7 +429,7 @@ public final class RunSessionStore: ObservableObject {
         )
         await realtimeClient.connect(simulationID: session.simulationID, cursor: eventCursor)
         await loadAnnotations()
-        await replayPendingCommands()
+        await replayPendingCommands(createdBefore: startedAt)
         await refreshPendingCount()
     }
 
@@ -450,7 +499,15 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func normalizedEvents(_ events: [EventEnvelope]) -> [EventEnvelope] {
+        let fullySequenced = events.allSatisfy { jsonInt($0.payload["event_sequence"]) != nil }
         let sorted = events.map { $0.canonicalized() }.sorted { lhs, rhs in
+            if fullySequenced,
+               let left = jsonInt(lhs.payload["event_sequence"]),
+               let right = jsonInt(rhs.payload["event_sequence"]),
+               left != right
+            {
+                return left < right
+            }
             if lhs.createdAt != rhs.createdAt {
                 return lhs.createdAt < rhs.createdAt
             }
@@ -486,6 +543,28 @@ public final class RunSessionStore: ObservableObject {
     private func handleIncomingEvent(_ event: EventEnvelope) async -> EventHandlingOutcome {
         let canonicalEvent = event.canonicalized()
         let eventType = canonicalEvent.eventType
+        var sequenceGap = false
+        if let simulationID = jsonInt(event.payload["simulation_id"]),
+           simulationID != state.session?.simulationID
+        {
+            return EventHandlingOutcome(
+                shouldRehydrateSeededSession: false,
+                shouldRefreshRuntimeState: false,
+                canonicalEventType: eventType,
+            )
+        }
+        if let sequence = jsonInt(canonicalEvent.payload["event_sequence"]) {
+            guard sequence > max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence) else {
+                return EventHandlingOutcome(
+                    shouldRehydrateSeededSession: false,
+                    shouldRefreshRuntimeState: false,
+                    canonicalEventType: eventType,
+                )
+            }
+            let previous = max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence)
+            sequenceGap = previous >= 0 && sequence > previous + 1
+            lastAppliedLiveEventSequence = sequence
+        }
         logger.info(
             "Received runtime event \(eventType, privacy: .public) id=\(event.eventID, privacy: .public)",
         )
@@ -501,7 +580,7 @@ public final class RunSessionStore: ObservableObject {
 
         return EventHandlingOutcome(
             shouldRehydrateSeededSession: shouldRehydrateSeededSession,
-            shouldRefreshRuntimeState: shouldRefreshRuntimeProjection(for: canonicalEvent),
+            shouldRefreshRuntimeState: sequenceGap || shouldRefreshRuntimeProjection(for: canonicalEvent),
             canonicalEventType: eventType,
         )
     }
@@ -511,8 +590,15 @@ public final class RunSessionStore: ObservableObject {
             return
         }
 
+        let generation = bindingGeneration
+        let lifecycleRevision = lastAppliedLifecycleRevision
+        let startingStatus = state.session?.status
         do {
             let latest = try await service.getSession(simulationID: simulationID)
+            guard !Task.isCancelled, generation == bindingGeneration,
+                  lifecycleRevision == lastAppliedLifecycleRevision,
+                  startingStatus == state.session?.status,
+                  latest.simulationID == state.session?.simulationID else { return }
             let previousStatus = state.session?.status
             state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(latest))
             state = RunSessionReducer.reduce(state: state, action: .clearConflict)
@@ -520,6 +606,7 @@ public final class RunSessionStore: ObservableObject {
             seedHydrationFromSessionRuntimeState(latest)
             syncStopwatchState(previousStatus: previousStatus)
         } catch {
+            guard !Task.isCancelled, generation == bindingGeneration else { return }
             presentConflict(error)
         }
     }
@@ -607,13 +694,19 @@ public final class RunSessionStore: ObservableObject {
         details: [String: JSONValue]? = nil,
         tourniquetApplicationMode: TourniquetApplicationMode? = nil,
         supersedesEventID: Int? = nil,
+        voiceProvenance: VoiceActionProvenance? = nil,
     ) {
-        guard canInterventionCommands else { return }
+        guard canInterventionCommands, let simulationID = state.session?.simulationID else { return }
+        if let voiceProvenance {
+            guard submittedVoiceCaptureIDs.insert(voiceProvenance.captureID).inserted else { return }
+        }
 
         Task {
-            guard let simulationID = state.session?.simulationID else { return }
+            guard state.session?.simulationID == simulationID else { return }
+            let clientEventID = voiceProvenance?.captureID ?? UUID().uuidString.lowercased()
             let request = InterventionEventRequest(
                 interventionType: interventionType,
+                clientEventID: clientEventID,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
                 status: status,
@@ -622,6 +715,7 @@ public final class RunSessionStore: ObservableObject {
                 details: details,
                 tourniquetApplicationMode: tourniquetApplicationMode,
                 supersedesEventID: supersedesEventID,
+                voiceProvenance: voiceProvenance,
             )
             let body = try? JSONEncoder().encode(request)
             let endpoint = TrainerLabAPI.interventions(
@@ -657,6 +751,7 @@ public final class RunSessionStore: ObservableObject {
             )
             addPendingIntervention(
                 idempotencyKey: envelope.idempotencyKey,
+                clientEventID: clientEventID,
                 interventionType: interventionType,
                 siteCode: siteCode,
                 targetProblemID: targetProblemID,
@@ -712,7 +807,15 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func addVitalEvent(type: String, min: Int, max: Int) {
+    public func addVitalEvent(
+        type: String,
+        min: Int,
+        max: Int,
+        hold: Bool = true,
+        minDiastolic: Int? = nil,
+        maxDiastolic: Int? = nil,
+        supersedesEventID: Int? = nil,
+    ) {
         guard canMutateCommands else { return }
 
         Task {
@@ -721,17 +824,18 @@ public final class RunSessionStore: ObservableObject {
                 key: type,
                 minValue: min,
                 maxValue: max,
-                minDiastolic: nil,
-                maxDiastolic: nil,
+                minDiastolic: minDiastolic,
+                maxDiastolic: maxDiastolic,
             )
             upsertVital(
                 VitalStatusSnapshot(
                     key: type,
+                    domainEventID: supersedesEventID,
                     minValue: min,
                     maxValue: max,
-                    minValueDiastolic: nil,
-                    maxValueDiastolic: nil,
-                    lockValue: false,
+                    minValueDiastolic: minDiastolic,
+                    maxValueDiastolic: maxDiastolic,
+                    lockValue: hold,
                     currentValue: seeded.primary,
                     currentDiastolicValue: seeded.secondary,
                 ),
@@ -741,10 +845,10 @@ public final class RunSessionStore: ObservableObject {
                 vitalType: type,
                 minValue: min,
                 maxValue: max,
-                lockValue: false,
-                minValueDiastolic: nil,
-                maxValueDiastolic: nil,
-                supersedesEventID: nil,
+                lockValue: hold,
+                minValueDiastolic: minDiastolic,
+                maxValueDiastolic: maxDiastolic,
+                supersedesEventID: supersedesEventID,
             )
             let body = try? JSONEncoder().encode(request)
             let endpoint = TrainerLabAPI.vitals(simulationID: simulationID, body: body ?? Data())
@@ -752,7 +856,21 @@ public final class RunSessionStore: ObservableObject {
             await executeQueuedAckCommand(envelope: envelope) {
                 try await self.service.injectVitalEvent(simulationID: simulationID, request: request, idempotencyKey: envelope.idempotencyKey)
             }
+            _ = await loadRuntimeState(reason: "vital override")
         }
+    }
+
+    public func releaseVitalHold(_ vital: VitalStatusSnapshot) {
+        guard let eventID = vital.domainEventID else { return }
+        addVitalEvent(
+            type: vital.key,
+            min: vital.minValue,
+            max: vital.maxValue,
+            hold: false,
+            minDiastolic: vital.minValueDiastolic,
+            maxDiastolic: vital.maxValueDiastolic,
+            supersedesEventID: eventID,
+        )
     }
 
     public func createDebriefAnnotation(
@@ -795,13 +913,23 @@ public final class RunSessionStore: ObservableObject {
 
         Task {
             guard let simulationID = state.session?.simulationID else { return }
-            let key = makeDirectIdempotencyKey(scope: "steer")
             let request = SteerPromptRequest(prompt: String(trimmed.prefix(2000)))
-            _ = try? await service.steerPrompt(
-                simulationID: simulationID,
-                request: request,
-                idempotencyKey: key,
-            )
+            do {
+                let endpoint = try TrainerLabAPI.steerPrompt(
+                    simulationID: simulationID,
+                    body: JSONEncoder().encode(request),
+                )
+                let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
+                await executeQueuedAckCommand(envelope: envelope) {
+                    try await self.service.steerPrompt(
+                        simulationID: simulationID,
+                        request: request,
+                        idempotencyKey: envelope.idempotencyKey,
+                    )
+                }
+            } catch {
+                presentConflict(error)
+            }
         }
     }
 
@@ -819,6 +947,29 @@ public final class RunSessionStore: ObservableObject {
             }
             await loadRuntimeState()
             await loadControlPlaneDebug()
+        }
+    }
+
+    public func resolveScenarioDecision(_ decision: ScenarioDecisionDTO, approved: Bool) {
+        guard canMutateCommands, !pendingDecisionIDs.contains(decision.id),
+              let simulationID = state.session?.simulationID else { return }
+        pendingDecisionIDs.insert(decision.id)
+        Task {
+            defer { pendingDecisionIDs.remove(decision.id) }
+            do {
+                let body = try JSONEncoder().encode(ScenarioDecisionRequest(approved: approved))
+                let endpoint = TrainerLabAPI.scenarioDecision(simulationID: simulationID, decisionID: decision.id, body: body)
+                let envelope = makeCommandEnvelope(endpoint: endpoint, simulationID: simulationID)
+                await executeQueuedAckCommand(envelope: envelope) {
+                    try await self.service.replayPending(
+                        endpoint: endpoint.path, method: endpoint.method.rawValue,
+                        body: body, idempotencyKey: envelope.idempotencyKey,
+                    )
+                }
+                await loadRuntimeState()
+            } catch {
+                presentConflict(error)
+            }
         }
     }
 
@@ -848,7 +999,7 @@ public final class RunSessionStore: ObservableObject {
         }
     }
 
-    public func replayPendingCommands() async {
+    public func replayPendingCommands(createdBefore: Date? = nil) async {
         do {
             guard let simulationID = state.session?.simulationID else { return }
             let batch = try await commandQueue.nextRetryBatch(
@@ -858,6 +1009,12 @@ public final class RunSessionStore: ObservableObject {
                 accountUUID: accountUUID,
             )
             for envelope in batch {
+                if let createdBefore, envelope.createdAt > createdBefore {
+                    continue
+                }
+                if inFlightCommandKeys.contains(envelope.idempotencyKey) {
+                    continue
+                }
                 if let envelopeSimulationID = envelope.resolvedSimulationID, envelopeSimulationID != simulationID {
                     continue
                 }
@@ -899,7 +1056,9 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private var canRunCommands: Bool {
-        canMutateCommands
+        // A paused engine must still accept Resume and Stop. The API validates
+        // lifecycle transitions and guard policy independently of event delivery.
+        state.commandChannelAvailable && state.session?.status != .seeding
     }
 
     private var canInterventionCommands: Bool {
@@ -942,6 +1101,8 @@ public final class RunSessionStore: ObservableObject {
         envelope: PendingCommandEnvelope,
         run: @escaping @Sendable () async throws -> TrainerSessionDTO,
     ) async {
+        inFlightCommandKeys.insert(envelope.idempotencyKey)
+        defer { inFlightCommandKeys.remove(envelope.idempotencyKey) }
         do {
             try await commandQueue.enqueue(envelope)
             await refreshPendingCount()
@@ -961,6 +1122,8 @@ public final class RunSessionStore: ObservableObject {
         envelope: PendingCommandEnvelope,
         run: @escaping @Sendable () async throws -> some Sendable,
     ) async {
+        inFlightCommandKeys.insert(envelope.idempotencyKey)
+        defer { inFlightCommandKeys.remove(envelope.idempotencyKey) }
         do {
             try await commandQueue.enqueue(envelope)
             await refreshPendingCount()
@@ -975,18 +1138,26 @@ public final class RunSessionStore: ObservableObject {
     private func handleCommandError(_ error: Error, envelope: PendingCommandEnvelope) async {
         discardPendingIntervention(idempotencyKey: envelope.idempotencyKey)
         if let apiError = error as? APIClientError, case let .http(statusCode, detail, _) = apiError, statusCode == 409 {
-            state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
-            conflictError = AppErrorPresenter.present(apiError)
             await refreshSession()
+            _ = await loadRuntimeState(reason: "command conflict")
+            state = RunSessionReducer.reduce(state: state, action: .conflict(conflictMessage(for: apiError, fallbackDetail: detail)))
         }
+        presentConflict(error)
 
         let nextRetryAt = Date().addingTimeInterval(nextBackoffSeconds(for: envelope.retryCount))
         do {
-            try await commandQueue.markFailed(
-                idempotencyKey: envelope.idempotencyKey,
-                error: messageText(for: error),
-                nextRetryAt: nextRetryAt,
-            )
+            if isTerminalReplayFailure(error) {
+                try await commandQueue.markTerminalFailure(
+                    idempotencyKey: envelope.idempotencyKey,
+                    error: messageText(for: error),
+                )
+            } else {
+                try await commandQueue.markFailed(
+                    idempotencyKey: envelope.idempotencyKey,
+                    error: messageText(for: error),
+                    nextRetryAt: nextRetryAt,
+                )
+            }
             await refreshPendingCount()
         } catch {
             presentConflict(error)
@@ -1061,22 +1232,19 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func syncTransportPresentation(for transport: RealtimeTransportState) {
+        // HTTP commands and the durable queue are independent of SSE health.
+        state.commandChannelAvailable = true
         switch transport {
         case .connectedSSE:
-            state.commandChannelAvailable = true
-            state.transportBanner = TransportBanner(style: .healthy, message: "SSE Healthy", visible: true)
+            state.transportBanner = TransportBanner(style: .healthy, message: "Live updates", visible: true)
         case .polling:
-            state.commandChannelAvailable = false
-            state.transportBanner = TransportBanner(style: .warning, message: "Polling Fallback", visible: true)
+            state.transportBanner = TransportBanner(style: .warning, message: "Updates may be delayed", visible: true)
         case .reconnecting:
-            state.commandChannelAvailable = false
             state.transportBanner = TransportBanner(style: .warning, message: "Reconnecting", visible: true)
         case .connecting:
-            state.commandChannelAvailable = false
             state.transportBanner = TransportBanner(style: .warning, message: "Reconnecting", visible: true)
         case .disconnected:
-            state.commandChannelAvailable = false
-            state.transportBanner = TransportBanner(style: .error, message: "Disconnected", visible: true)
+            state.transportBanner = TransportBanner(style: .error, message: "Live updates disconnected", visible: true)
         }
     }
 
@@ -1738,6 +1906,8 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func updateVitalMeasurements() {
+        // Phase V: physiology is advanced by the server, not by local random walks.
+        guard dashboardPresentation?.progression == nil else { return }
         guard state.session?.status == .running else {
             return
         }
@@ -1788,6 +1958,14 @@ public final class RunSessionStore: ObservableObject {
         currentPrimary: Int? = nil,
         currentSecondary: Int? = nil,
     ) -> (primary: Int, secondary: Int?) {
+        if dashboardPresentation?.progression != nil {
+            let secondary: Int? = if key == "blood_pressure", let minDiastolic, let maxDiastolic {
+                minDiastolic + (maxDiastolic - minDiastolic) / 2
+            } else {
+                nil
+            }
+            return (minValue + (maxValue - minValue) / 2, secondary)
+        }
         let primary = constrainedRandom(
             low: min(minValue, maxValue),
             high: max(minValue, maxValue),
@@ -1875,7 +2053,8 @@ public final class RunSessionStore: ObservableObject {
             if !state.stopwatchIsRunning {
                 state.stopwatchIsRunning = true
                 state.stopwatchRunningSince = Date()
-                if state.stopwatchElapsedSeconds == 0,
+                if runtimeState?.runtimeSnapshot.clockObservedAt == nil,
+                   state.stopwatchElapsedSeconds == 0,
                    let startedAt = state.session?.runStartedAt
                 {
                     state.stopwatchElapsedSeconds = max(0, Int(Date().timeIntervalSince(startedAt)))
@@ -1894,7 +2073,8 @@ public final class RunSessionStore: ObservableObject {
             state.stopwatchElapsedSeconds = 0
         }
 
-        if status == .completed,
+        if runtimeState?.runtimeSnapshot.clockObservedAt == nil,
+           status == .completed,
            let startedAt = state.session?.runStartedAt,
            let endedAt = state.session?.runCompletedAt
         {
@@ -2049,6 +2229,7 @@ public final class RunSessionStore: ObservableObject {
         let targetProblemID = jsonInt(event.payload["target_problem_id"])
 
         reconcilePendingIntervention(
+            clientEventID: jsonString(event.payload["client_event_id"]),
             interventionType: interventionType,
             siteCode: siteCode,
             targetProblemID: targetProblemID,
@@ -2378,6 +2559,7 @@ public final class RunSessionStore: ObservableObject {
 
         return VitalStatusSnapshot(
             key: vitalType,
+            domainEventID: vitalState.domainEventID,
             minValue: minValue,
             maxValue: maxValue,
             minValueDiastolic: vitalState.minValueDiastolic,
@@ -2394,13 +2576,18 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func applyRuntimeState(_ runtimeState: TrainerRestViewModelDTO, source: String) {
+        guard runtimeState.simulationID == state.session?.simulationID else { return }
         let newRevision = runtimeState.runtimeSnapshot.stateRevision
-        let currentRevision = appliedSnapshotRevision
+        let currentRevision = max(appliedSnapshotRevision, lastAppliedLifecycleRevision ?? -1)
         guard newRevision >= currentRevision else {
             logger.info(
                 "Ignoring stale snapshot revision=\(newRevision, privacy: .public) for simulation \(runtimeState.simulationID, privacy: .public) (applied=\(currentRevision, privacy: .public), source=\(source, privacy: .public))",
             )
             return
+        }
+        if let sequence = runtimeState.runtimeSnapshot.latestEventSequence {
+            guard sequence >= max(appliedSnapshotEventSequence, lastAppliedLiveEventSequence) else { return }
+            appliedSnapshotEventSequence = sequence
         }
         appliedSnapshotRevision = newRevision
 
@@ -2410,6 +2597,15 @@ public final class RunSessionStore: ObservableObject {
         )
 
         self.runtimeState = runtimeState
+        dashboardPresentation = runtimeState.presentation
+        if let observedAt = runtimeState.runtimeSnapshot.clockObservedAt {
+            let elapsed = runtimeState.runtimeSnapshot.activeElapsedSeconds
+                + (runtimeState.runtimeSnapshot.status == "running"
+                    ? max(0, Int(Date().timeIntervalSince(observedAt))) : 0)
+            state.stopwatchElapsedSeconds = max(0, elapsed)
+            state.stopwatchIsRunning = runtimeState.runtimeSnapshot.status == "running"
+            state.stopwatchRunningSince = state.stopwatchIsRunning ? Date() : nil
+        }
         if runtimeState.scenarioSnapshot.presence.scenarioBrief {
             scenarioBrief = runtimeState.scenarioSnapshot.scenarioBrief
         }
@@ -2454,6 +2650,14 @@ public final class RunSessionStore: ObservableObject {
             }
         }
         if snapshot.presence.interventions {
+            for intervention in snapshot.interventions {
+                reconcilePendingIntervention(
+                    clientEventID: intervention.clientEventID,
+                    interventionType: intervention.kind ?? "",
+                    siteCode: intervention.siteCode ?? "",
+                    targetProblemID: intervention.targetProblemID,
+                )
+            }
             snapshotInterventionAnnotations = snapshot.interventions.compactMap(makeInterventionAnnotation)
         }
         if snapshot.presence.pulses {
@@ -2472,6 +2676,7 @@ public final class RunSessionStore: ObservableObject {
 
     private func addPendingIntervention(
         idempotencyKey: String,
+        clientEventID: String,
         interventionType: String,
         siteCode: String,
         targetProblemID: Int?,
@@ -2479,6 +2684,7 @@ public final class RunSessionStore: ObservableObject {
         runtimeOverlayState.pendingInterventions.append(
             PendingInterventionState(
                 idempotencyKey: idempotencyKey,
+                clientEventID: clientEventID,
                 interventionType: interventionType,
                 siteCode: siteCode.uppercased(),
                 targetProblemID: targetProblemID,
@@ -2496,6 +2702,7 @@ public final class RunSessionStore: ObservableObject {
     }
 
     private func reconcilePendingIntervention(
+        clientEventID: String?,
         interventionType: String,
         siteCode: String,
         targetProblemID: Int?,
@@ -2505,7 +2712,10 @@ public final class RunSessionStore: ObservableObject {
             let matchIndex = runtimeOverlayState.pendingInterventions
             .enumerated()
             .filter({
-                $0.element.interventionType == interventionType
+                if let clientEventID, !clientEventID.isEmpty {
+                    return $0.element.clientEventID == clientEventID
+                }
+                return $0.element.interventionType == interventionType
                     && $0.element.siteCode == normalizedSiteCode
                     && $0.element.targetProblemID == targetProblemID
             })
@@ -2825,11 +3035,14 @@ public final class RunSessionStore: ObservableObject {
 
     private func isTerminalReplayFailure(_ error: Error) -> Bool {
         guard let apiError = error as? APIClientError,
-              case let .http(statusCode, _, _) = apiError
+              case let .http(statusCode, detail, _) = apiError
         else {
             return false
         }
-        return statusCode == 400 || statusCode == 404 || statusCode == 422
+        if statusCode == 409 {
+            return !detail.localizedCaseInsensitiveContains("already in progress")
+        }
+        return statusCode == 400 || statusCode == 403 || statusCode == 404 || statusCode == 422
     }
 
     private func shouldRefreshRuntimeProjection(for event: EventEnvelope) -> Bool {

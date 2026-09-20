@@ -13,12 +13,16 @@ public struct RunConsoleView: View {
     private let onOpenSummary: () -> Void
     private let onOpenPresets: () -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var foregroundRefreshID = 0
 
     // Sheet visibility
     @State private var showInterventionSheet = false
+    @State private var showVoiceActionSheet = false
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
+    @State private var showRunDetails = false
     @State private var showStopConfirmation = false
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
@@ -58,6 +62,11 @@ public struct RunConsoleView: View {
     @State private var vitalType = "heart_rate"
     @State private var vitalMin = "80"
     @State private var vitalMax = "100"
+    @State private var vitalDiastolicMin = "70"
+    @State private var vitalDiastolicMax = "80"
+    @State private var holdVitalOverride = true
+    @State private var vitalPendingRelease: VitalStatusSnapshot?
+    @State private var showVitalReleaseConfirmation = false
     @State private var eventMode = "injury"
 
     @State private var selectedAVPU: AVPUState = .alert
@@ -126,9 +135,26 @@ public struct RunConsoleView: View {
             }
         }
         .foregroundStyle(.white)
+        .confirmationDialog("Release vital hold?", isPresented: $showVitalReleaseConfirmation) {
+            Button("Resume AI progression") {
+                if let vitalPendingRelease {
+                    store.releaseVitalHold(vitalPendingRelease)
+                }
+                vitalPendingRelease = nil
+            }
+            Button("Keep hold", role: .cancel) {
+                vitalPendingRelease = nil
+            }
+        } message: {
+            Text("TrainerLab may change this vital on the next scenario update.")
+        }
         .sheet(isPresented: $showInterventionSheet, onDismiss: resetInterventionSheet) {
             interventionSheet
                 .presentationDetents([.fraction(0.7)])
+        }
+        .sheet(isPresented: $showVoiceActionSheet) {
+            VoiceActionSheet(store: store)
+                .presentationDetents([.large])
         }
         .sheet(item: $quickActionInjury, onDismiss: resetInterventionSheet) { injury in
             quickActionSheet(for: injury)
@@ -163,6 +189,27 @@ public struct RunConsoleView: View {
             }
             .presentationDetents([.fraction(0.55)])
         }
+        .sheet(isPresented: $showRunDetails) {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        combinedInfoPanel
+                        centerTimelinePane(layoutMode: .compact)
+                        bottomLogPane(layoutMode: .compact)
+                    }
+                    .padding(12)
+                }
+                .background(TrainerLabTheme.tacticalBackground.ignoresSafeArea())
+                .foregroundStyle(.white)
+                .navigationTitle("Run Details")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showRunDetails = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .sheet(item: $scenarioBriefEditDraft) { draft in
             ScenarioBriefEditSheet(brief: draft.brief) { request in
                 store.updateScenarioBrief(request)
@@ -175,6 +222,16 @@ public struct RunConsoleView: View {
         }
         .onDisappear {
             store.stopConsole()
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            if newValue == .active {
+                foregroundRefreshID += 1
+            }
+        }
+        .task(id: foregroundRefreshID) {
+            if foregroundRefreshID > 0 {
+                await store.refreshAfterForeground()
+            }
         }
         .onChange(of: store.state.terminalCard) { _, newValue in
             if newValue != nil {
@@ -226,11 +283,12 @@ public struct RunConsoleView: View {
     private var regularConsoleLayout: some View {
         VStack(spacing: 10) {
             regularCommandBar
-            topVitalsTable(layoutMode: .regular, compactMetrics: .standard)
             if store.state.conflictBanner != nil {
                 conflictBanner
             }
             guardWarningBanner
+            patientAtGlanceCard(layoutMode: .regular)
+            topVitalsTable(layoutMode: .regular, compactMetrics: .standard)
 
             HStack(alignment: .top, spacing: 10) {
                 leftPatientPane(layoutMode: .regular, compactMetrics: .standard)
@@ -267,15 +325,14 @@ public struct RunConsoleView: View {
                     compactMetrics: compactMetrics,
                     controlPresentation: controlPresentation,
                 )
-                topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 if store.state.conflictBanner != nil {
                     conflictBanner
                 }
                 guardWarningBanner
+                patientAtGlanceCard(layoutMode: .compact)
+                topVitalsTable(layoutMode: .compact, compactMetrics: compactMetrics)
                 leftPatientPane(layoutMode: .compact, compactMetrics: compactMetrics)
-                combinedInfoPanel
-                centerTimelinePane(layoutMode: .compact)
-                bottomLogPane(layoutMode: .compact)
+                secondaryDetailsButton
             }
             .padding(10)
         }
@@ -288,6 +345,228 @@ public struct RunConsoleView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(.regularMaterial)
+        }
+    }
+
+    // MARK: - Patient at a glance
+
+    private func patientAtGlanceCard(layoutMode: RunConsoleLayoutMode) -> some View {
+        Group {
+            if layoutMode == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    patientNowSection
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Divider()
+                    trainerCueSection
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    patientNowSection
+                    Divider()
+                    trainerCueSection
+                }
+            }
+        }
+        .padding(layoutMode == .regular ? 14 : 12)
+        .trainerGlassSurface(
+            role: .tacticalPanel,
+            cornerRadius: 14,
+            tint: TrainerLabTheme.accentBlue.opacity(0.08),
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Current patient and scenario guidance")
+    }
+
+    private var patientNowSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Patient Now", systemImage: "waveform.path.ecg")
+                .font(.headline)
+
+            let summary = store.dashboardPresentation?.patientSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+            Text((summary?.isEmpty == false ? summary : nil) ?? dashboardPatientSummaryFallback)
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let presentation = store.dashboardPresentation, !presentation.attentionItems.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(presentation.attentionItems.prefix(3)) { item in
+                            dashboardAttentionBadge(item)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(presentation.attentionItems.prefix(3)) { item in
+                            dashboardAttentionBadge(item)
+                        }
+                    }
+                }
+            } else {
+                let rows = patientAlertRows(store.patientStatus)
+                if !rows.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) {
+                            ForEach(rows.prefix(3), id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(rows.prefix(3), id: \.label) { row in
+                                patientStatusBadge(label: row.label, color: row.color)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var trainerCueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("TrainerLab Cue", systemImage: "sparkles")
+                    .font(.headline)
+                if store.runtimeState?.runtimeSnapshot.runtimeProcessing == true {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Updating scenario")
+                }
+            }
+
+            Text(dashboardPrimaryCue)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let progression = store.dashboardPresentation?.progression {
+                if progression.status == "active", sessionStatus == .running,
+                   let endsAt = progression.endsAt, store.state.stopwatchElapsedSeconds < endsAt,
+                   let portrayal = progression.portrayal
+                {
+                    if !portrayal.behavior.isEmpty {
+                        Label(portrayal.behavior, systemImage: "figure.stand")
+                            .font(.subheadline)
+                    }
+                    if !portrayal.speech.isEmpty {
+                        Label(portrayal.speech, systemImage: "quote.bubble")
+                            .font(.subheadline.italic())
+                    }
+                } else if sessionStatus == .running {
+                    Label("Holding current physiology while the scenario plan updates", systemImage: "pause.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ForEach(store.dashboardPresentation?.decisions ?? []) { decision in
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Proposed: \(decision.title)", systemImage: "arrow.triangle.branch")
+                        .font(.subheadline.bold())
+                    Text(decision.description)
+                        .font(.caption)
+                    Text("Not yet part of the scenario")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Allow branch") { store.resolveScenarioDecision(decision, approved: true) }
+                        Button("Keep scenario") { store.resolveScenarioDecision(decision, approved: false) }
+                        if store.pendingDecisionIDs.contains(decision.id) {
+                            ProgressView()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .disabled(!canMutate || store.pendingDecisionIDs.contains(decision.id))
+                }
+                .padding(10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            if let monitoring = store.dashboardPresentation?.monitoringFocus.first, !monitoring.isEmpty {
+                Label("Watch: \(monitoring)", systemImage: "eye")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let upcoming = store.dashboardPresentation?.upcomingChanges.first, !upcoming.isEmpty {
+                Label("Next: \(upcoming)", systemImage: "arrow.forward")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var secondaryDetailsButton: some View {
+        Button {
+            showRunDetails = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "list.bullet.rectangle")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Timeline & Details")
+                        .font(.subheadline.bold())
+                    Text("Scenario brief, patient detail, annotations, and \(store.state.clinicalTimelineEntries.count) timeline events")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .trainerGlassSurface(
+                role: .tacticalPanel,
+                cornerRadius: 12,
+                tint: TrainerLabTheme.accentBlue.opacity(0.06),
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+    }
+
+    private var dashboardPatientSummaryFallback: String {
+        let narrative = store.patientStatus.narrative.trimmingCharacters(in: .whitespacesAndNewlines)
+        return narrative.isEmpty ? "Patient state is being established." : narrative
+    }
+
+    private var dashboardPrimaryCue: String {
+        if let cue = store.dashboardPresentation?.primaryCue.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
+            return cue
+        }
+        if let cue = store.aiInstructorIntent?.summary.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
+            return cue
+        }
+        switch sessionStatus {
+        case .seeding:
+            return "Preparing the patient and scenario."
+        case .seeded:
+            return "Review the brief, then start when the team is ready."
+        case .running:
+            return "Observe the learner and record only actions that occur."
+        case .paused:
+            return "Scenario progression is paused."
+        case .completed:
+            return "Scenario complete. Review the debrief."
+        case .failed:
+            return "Scenario preparation failed."
+        case .none:
+            return "Waiting for an active scenario."
+        }
+    }
+
+    private func dashboardAttentionBadge(_ item: DashboardAttentionItemDTO) -> some View {
+        patientStatusBadge(label: item.title, color: dashboardAttentionColor(item.severity))
+    }
+
+    private func dashboardAttentionColor(_ severity: String) -> Color {
+        switch severity {
+        case "critical":
+            TrainerLabTheme.danger
+        case "warning":
+            TrainerLabTheme.warning
+        default:
+            TrainerLabTheme.accentBlue
         }
     }
 
@@ -379,6 +658,7 @@ public struct RunConsoleView: View {
             }
 
             sessionPreparationBanner
+            voiceActionButton
 
             HStack(alignment: .top, spacing: 12) {
                 regularControlSection(
@@ -539,6 +819,7 @@ public struct RunConsoleView: View {
 
     private func compactPrimaryActionBar(compactMetrics: RunConsoleCompactMetrics) -> some View {
         HStack(spacing: compactMetrics.gridSpacing) {
+            voiceActionButton
             ForEach(clinicalControls) { control in
                 controlButton(
                     control,
@@ -555,6 +836,19 @@ public struct RunConsoleView: View {
             cornerRadius: 14,
             tint: TrainerLabTheme.accentBlue.opacity(0.10),
         )
+    }
+
+    private var voiceActionButton: some View {
+        Button {
+            showVoiceActionSheet = true
+        } label: {
+            Label("Dictate", systemImage: "mic.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .disabled(!canIntervene)
+        .accessibilityLabel("Dictate learner action")
+        .accessibilityIdentifier("trainer-dictate-action")
     }
 
     // MARK: - Conflict banner
@@ -2149,7 +2443,14 @@ public struct RunConsoleView: View {
                         default:
                             let min = Int(vitalMin) ?? 80
                             let max = Int(vitalMax) ?? 100
-                            store.addVitalEvent(type: vitalType, min: min, max: max)
+                            store.addVitalEvent(
+                                type: vitalType,
+                                min: min,
+                                max: max,
+                                hold: holdVitalOverride,
+                                minDiastolic: vitalType == "blood_pressure" ? Int(vitalDiastolicMin) : nil,
+                                maxDiastolic: vitalType == "blood_pressure" ? Int(vitalDiastolicMax) : nil,
+                            )
                         }
                         showEventSheet = false
                     }
@@ -2169,9 +2470,15 @@ public struct RunConsoleView: View {
 
     private var eventFormIsValid: Bool {
         switch eventMode {
-        case "injury": !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
-        case "illness": !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
-        default: !vitalType.isEmpty
+        case "injury": return !injuryCategory.isEmpty && !injuryLocation.isEmpty && !injuryKind.isEmpty
+        case "illness": return !illnessName.isEmpty && (illnessName != "other" || !illnessNameCustom.isEmpty)
+        default:
+            guard let min = Int(vitalMin), let max = Int(vitalMax), min <= max else { return false }
+            if vitalType == "blood_pressure" {
+                guard let diaMin = Int(vitalDiastolicMin), let diaMax = Int(vitalDiastolicMax) else { return false }
+                return diaMin <= diaMax
+            }
+            return !vitalType.isEmpty
         }
     }
 
@@ -2328,6 +2635,7 @@ public struct RunConsoleView: View {
 
     private var eventVitalsSection: some View {
         Section("Vital Override") {
+            Toggle("Hold value until released", isOn: $holdVitalOverride)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Vital")
                     .font(.caption.bold())
@@ -2357,6 +2665,12 @@ public struct RunConsoleView: View {
                         .foregroundStyle(.secondary)
                     TextField("Max", text: $vitalMax)
                         .numericKeyboard()
+                }
+            }
+            if vitalType == "blood_pressure" {
+                HStack {
+                    TextField("Diastolic min", text: $vitalDiastolicMin).numericKeyboard()
+                    TextField("Diastolic max", text: $vitalDiastolicMax).numericKeyboard()
                 }
             }
         }
@@ -2526,7 +2840,8 @@ public struct RunConsoleView: View {
     }
 
     private var canMutate: Bool {
-        store.state.commandChannelAvailable && !isSeedingSession
+        let backendAllowsMutation = store.dashboardPresentation?.capabilities.canOverridePatientState ?? !isSeedingSession
+        return store.state.commandChannelAvailable && backendAllowsMutation
     }
 
     private var canRunMutate: Bool {
@@ -2534,7 +2849,8 @@ public struct RunConsoleView: View {
     }
 
     private var canIntervene: Bool {
-        canMutate
+        let backendAllowsIntervention = store.dashboardPresentation?.capabilities.canRecordLearnerAction ?? !isSeedingSession
+        return store.state.commandChannelAvailable && backendAllowsIntervention
     }
 
     private var canRetryInitialSimulation: Bool {
@@ -2550,7 +2866,10 @@ public struct RunConsoleView: View {
     }
 
     private var lifecycleActions: [RunConsoleLifecycleAction] {
-        RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
+        if let actions = store.dashboardPresentation?.capabilities.lifecycleActions {
+            return actions.compactMap(RunConsoleLifecycleAction.init(rawValue:))
+        }
+        return RunConsoleLifecycleAction.visibleActions(for: sessionStatus)
     }
 
     private var sessionControls: [RunConsoleControlItem] {
@@ -2665,17 +2984,28 @@ public struct RunConsoleView: View {
     // MARK: - Button helpers
 
     private func controlEnabled(_ control: RunConsoleControlItem) -> Bool {
+        let capabilities = store.dashboardPresentation?.capabilities
         switch control {
         case .exit, .summary:
-            true
-        case .lifecycle:
-            canRunMutate
+            return true
+        case let .lifecycle(action):
+            return canRunMutate && (capabilities?.lifecycleActions.contains(action.rawValue) ?? true)
         case .quick(.intervention):
-            canIntervene
+            return canIntervene
+        case .quick(.event):
+            return canMutate && (capabilities?.canInjectEvent ?? true)
+        case .quick(.steer):
+            return canMutate && (capabilities?.canSteer ?? true)
+        case .quick(.annotation):
+            return store.state.commandChannelAvailable && (capabilities?.canAnnotate ?? !isSeedingSession)
         case .quick(.presets):
-            true
-        case .quick:
-            canMutate
+            return true
+        case .quick(.tickAI):
+            return canMutate && (capabilities?.canTickAI ?? true)
+        case .quick(.tickVitals):
+            return canMutate && (capabilities?.canTickVitals ?? true)
+        case .quick(.sendFeedback):
+            return true
         }
     }
 
@@ -2851,6 +3181,7 @@ public struct RunConsoleView: View {
             Text(vitalDisplayName(vital.key))
                 .font(compactMetrics.vitalLabelFont)
                 .foregroundStyle(.secondary)
+            vitalHoldControl(vital)
             VitalValueCell(vital: vital, valueText: displayValue(vital), font: compactMetrics.vitalValueFont, verticalPadding: compactMetrics.vitalValueVerticalPadding)
                 .frame(maxWidth: .infinity)
         }
@@ -2858,6 +3189,23 @@ public struct RunConsoleView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(TrainerLabTheme.tacticalSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func vitalHoldControl(_ vital: VitalStatusSnapshot) -> some View {
+        if vital.lockValue {
+            Button {
+                vitalPendingRelease = vital
+                showVitalReleaseConfirmation = true
+            } label: {
+                Label("Held · Release", systemImage: "lock.fill")
+                    .font(.caption2.bold())
+                    .foregroundStyle(TrainerLabTheme.warning)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canMutate || vital.domainEventID == nil)
+        }
     }
 
     private func regularVitalCell(
@@ -2869,6 +3217,7 @@ public struct RunConsoleView: View {
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            vitalHoldControl(vital)
 
             VitalValueCell(
                 vital: vital,

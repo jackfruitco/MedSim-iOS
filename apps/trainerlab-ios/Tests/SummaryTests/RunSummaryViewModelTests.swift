@@ -1,5 +1,6 @@
 import Foundation
 import Networking
+import Persistence
 import SharedModels
 @testable import Summary
 import XCTest
@@ -11,6 +12,12 @@ private enum SummaryMockError: Error {
 private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Sendable {
     var getRunSummaryCalls: [Int] = []
     var getRunSummaryResult: Result<RunSummary, Error> = .failure(SummaryMockError.unused)
+    var getRunSummaryResults: [Result<RunSummary, Error>] = []
+    var replayKeys: [String] = []
+    var replayBodies: [Data?] = []
+    var replayError: Error?
+    var firstSummaryContinuation: CheckedContinuation<RunSummary, Error>?
+    var suspendFirstSummary = false
 
     func accessMe() async throws -> LabAccess {
         throw SummaryMockError.unused
@@ -58,6 +65,12 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
 
     func getRunSummary(simulationID: Int) async throws -> RunSummary {
         getRunSummaryCalls.append(simulationID)
+        if suspendFirstSummary, getRunSummaryCalls.count == 1 {
+            return try await withCheckedThrowingContinuation { firstSummaryContinuation = $0 }
+        }
+        if !getRunSummaryResults.isEmpty {
+            return try getRunSummaryResults.removeFirst().get()
+        }
         return try getRunSummaryResult.get()
     }
 
@@ -173,8 +186,12 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
         throw SummaryMockError.unused
     }
 
-    func replayPending(endpoint _: String, method _: String, body _: Data?, idempotencyKey _: String) async throws {
-        throw SummaryMockError.unused
+    func replayPending(endpoint _: String, method _: String, body: Data?, idempotencyKey: String) async throws {
+        replayKeys.append(idempotencyKey)
+        replayBodies.append(body)
+        if let replayError {
+            throw replayError
+        }
     }
 
     func getGuardState(simulationID _: Int) async throws -> GuardStateDTO {
@@ -188,6 +205,105 @@ private final class MockSummaryService: TrainerLabServiceProtocol, @unchecked Se
 
 @MainActor
 final class RunSummaryViewModelTests: XCTestCase {
+    func testObservationStopsAtBoundAndPreservesAvailableSummary() async {
+        let service = MockSummaryService()
+        service.getRunSummaryResult = .success(makeSummary())
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        await viewModel.loadUntilReady(maxAttempts: 3, delayNanoseconds: 0)
+        XCTAssertEqual(service.getRunSummaryCalls.count, 3)
+        XCTAssertNotNil(viewModel.summary)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    func testObservationFollowsNotReadyThroughCompletedDebrief() async throws {
+        let debrief = try JSONDecoder().decode(RunDebriefOutput.self, from: Data(#"{"narrative_summary":"Completed", "strengths":[], "misses":[], "deterioration_timeline":[], "teaching_points":[], "overall_assessment":"Reviewed"}"#.utf8))
+        let service = MockSummaryService()
+        service.getRunSummaryResults = [
+            .failure(APIClientError.http(statusCode: 404, detail: "Not ready", correlationID: nil)),
+            .success(makeSummary()),
+            .success(makeSummary(debrief: debrief)),
+        ]
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        await viewModel.loadUntilReady(maxAttempts: 5, delayNanoseconds: 0)
+        XCTAssertEqual(service.getRunSummaryCalls.count, 3)
+        XCTAssertEqual(viewModel.summary?.aiDebrief?.narrativeSummary, "Completed")
+        XCTAssertNil(viewModel.notReadyMessage)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+    }
+
+    func testCancelledObservationDoesNotFetch() async {
+        let service = MockSummaryService()
+        let viewModel = RunSummaryViewModel(service: service, simulationID: 420)
+        let task = Task { await viewModel.loadUntilReady() }
+        task.cancel()
+        await task.value
+        XCTAssertTrue(service.getRunSummaryCalls.isEmpty)
+        XCTAssertFalse(viewModel.isWaitingForDebrief)
+    }
+
+    private func makeSummary(debrief: RunDebriefOutput? = nil, status: String? = nil) -> RunSummary {
+        RunSummary(
+            simulationID: 420, status: "completed", runStartedAt: nil, runCompletedAt: nil,
+            finalState: [:], eventTypeCounts: [:], timelineHighlights: [], commandLog: [],
+            aiRationaleNotes: [], aiDebrief: debrief,
+            evidenceRevision: "evidence-1", debriefStatus: status,
+        )
+    }
+
+    func testExplicitFailureStopsPolling() async {
+        let service = MockSummaryService()
+        service.getRunSummaryResult = .success(makeSummary(status: "failed"))
+        let model = RunSummaryViewModel(service: service, simulationID: 420)
+        await model.loadUntilReady(maxAttempts: 5, delayNanoseconds: 0)
+        XCTAssertEqual(service.getRunSummaryCalls.count, 1)
+        XCTAssertFalse(model.isWaitingForDebrief)
+    }
+
+    func testOldResponseCannotReplaceNewerSummary() async {
+        let service = MockSummaryService()
+        service.suspendFirstSummary = true
+        service.getRunSummaryResult = .success(makeSummary(status: "ready"))
+        let model = RunSummaryViewModel(service: service, simulationID: 420)
+        let oldLoad = Task { await model.load() }
+        while service.firstSummaryContinuation == nil {
+            await Task.yield()
+        }
+        await model.load()
+        service.firstSummaryContinuation?.resume(returning: makeSummary(status: "generating"))
+        await oldLoad.value
+        XCTAssertEqual(model.summary?.debriefStatus, "ready")
+    }
+
+    func testPersistedCorrectionReplaysWithOriginalKeyAndBody() async throws {
+        let service = MockSummaryService()
+        service.getRunSummaryResult = .success(makeSummary(status: "generating"))
+        let queue = InMemoryCommandQueueStore()
+        let body = try JSONEncoder().encode(DebriefReviewRequest(evidenceRevision: "evidence-1", correction: "Learner reassessed"))
+        let envelope = CommandEnvelopeBuilder.make(
+            endpoint: "/api/v1/trainerlab/simulations/420/summary/review/", method: "POST", body: body,
+            simulationID: 420, accountUUID: "account-1",
+        )
+        try await queue.enqueue(envelope)
+        let restored = RunSummaryViewModel(service: service, simulationID: 420, commandQueue: queue, accountUUID: "account-1")
+        await restored.loadUntilReady(maxAttempts: 1, delayNanoseconds: 0)
+        XCTAssertEqual(service.replayKeys, [envelope.idempotencyKey])
+        XCTAssertEqual(service.replayBodies.first, body)
+        XCTAssertFalse(restored.hasQueuedReview)
+    }
+
+    func testRejectedCorrectionIsPreservedForEditing() async {
+        let service = MockSummaryService()
+        service.getRunSummaryResult = .success(makeSummary(status: "ready"))
+        service.replayError = APIClientError.http(statusCode: 409, detail: "Evidence changed", correlationID: nil)
+        let model = RunSummaryViewModel(service: service, simulationID: 420)
+        await model.load()
+        await model.submitReview(correction: "Learner reassessed")
+        XCTAssertEqual(model.rejectedCorrection, "Learner reassessed")
+        XCTAssertNotNil(model.reviewError)
+        XCTAssertFalse(model.hasQueuedReview)
+    }
+
     func testLoadMaps404ToNotReadyState() async {
         let service = MockSummaryService()
         service.getRunSummaryResult = .failure(APIClientError.http(statusCode: 404, detail: "Not ready", correlationID: nil))

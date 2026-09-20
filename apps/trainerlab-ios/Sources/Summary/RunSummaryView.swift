@@ -14,6 +14,11 @@ public struct RunSummaryView: View {
     @State private var lastLayoutMode: RunSummaryLayoutMode?
     @State private var activeFeedbackContext: FeedbackLaunchContext?
     @State private var feedbackSuccessMessage: String?
+    @State private var correctionText = ""
+    @State private var correctionClaimID: String?
+    @State private var showCorrection = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var observationID = 0
 
     public init(
         viewModel: RunSummaryViewModel,
@@ -54,16 +59,41 @@ public struct RunSummaryView: View {
                     } else if let notReadyMessage = viewModel.notReadyMessage {
                         Text(notReadyMessage)
                             .foregroundStyle(.secondary)
-                    } else if let error = viewModel.presentableError {
+                    } else if let error = viewModel.presentableError, viewModel.summary == nil {
                         InlineAppErrorView(error: error)
                     } else if let summary = viewModel.summary {
+                        if let error = viewModel.presentableError {
+                            InlineAppErrorView(error: error)
+                        }
                         summaryMetrics(summary, layoutMode: layoutMode)
+                        reviewStatus(summary)
 
-                        if let debrief = summary.aiDebrief {
+                        if let debrief = summary.aiDebrief, summary.debriefStatus == nil || summary.debriefStatus == "ready" {
                             debriefSection(debrief, layoutMode: layoutMode)
+                        } else if summary.debriefStatus == nil {
+                            Text(viewModel.isWaitingForDebrief
+                                ? "Waiting for debrief…"
+                                : "Debrief is not available yet. Pull to refresh.")
+                                .foregroundStyle(.secondary)
                         }
 
-                        if layoutMode == .pad {
+                        if let evidence = summary.evidence {
+                            sectionCard(title: "Recorded evidence", expanded: true, layoutMode: layoutMode) {
+                                Text("Recorded actions and instructor observations are shown separately. An absent record does not prove an action was missed.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                if (summary.evidenceOmittedCount ?? 0) > 0 {
+                                    Text("Some repeated patient-state updates are omitted from this review.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                DisclosureGroup("Browse \(evidence.count) supporting records") {
+                                    LazyVStack(alignment: .leading, spacing: 12) {
+                                        ForEach(evidence) { item in
+                                            evidenceRow(item)
+                                        }
+                                    }
+                                }
+                            }
+                        } else if layoutMode == .pad {
                             HStack(alignment: .top, spacing: 16) {
                                 sectionCard(title: "Timeline", expanded: true, layoutMode: layoutMode) {
                                     timelineContent(summary)
@@ -90,6 +120,9 @@ public struct RunSummaryView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(TrainerLabTheme.setupBackground.ignoresSafeArea())
+            .refreshable {
+                await viewModel.loadUntilReady()
+            }
             .onAppear {
                 syncExpandedSections(for: layoutMode)
             }
@@ -97,8 +130,43 @@ public struct RunSummaryView: View {
                 syncExpandedSections(for: newValue)
             }
         }
-        .task {
-            await viewModel.load()
+        .task(id: observationID) {
+            await viewModel.loadUntilReady()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                observationID += 1
+            }
+        }
+        .sheet(isPresented: $showCorrection) {
+            NavigationStack {
+                Form {
+                    Section("Instructor observation or correction") {
+                        TextField("What should the debrief account for?", text: $correctionText, axis: .vertical)
+                            .lineLimit(4 ... 10)
+                        Text("This updates the debrief evidence. It does not record a performed treatment or change the completed patient state.")
+                            .font(.caption)
+                    }
+                }
+                .navigationTitle("Review Debrief")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showCorrection = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            let text = correctionText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let claimID = correctionClaimID
+                            showCorrection = false
+                            Task {
+                                await viewModel.submitReview(correction: text, claimID: claimID)
+                                observationID += 1
+                            }
+                        }
+                        .disabled(correctionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || correctionText.count > 1500)
+                    }
+                }
+            }
         }
         .sheet(item: $activeFeedbackContext) { context in
             if let feedbackService, let feedbackHeaderProvider {
@@ -279,6 +347,38 @@ public struct RunSummaryView: View {
             Text("AI Debrief")
                 .font(layoutMode == .pad ? .title2.bold() : .title3.bold())
 
+            if let claims = debrief.claims {
+                if claims.isEmpty {
+                    Text("There is not enough recorded evidence for an assessment. Add an instructor observation to continue the review.")
+                }
+                ForEach(claims) { claim in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(claim.category.replacingOccurrences(of: "_", with: " ").capitalized)
+                            .font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(claim.text)
+                        DisclosureGroup("Supporting records (\(claim.evidenceIDs.count))") {
+                            ForEach((viewModel.summary?.evidence ?? []).filter { claim.evidenceIDs.contains($0.id) }) { item in
+                                evidenceRow(item)
+                            }
+                        }
+                        Button("Correct this claim") {
+                            correctionText = ""
+                            correctionClaimID = claim.id
+                            showCorrection = true
+                        }
+                        .disabled(viewModel.isSubmittingReview || viewModel.hasQueuedReview)
+                    }
+                    .padding(14)
+                    .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+                }
+            } else {
+                legacyDebrief(debrief, layoutMode: layoutMode)
+            }
+        }
+    }
+
+    private func legacyDebrief(_ debrief: RunDebriefOutput, layoutMode: RunSummaryLayoutMode) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Summary")
                     .font(.caption.bold())
@@ -316,6 +416,76 @@ public struct RunSummaryView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .trainerCardStyle(background: TrainerLabTheme.setupSurface)
+        }
+    }
+
+    @ViewBuilder
+    private func reviewStatus(_ summary: RunSummary) -> some View {
+        if let status = summary.debriefStatus {
+            VStack(alignment: .leading, spacing: 8) {
+                switch status {
+                case "generating":
+                    Label(viewModel.isWaitingForDebrief
+                        ? "Preparing debrief from recorded evidence…"
+                        : "Still processing. Pull to refresh its status.", systemImage: "hourglass")
+                case "failed":
+                    Text("Debrief generation failed. Your scenario evidence is available below.")
+                case "stale":
+                    Text("The evidence changed. Generate an updated debrief.")
+                case "ready":
+                    Text("AI-generated review · verify against supporting records")
+                        .font(.caption).foregroundStyle(.secondary)
+                default:
+                    Text("Scenario evidence is ready for review.")
+                }
+                if viewModel.hasQueuedReview {
+                    Label("Review saved on this device; awaiting delivery", systemImage: "arrow.triangle.2.circlepath")
+                }
+                if let error = viewModel.reviewError {
+                    InlineAppErrorView(error: error)
+                }
+                if let rejected = viewModel.rejectedCorrection {
+                    Button("Edit undelivered correction") {
+                        correctionText = rejected
+                        correctionClaimID = nil
+                        showCorrection = true
+                    }
+                }
+                HStack {
+                    if status != "generating" {
+                        Button(status == "ready" ? "Regenerate" : "Generate debrief") {
+                            Task {
+                                await viewModel.submitReview()
+                                observationID += 1
+                            }
+                        }
+                        .trainerGlassButtonStyle()
+                    }
+                    Button("Add observation") {
+                        correctionText = ""
+                        correctionClaimID = nil
+                        showCorrection = true
+                    }
+                    .trainerGlassButtonStyle()
+                }
+                .disabled(viewModel.isSubmittingReview || viewModel.hasQueuedReview)
+            }
+        }
+    }
+
+    private func evidenceRow(_ evidence: DebriefEvidence) -> some View {
+        DisclosureGroup {
+            Text(evidence.detail).font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(evidence.kind.replacingOccurrences(of: "_", with: " ").capitalized)
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(humanizeEventType(evidence.eventType, payload: evidence.facts))
+                    .font(.subheadline)
+                Text(formatRunTime(evidence.createdAt, start: viewModel.summary?.runStartedAt, end: viewModel.summary?.runCompletedAt))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 

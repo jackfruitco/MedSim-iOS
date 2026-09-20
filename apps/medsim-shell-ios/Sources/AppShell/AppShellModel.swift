@@ -172,7 +172,10 @@ public final class AppShellModel: ObservableObject {
     }
 
     public func makeSummaryViewModel(simulationID: Int) -> RunSummaryViewModel {
-        RunSummaryViewModel(service: trainerService, simulationID: simulationID)
+        RunSummaryViewModel(
+            service: trainerService, simulationID: simulationID,
+            commandQueue: commandQueue, accountUUID: accountSessionStore.selectedAccountUUID,
+        )
     }
 
     public func makeChatLabHomeStore() -> ChatLabHomeStore {

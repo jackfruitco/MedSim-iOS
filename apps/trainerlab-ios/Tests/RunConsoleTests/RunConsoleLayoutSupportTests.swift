@@ -54,7 +54,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(metrics.compactVitalsColumnCount, 3)
         XCTAssertEqual(metrics.cardPadding, 8)
         XCTAssertEqual(metrics.gridSpacing, 6)
-        XCTAssertEqual(metrics.buttonMinHeight, 38)
+        XCTAssertEqual(metrics.buttonMinHeight, 44)
         XCTAssertEqual(metrics.vitalCellPadding, 6)
         XCTAssertEqual(metrics.vitalValueVerticalPadding, 3)
     }
@@ -68,7 +68,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(metrics.compactVitalsColumnCount, 3)
         XCTAssertEqual(metrics.cardPadding, 10)
         XCTAssertEqual(metrics.gridSpacing, 6)
-        XCTAssertEqual(metrics.buttonMinHeight, 40)
+        XCTAssertEqual(metrics.buttonMinHeight, 44)
         XCTAssertEqual(metrics.vitalCellPadding, 7)
         XCTAssertEqual(metrics.vitalValueVerticalPadding, 3)
     }
@@ -198,7 +198,7 @@ final class RunConsoleLayoutSupportTests: XCTestCase {
         XCTAssertEqual(sessionControls.map(\.group), [.session, .session, .session, .session])
         XCTAssertEqual(
             RunConsoleControlsCatalog.clinicalControls.map(\.title),
-            ["Intervention", "Event", "Steer"],
+            ["Learner Action", "Patient State", "Guide Scenario"],
         )
         XCTAssertEqual(
             RunConsoleControlsCatalog.toolControls.map(\.title),

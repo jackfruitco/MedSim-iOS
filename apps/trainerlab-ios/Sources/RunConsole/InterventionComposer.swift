@@ -463,6 +463,8 @@ struct InterventionComposerSheet: View {
     let interventions: [InterventionAnnotation]
     let prefilledTargetProblemID: Int?
     let canMutate: Bool
+    let confirmationTitle: String
+    let requiresTarget: Bool
     let onSubmit: (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void
 
     @State private var draft: InterventionComposerDraft
@@ -476,6 +478,8 @@ struct InterventionComposerSheet: View {
         prefilledTargetProblemID: Int?,
         initialPrefill: InterventionComposerPrefill? = nil,
         canMutate: Bool,
+        confirmationTitle: String = "Apply",
+        requiresTarget: Bool = false,
         onSubmit: @escaping (String, String, Int?, InterventionStatus, InterventionEffectiveness, String, TourniquetApplicationMode?) -> Void,
     ) {
         self.dictionary = dictionary
@@ -484,6 +488,8 @@ struct InterventionComposerSheet: View {
         self.interventions = interventions
         self.prefilledTargetProblemID = prefilledTargetProblemID
         self.canMutate = canMutate
+        self.confirmationTitle = confirmationTitle
+        self.requiresTarget = requiresTarget
         self.onSubmit = onSubmit
         var initialDraft = InterventionComposerDraft(
             prefilledTargetProblemID: prefilledTargetProblemID ?? initialPrefill?.targetProblemID,
@@ -520,6 +526,9 @@ struct InterventionComposerSheet: View {
 
     private var canSubmit: Bool {
         guard canMutate, let selectedType = draft.selectedType else { return false }
+        if requiresTarget, draft.selectedTargetProblemID == nil {
+            return false
+        }
         guard let group = dictionary.first(where: { $0.interventionType == selectedType }) else { return false }
         return draft.resolvedSiteCode(in: context.availableSites(for: group)) != nil
     }
@@ -578,7 +587,7 @@ struct InterventionComposerSheet: View {
                         .foregroundStyle(primaryText)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply", action: submitCurrentDraft)
+                    Button(confirmationTitle, action: submitCurrentDraft)
                         .foregroundStyle(canSubmit ? TrainerLabTheme.accentBlue : secondaryText)
                         .disabled(!canSubmit)
                 }
@@ -623,17 +632,23 @@ struct InterventionComposerSheet: View {
             .buttonStyle(.plain)
 
             if draft.activeSection == .target {
-                Button {
-                    draft.selectedTargetProblemID = nil
-                    draft.activeSection = .type
-                } label: {
-                    selectionRow(
-                        title: "General intervention",
-                        subtitle: "Not tied to a single problem",
-                        selected: draft.selectedTargetProblemID == nil,
-                    )
+                if requiresTarget {
+                    Text("Select the problem this performed action addresses.")
+                        .font(.caption)
+                        .foregroundStyle(secondaryText)
+                } else {
+                    Button {
+                        draft.selectedTargetProblemID = nil
+                        draft.activeSection = .type
+                    } label: {
+                        selectionRow(
+                            title: "General intervention",
+                            subtitle: "Not tied to a single problem",
+                            selected: draft.selectedTargetProblemID == nil,
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 ForEach(problems) { problem in
                     Button {
@@ -1032,10 +1047,14 @@ struct InterventionComposerSheet: View {
             return
         }
         draft.applyPrefill(prefill, dictionary: dictionary)
+        if requiresTarget {
+            draft.effectiveness = .unknown
+        }
         draft.activeSection = prefill.siteCode == nil ? .site : .review
     }
 
     private func submitCurrentDraft() {
+        guard canSubmit else { return }
         guard
             let selectedType = draft.selectedType,
             let selectedGroup,
