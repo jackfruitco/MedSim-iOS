@@ -36,6 +36,7 @@ public final class RunSessionStore: ObservableObject {
     @Published public private(set) var pendingDecisionIDs: Set<Int> = []
     @Published public private(set) var pendingInterventionProblemIDs: Set<Int> = []
     @Published public private(set) var pendingGeneralInterventionCount = 0
+    private var submittedVoiceCaptureIDs: Set<String> = []
     /// Set whenever a `/state/` fetch fails; cleared on the next successful fetch.
     /// Exposed for debug surfaces and diagnostic tooling.
     @Published public private(set) var lastSnapshotRefreshError: Error?
@@ -129,6 +130,7 @@ public final class RunSessionStore: ObservableObject {
 
     public func bind(session: TrainerSessionDTO) {
         if state.session?.simulationID != session.simulationID {
+            submittedVoiceCaptureIDs = []
             resetSnapshotState()
         }
         state = RunSessionReducer.reduce(state: state, action: .sessionLoaded(session))
@@ -692,12 +694,16 @@ public final class RunSessionStore: ObservableObject {
         details: [String: JSONValue]? = nil,
         tourniquetApplicationMode: TourniquetApplicationMode? = nil,
         supersedesEventID: Int? = nil,
+        voiceProvenance: VoiceActionProvenance? = nil,
     ) {
-        guard canInterventionCommands else { return }
+        guard canInterventionCommands, let simulationID = state.session?.simulationID else { return }
+        if let voiceProvenance {
+            guard submittedVoiceCaptureIDs.insert(voiceProvenance.captureID).inserted else { return }
+        }
 
         Task {
-            guard let simulationID = state.session?.simulationID else { return }
-            let clientEventID = UUID().uuidString.lowercased()
+            guard state.session?.simulationID == simulationID else { return }
+            let clientEventID = voiceProvenance?.captureID ?? UUID().uuidString.lowercased()
             let request = InterventionEventRequest(
                 interventionType: interventionType,
                 clientEventID: clientEventID,
@@ -709,6 +715,7 @@ public final class RunSessionStore: ObservableObject {
                 details: details,
                 tourniquetApplicationMode: tourniquetApplicationMode,
                 supersedesEventID: supersedesEventID,
+                voiceProvenance: voiceProvenance,
             )
             let body = try? JSONEncoder().encode(request)
             let endpoint = TrainerLabAPI.interventions(

@@ -3000,6 +3000,36 @@ final class RunSessionStoreTests: XCTestCase {
         XCTAssertEqual(service.getRuntimeStateCalls, [420])
     }
 
+    func testConfirmedVoiceActionPreservesProvenanceAndSuppressesDuplicateSubmission() async throws {
+        let service = MockTrainerLabService()
+        service.getRuntimeStateResult = try .success(makeRuntimeState(status: "running"))
+        service.listEventsResult = .success(PaginatedResponse(items: [], nextCursor: nil, hasMore: false))
+        service.listAnnotationsResult = .success([])
+        service.injectInterventionResult = .success(TrainerCommandAck(commandID: "voice-command", status: "accepted"))
+        let queue = InMemoryCommandQueueStore()
+        let store = RunSessionStore(service: service, realtimeClient: MockRealtimeClient(), commandQueue: queue)
+        store.bind(session: makeSession(status: .running))
+        store.startConsole()
+        defer { store.stopConsole() }
+        await waitUntil(timeout: 1.5) { store.state.commandChannelAvailable }
+        let provenance = VoiceActionProvenance(
+            captureID: "voice-capture", originalTranscript: "Not oxygen, tourniquet",
+            reviewedTranscript: "Tourniquet applied",
+        )
+        for _ in 0 ..< 2 {
+            store.addIntervention(
+                interventionType: "tourniquet", siteCode: "left_arm", targetProblemID: 55,
+                voiceProvenance: provenance,
+            )
+        }
+        await waitUntil(timeout: 1.5) { service.injectInterventionCalls.count == 1 }
+        XCTAssertEqual(service.injectInterventionCalls.count, 1)
+        XCTAssertEqual(service.injectInterventionCalls.first?.voiceProvenance, provenance)
+        XCTAssertEqual(service.injectInterventionCalls.first?.clientEventID, "voice-capture")
+        XCTAssertEqual(service.injectInterventionCalls.first?.notes, "")
+        XCTAssertEqual(service.injectInterventionCalls.first?.effectiveness, .unknown)
+    }
+
     private func makeSession(
         status: TrainerSessionStatus,
         scenarioSpec: [String: JSONValue] = [:],

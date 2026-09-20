@@ -18,6 +18,7 @@ public struct RunConsoleView: View {
 
     // Sheet visibility
     @State private var showInterventionSheet = false
+    @State private var showVoiceActionSheet = false
     @State private var showEventSheet = false
     @State private var showSteerSheet = false
     @State private var showAnnotationSheet = false
@@ -150,6 +151,10 @@ public struct RunConsoleView: View {
         .sheet(isPresented: $showInterventionSheet, onDismiss: resetInterventionSheet) {
             interventionSheet
                 .presentationDetents([.fraction(0.7)])
+        }
+        .sheet(isPresented: $showVoiceActionSheet) {
+            VoiceActionSheet(store: store)
+                .presentationDetents([.large])
         }
         .sheet(item: $quickActionInjury, onDismiss: resetInterventionSheet) { injury in
             quickActionSheet(for: injury)
@@ -653,6 +658,7 @@ public struct RunConsoleView: View {
             }
 
             sessionPreparationBanner
+            voiceActionButton
 
             HStack(alignment: .top, spacing: 12) {
                 regularControlSection(
@@ -813,6 +819,7 @@ public struct RunConsoleView: View {
 
     private func compactPrimaryActionBar(compactMetrics: RunConsoleCompactMetrics) -> some View {
         HStack(spacing: compactMetrics.gridSpacing) {
+            voiceActionButton
             ForEach(clinicalControls) { control in
                 controlButton(
                     control,
@@ -829,6 +836,19 @@ public struct RunConsoleView: View {
             cornerRadius: 14,
             tint: TrainerLabTheme.accentBlue.opacity(0.10),
         )
+    }
+
+    private var voiceActionButton: some View {
+        Button {
+            showVoiceActionSheet = true
+        } label: {
+            Label("Dictate", systemImage: "mic.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .disabled(!canIntervene)
+        .accessibilityLabel("Dictate learner action")
+        .accessibilityIdentifier("trainer-dictate-action")
     }
 
     // MARK: - Conflict banner

@@ -2212,6 +2212,7 @@ public enum TourniquetApplicationMode: String, Codable, Sendable, CaseIterable {
 }
 
 public struct InterventionEventRequest: Codable, Sendable {
+    public let voiceProvenance: VoiceActionProvenance?
     public let interventionType: String
     public let clientEventID: String?
     public let siteCode: String
@@ -2237,7 +2238,9 @@ public struct InterventionEventRequest: Codable, Sendable {
         initiatedByType: String = "instructor",
         initiatedByID: Int? = nil,
         supersedesEventID: Int? = nil,
+        voiceProvenance: VoiceActionProvenance? = nil,
     ) {
+        self.voiceProvenance = voiceProvenance
         self.interventionType = interventionType
         self.clientEventID = clientEventID
         self.siteCode = siteCode
@@ -2271,6 +2274,7 @@ public struct InterventionEventRequest: Codable, Sendable {
     enum CodingKeys: String, CodingKey {
         case interventionType = "intervention_type"
         case clientEventID = "client_event_id"
+        case voiceProvenance = "voice_provenance"
         case siteCode = "site_code"
         case targetProblemID = "target_problem_id"
         case status
