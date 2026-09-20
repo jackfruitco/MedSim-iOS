@@ -1873,7 +1873,7 @@ private struct ChatBubble: View {
     @ViewBuilder
     private var bubbleContent: some View {
         if !item.content.isEmpty, prefersInlineFooter {
-            inlineFooterText
+            inlineFooterRow
         } else {
             VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
                 if !item.content.isEmpty {
@@ -1887,35 +1887,20 @@ private struct ChatBubble: View {
         }
     }
 
-    private var inlineFooterText: Text {
-        var segments: [Text] = [
-            Text(item.content).font(.body),
-            Text("  "),
-            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.caption2)
-                .foregroundStyle(.secondary),
-        ]
+    private var inlineFooterRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(item.content)
+                    .font(.body)
+                    .layoutPriority(1)
+                footerLabels
+            }
 
-        if !item.isFromSelf, !item.isRead {
-            segments.append(Text("  "))
-            segments.append(
-                Text("Unread")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.orange),
-            )
-        }
-
-        if item.isFromSelf {
-            segments.append(Text("  "))
-            segments.append(
-                Text(item.deliveryStatus.rawValue.capitalized)
-                    .font(.caption2.bold())
-                    .foregroundStyle(statusColor(item.deliveryStatus)),
-            )
-        }
-
-        return segments.dropFirst().reduce(segments[0]) { partialResult, segment in
-            partialResult + segment
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.content)
+                    .font(.body)
+                footerLabels
+            }
         }
     }
 
@@ -1984,24 +1969,28 @@ private struct ChatBubble: View {
 
     private var footerRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                if !item.isFromSelf, !item.isRead {
-                    Text("Unread")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.orange)
-                }
-                if item.isFromSelf {
-                    Text(item.deliveryStatus.rawValue.capitalized)
-                        .font(.caption2.bold())
-                        .foregroundStyle(statusColor(item.deliveryStatus))
-                }
-            }
+            footerLabels
             if item.isFromSelf, item.deliveryStatus == .failed, item.retryable {
                 Button("Retry", action: retryAction)
                     .font(.caption2.bold())
+            }
+        }
+    }
+
+    private var footerLabels: some View {
+        HStack(spacing: 8) {
+            Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if !item.isFromSelf, !item.isRead {
+                Text("Unread")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.orange)
+            }
+            if item.isFromSelf {
+                Text(item.deliveryStatus.rawValue.capitalized)
+                    .font(.caption2.bold())
+                    .foregroundStyle(statusColor(item.deliveryStatus))
             }
         }
     }
