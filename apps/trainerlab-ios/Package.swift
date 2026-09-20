@@ -109,6 +109,7 @@ let package = Package(
         .target(
             name: "Summary",
             dependencies: [
+                "Persistence",
                 "SharedModels",
                 "Networking",
                 "DesignSystem",

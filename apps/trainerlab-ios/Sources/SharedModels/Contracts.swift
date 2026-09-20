@@ -400,6 +400,7 @@ public struct EventEnvelope: Codable, Equatable, Identifiable, Sendable {
 }
 
 public struct RunDebriefOutput: Codable, Sendable {
+    public let claims: [DebriefClaim]?
     public let narrativeSummary: String
     public let strengths: [String]
     public let misses: [String]
@@ -408,6 +409,7 @@ public struct RunDebriefOutput: Codable, Sendable {
     public let overallAssessment: String
 
     enum CodingKeys: String, CodingKey {
+        case claims
         case narrativeSummary = "narrative_summary"
         case strengths
         case misses
@@ -418,6 +420,11 @@ public struct RunDebriefOutput: Codable, Sendable {
 }
 
 public struct RunSummary: Codable, Sendable {
+    public let evidence: [DebriefEvidence]?
+    public let evidenceRevision: String?
+    public let evidenceOmittedCount: Int?
+    public let debriefStatus: String?
+    public let debriefError: String?
     public let simulationID: Int
     public let status: String
     public let runStartedAt: String?
@@ -440,7 +447,17 @@ public struct RunSummary: Codable, Sendable {
         commandLog: [SummaryCommandLog],
         aiRationaleNotes: [JSONValue],
         aiDebrief: RunDebriefOutput? = nil,
+        evidence: [DebriefEvidence]? = nil,
+        evidenceRevision: String? = nil,
+        evidenceOmittedCount: Int? = nil,
+        debriefStatus: String? = nil,
+        debriefError: String? = nil,
     ) {
+        self.evidence = evidence
+        self.evidenceRevision = evidenceRevision
+        self.evidenceOmittedCount = evidenceOmittedCount
+        self.debriefStatus = debriefStatus
+        self.debriefError = debriefError
         self.simulationID = simulationID
         self.status = status
         self.runStartedAt = runStartedAt
@@ -457,6 +474,11 @@ public struct RunSummary: Codable, Sendable {
         case simulationID = "simulation_id"
         case status
         case runStartedAt = "run_started_at"
+        case evidence
+        case evidenceRevision = "evidence_revision"
+        case evidenceOmittedCount = "evidence_omitted_count"
+        case debriefStatus = "debrief_status"
+        case debriefError = "debrief_error"
         case runCompletedAt = "run_completed_at"
         case finalState = "final_state"
         case eventTypeCounts = "event_type_counts"
