@@ -520,7 +520,7 @@ public struct ChatRunView: View {
                     .fill(Color.blue.opacity(0.14))
                 Text(store.simulation.patientInitials)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.blue)
+                    .foregroundStyle(.primary)
             }
             .frame(width: 34, height: 34)
 
