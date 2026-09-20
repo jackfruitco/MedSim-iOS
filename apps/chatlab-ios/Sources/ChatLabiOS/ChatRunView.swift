@@ -1938,16 +1938,16 @@ private struct ChatBubble: View {
     private var footerLabels: some View {
         HStack(spacing: 8) {
             Text(item.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.caption2)
+                .font(.body)
                 .foregroundStyle(.primary)
             if !item.isFromSelf, !item.isRead {
                 Text("Unread")
-                    .font(.caption2.bold())
+                    .font(.body.bold())
                     .foregroundStyle(.orange)
             }
             if item.isFromSelf {
                 Text(item.deliveryStatus.rawValue.capitalized)
-                    .font(.caption2.bold())
+                    .font(.body.bold())
                     .foregroundStyle(.primary)
             }
         }
