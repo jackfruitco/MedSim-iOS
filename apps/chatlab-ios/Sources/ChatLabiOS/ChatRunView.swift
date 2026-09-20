@@ -868,7 +868,7 @@ public struct ChatRunView: View {
                     showToolsSheet = true
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .regular))
+                        .font(.title2)
                         .frame(width: 44, height: 44)
                 }
                 .trainerGlassButtonStyle()
@@ -915,7 +915,7 @@ public struct ChatRunView: View {
                     haptics.play(.messageSent)
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.body.bold())
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(Color.accentColor)
@@ -932,7 +932,7 @@ public struct ChatRunView: View {
                     haptics.play(.voiceStarted)
                 } label: {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 19, weight: .medium))
+                        .font(.body.weight(.medium))
                         .frame(width: 34, height: 34)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
@@ -944,7 +944,7 @@ public struct ChatRunView: View {
                 .help("Start voice")
             } else {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 34, height: 34)
                     .accessibilityLabel("Conversation is read-only")
@@ -1002,7 +1002,7 @@ public struct ChatRunView: View {
                 haptics.play(.voiceEnded)
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(Color.red)
@@ -1111,7 +1111,7 @@ public struct ChatRunView: View {
     private func initialGenerationFailureState(layoutMode: ChatRunLayoutMode) -> some View {
         VStack(spacing: 18) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(layoutMode == .padWorkspace ? .system(size: 44) : .system(size: 36))
+                .font(layoutMode == .padWorkspace ? .largeTitle : .title)
                 .foregroundStyle(.red)
 
             VStack(spacing: 8) {
