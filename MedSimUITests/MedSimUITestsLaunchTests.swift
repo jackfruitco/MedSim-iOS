@@ -126,7 +126,11 @@ final class MedSimUITestsLaunchTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["chat-message-timeline"].waitForExistence(timeout: 5))
         try app.performAccessibilityAudit(
             for: [.contrast, .dynamicType, .hitRegion, .sufficientElementDescription, .textClipped],
-        )
+        ) { issue in
+            print("Accessibility audit issue: \(String(reflecting: issue))")
+            dump(issue)
+            return false
+        }
     }
 
     @MainActor
