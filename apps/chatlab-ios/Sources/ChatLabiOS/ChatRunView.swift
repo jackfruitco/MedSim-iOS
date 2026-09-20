@@ -525,7 +525,7 @@ public struct ChatRunView: View {
             .frame(width: 34, height: 34)
 
             Text(store.simulation.patientDisplayName)
-                .font(.headline.weight(.semibold))
+                .font(.title3.bold())
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
