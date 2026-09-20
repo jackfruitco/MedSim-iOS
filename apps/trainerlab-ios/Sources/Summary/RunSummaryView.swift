@@ -425,7 +425,9 @@ public struct RunSummaryView: View {
             VStack(alignment: .leading, spacing: 8) {
                 switch status {
                 case "generating":
-                    Label("Preparing debrief from recorded evidence…", systemImage: "hourglass")
+                    Label(viewModel.isWaitingForDebrief
+                        ? "Preparing debrief from recorded evidence…"
+                        : "Still processing. Pull to refresh its status.", systemImage: "hourglass")
                 case "failed":
                     Text("Debrief generation failed. Your scenario evidence is available below.")
                 case "stale":

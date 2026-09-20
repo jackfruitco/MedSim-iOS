@@ -21,6 +21,7 @@ public struct DebriefEvidence: Codable, Identifiable, Sendable {
 
     public var detail: String {
         facts.keys.sorted().compactMap { key in
+            guard !key.hasSuffix("_id"), key != "domain_event_type" else { return nil }
             guard let value = facts[key] else { return nil }
             let text: String
             switch value {
