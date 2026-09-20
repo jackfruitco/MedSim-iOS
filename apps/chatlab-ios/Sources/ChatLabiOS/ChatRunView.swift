@@ -526,8 +526,13 @@ public struct ChatRunView: View {
 
             Text(store.simulation.patientDisplayName)
                 .font(.title3.bold())
-                .lineLimit(1)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(chatSystemBackgroundColor())
+        .clipShape(Capsule())
         .frame(maxWidth: .infinity)
     }
 
@@ -1837,8 +1842,8 @@ private struct ChatBubble: View {
             VStack(alignment: .leading, spacing: 3) {
                 if !item.isFromSelf {
                     Text(item.displayName)
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.primary)
                 }
                 bubbleContent
                 if let errorText = item.errorText, !errorText.isEmpty {
@@ -1872,47 +1877,15 @@ private struct ChatBubble: View {
 
     @ViewBuilder
     private var bubbleContent: some View {
-        if !item.content.isEmpty, prefersInlineFooter {
-            inlineFooterRow
-        } else {
-            VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
-                if !item.content.isEmpty {
-                    messageBody
-                }
-                if !item.mediaList.isEmpty {
-                    mediaStrip
-                }
-                footerRow
+        VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
+            if !item.content.isEmpty {
+                messageBody
             }
-        }
-    }
-
-    private var inlineFooterRow: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(item.content)
-                    .font(.body)
-                    .layoutPriority(1)
-                footerLabels
+            if !item.mediaList.isEmpty {
+                mediaStrip
             }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.content)
-                    .font(.body)
-                footerLabels
-            }
+            footerRow
         }
-    }
-
-    private var metadataText: String {
-        var parts = [item.timestamp.formatted(date: .omitted, time: .shortened)]
-        if !item.isFromSelf, !item.isRead {
-            parts.append("Unread")
-        }
-        if item.isFromSelf {
-            parts.append(item.deliveryStatus.rawValue.capitalized)
-        }
-        return parts.joined(separator: " ")
     }
 
     private var markdownContent: AttributedString? {
@@ -1921,20 +1894,6 @@ private struct ChatBubble: View {
 
     private var usesMarkdownRendering: Bool {
         markdownContent != nil
-    }
-
-    private var prefersInlineFooter: Bool {
-        guard !usesMarkdownRendering else { return false }
-        return ChatBubbleFooterLayout.prefersInline(
-            in: .init(
-                content: item.content,
-                metadataText: metadataText,
-                bubbleWidth: bubbleWidth(for: layoutMode),
-                hasMedia: item.mediaList.isEmpty == false,
-                hasError: item.errorText?.isEmpty == false,
-                hasRetryAction: item.isFromSelf && item.deliveryStatus == .failed && item.retryable,
-            ),
-        )
     }
 
     @ViewBuilder
@@ -1981,7 +1940,7 @@ private struct ChatBubble: View {
         HStack(spacing: 8) {
             Text(item.timestamp.formatted(date: .omitted, time: .shortened))
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             if !item.isFromSelf, !item.isRead {
                 Text("Unread")
                     .font(.caption2.bold())
@@ -1990,23 +1949,11 @@ private struct ChatBubble: View {
             if item.isFromSelf {
                 Text(item.deliveryStatus.rawValue.capitalized)
                     .font(.caption2.bold())
-                    .foregroundStyle(statusColor(item.deliveryStatus))
+                    .foregroundStyle(.primary)
             }
         }
     }
 
-    private func statusColor(_ status: DeliveryStatus) -> Color {
-        switch status {
-        case .sending:
-            .secondary
-        case .sent:
-            .blue
-        case .delivered:
-            .green
-        case .failed:
-            .red
-        }
-    }
 }
 
 private enum ChatMarkdownRenderer {
