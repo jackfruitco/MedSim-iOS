@@ -526,7 +526,9 @@ struct InterventionComposerSheet: View {
 
     private var canSubmit: Bool {
         guard canMutate, let selectedType = draft.selectedType else { return false }
-        if requiresTarget, draft.selectedTargetProblemID == nil { return false }
+        if requiresTarget, draft.selectedTargetProblemID == nil {
+            return false
+        }
         guard let group = dictionary.first(where: { $0.interventionType == selectedType }) else { return false }
         return draft.resolvedSiteCode(in: context.availableSites(for: group)) != nil
     }
@@ -630,17 +632,23 @@ struct InterventionComposerSheet: View {
             .buttonStyle(.plain)
 
             if draft.activeSection == .target {
-                Button {
-                    draft.selectedTargetProblemID = nil
-                    draft.activeSection = .type
-                } label: {
-                    selectionRow(
-                        title: "General intervention",
-                        subtitle: "Not tied to a single problem",
-                        selected: draft.selectedTargetProblemID == nil,
-                    )
+                if requiresTarget {
+                    Text("Select the problem this performed action addresses.")
+                        .font(.caption)
+                        .foregroundStyle(secondaryText)
+                } else {
+                    Button {
+                        draft.selectedTargetProblemID = nil
+                        draft.activeSection = .type
+                    } label: {
+                        selectionRow(
+                            title: "General intervention",
+                            subtitle: "Not tied to a single problem",
+                            selected: draft.selectedTargetProblemID == nil,
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 ForEach(problems) { problem in
                     Button {
@@ -1039,7 +1047,9 @@ struct InterventionComposerSheet: View {
             return
         }
         draft.applyPrefill(prefill, dictionary: dictionary)
-        if requiresTarget { draft.effectiveness = .unknown }
+        if requiresTarget {
+            draft.effectiveness = .unknown
+        }
         draft.activeSection = prefill.siteCode == nil ? .site : .review
     }
 

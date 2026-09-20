@@ -15,6 +15,21 @@ final class VoiceActionCapture: ObservableObject {
     @Published private(set) var errorMessage: String?
     private var generation = UUID()
     private var limitTask: Task<Void, Never>?
+    private let authorizeSpeech: () async -> Bool
+
+    init(authorizeSpeech: (() async -> Bool)? = nil) {
+        self.authorizeSpeech = authorizeSpeech ?? {
+            #if os(iOS)
+                await withCheckedContinuation { continuation in
+                    SFSpeechRecognizer.requestAuthorization { status in
+                        continuation.resume(returning: status == .authorized)
+                    }
+                }
+            #else
+                false
+            #endif
+        }
+    }
 
     #if os(iOS)
         private let engine = AVAudioEngine()
@@ -32,17 +47,13 @@ final class VoiceActionCapture: ObservableObject {
         errorMessage = nil
         isStarting = true
         let token = generation
+        let authorized = await authorizeSpeech()
+        guard token == generation else { return }
+        guard authorized else {
+            fail("Speech recognition is unavailable. Use the action picker or enable speech access in Settings.")
+            return
+        }
         #if os(iOS)
-            let authorization = await withCheckedContinuation { continuation in
-                SFSpeechRecognizer.requestAuthorization { status in
-                    continuation.resume(returning: status)
-                }
-            }
-            guard token == generation else { return }
-            guard authorization == .authorized else {
-                fail("Speech recognition is unavailable. Use the action picker or enable speech access in Settings.")
-                return
-            }
             let microphoneAllowed = await AVAudioApplication.requestRecordPermission()
             guard token == generation else { return }
             guard microphoneAllowed else {
@@ -79,11 +90,15 @@ final class VoiceActionCapture: ObservableObject {
                     let finished = result?.isFinal == true
                     let failed = error != nil
                     Task { @MainActor [weak self] in
-                        guard let self, self.generation == token else { return }
-                        if let text { self.transcript = String(text.prefix(2000)) }
+                        guard let self, generation == token else { return }
+                        if let text {
+                            transcript = String(text.prefix(2000))
+                        }
                         if failed || finished {
-                            self.stop()
-                            if failed { self.errorMessage = "Dictation stopped. Review the captured text or try again." }
+                            stop()
+                            if failed {
+                                errorMessage = "Dictation stopped. Review the captured text or try again."
+                            }
                         }
                     }
                 }

@@ -55,7 +55,7 @@ struct VoiceActionSheet: View {
                             get: { draft?.reviewedTranscript ?? "" },
                             set: { draft?.reviewedTranscript = String($0.prefix(2000)); confirmedPerformed = false },
                         ), axis: .vertical)
-                        .lineLimit(3 ... 8)
+                            .lineLimit(3 ... 8)
                         if draft?.needsClarification == true {
                             Text("This may describe an action that did not happen or is only planned. Clarify what actually occurred before continuing.")
                         }
@@ -112,19 +112,32 @@ struct VoiceActionSheet: View {
             }
         }
         .onAppear {
-            if captureSimulationID == nil { captureSimulationID = store.state.session?.simulationID }
+            if captureSimulationID == nil {
+                captureSimulationID = store.state.session?.simulationID
+            }
         }
         .onChange(of: store.state.session?.simulationID) { _, simulationID in
-            if captureSimulationID != simulationID { capture.cancel(); dismiss() }
+            if captureSimulationID != simulationID {
+                capture.cancel()
+                dismiss()
+            }
         }
         .onChange(of: capture.isRecording) { _, recording in
-            if !recording { freezeDraft() }
+            if !recording {
+                freezeDraft()
+            }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { capture.stop(); freezeDraft() }
+            if phase == .background || (phase == .inactive && capture.isRecording) {
+                capture.stop()
+                freezeDraft()
+            }
         }
         .onChange(of: canRecord) { _, allowed in
-            if !allowed { capture.stop(); freezeDraft() }
+            if !allowed {
+                capture.stop()
+                freezeDraft()
+            }
         }
         .onDisappear { capture.cancel() }
     }
