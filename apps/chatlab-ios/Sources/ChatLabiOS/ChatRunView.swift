@@ -920,6 +920,8 @@ public struct ChatRunView: View {
                         .frame(width: 34, height: 34)
                         .background(Color.accentColor)
                         .clipShape(Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Send message")
@@ -932,6 +934,8 @@ public struct ChatRunView: View {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 19, weight: .medium))
                         .frame(width: 34, height: 34)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(store.canStartVoiceSession == false)
