@@ -1875,7 +1875,6 @@ private struct ChatBubble: View {
         }
     }
 
-    @ViewBuilder
     private var bubbleContent: some View {
         VStack(alignment: .leading, spacing: usesMarkdownRendering ? 8 : 6) {
             if !item.content.isEmpty {
@@ -1953,7 +1952,6 @@ private struct ChatBubble: View {
             }
         }
     }
-
 }
 
 private enum ChatMarkdownRenderer {
